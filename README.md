@@ -24,7 +24,7 @@ For the cameral-control `page_definition.css`, pass the stylesheet after the app
 
 ## Install and build
 
-Download the wheel for your platform from [GitHub Releases](https://github.com/Otakunavi/serpentype/releases) and install it with `python -m pip install ./serpentype-*.whl` (replace the wildcard with the downloaded filename). Publishing to PyPI is a separate step; until then, `pip install serpentype` does not install this GitHub release. For development:
+Install from PyPI with `python -m pip install serpentype`. Prebuilt wheels are available for macOS arm64/x86_64, Linux x86_64, and Windows x86_64. On other platforms, pip will attempt a source build requiring Rust and maturin. You can also download a wheel from [GitHub Releases](https://github.com/Otakunavi/serpentype/releases). For development:
 
 ```sh
 python3 -m venv .venv
