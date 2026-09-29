@@ -1,0 +1,70 @@
+name: Publish release to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: GitHub release tag to publish
+        required: true
+        default: v0.1.0
+
+permissions: {}
+
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Download release distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir dist
+          gh release download "$RELEASE_TAG" --repo "$GH_REPO" \
+            --pattern '*.whl' --pattern '*.tar.gz' --dir dist
+
+      - name: Check distribution names
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          tag = os.environ['RELEASE_TAG']
+          assert tag.startswith('v')
+          version = tag[1:]
+          files = list(Path('dist').iterdir())
+          assert len(files) == 5, files
+          assert sum(path.suffix == '.whl' for path in files) == 4, files
+          assert any(path.name == f'serpentype-{version}.tar.gz' for path in files)
+          assert all(path.name.startswith(f'serpentype-{version}') for path in files)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi-distributions
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    if: github.ref == 'refs/heads/main'
+    needs: collect
+    runs-on: ubuntu-22.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/serpentype/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi-distributions
+          path: dist
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1
