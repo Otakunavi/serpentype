@@ -1,0 +1,23 @@
+[package]
+name = "serpentype"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Controlled HTML/CSS document pagination and PDF generation"
+
+[lib]
+name = "serpentype"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["python"]
+python = ["dep:pyo3"]
+
+[dependencies]
+kuchiki = "0.8.1"
+ttf-parser = "0.25"
+sha2 = "0.10"
+flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"], optional = true }
+subsetter = { version = "0.2.6", default-features = false }

@@ -1,0 +1,213 @@
+@page { size: A4; margin: 15mm; }
+
+/* Шрифт по умолчанию там, где font-family не задан явно: таблицы нарушений
+   (aliens/notice/pipeline.py) его не проставляют. Без этого правила WeasyPrint
+   разрешает `serif` через системные шрифты — в контейнере это DejaVu, на macOS
+   Georgia, — и вес PDF начинает зависеть от окружения (+2.3 КБ на фолбэки).
+   Инлайновые стили шаблона это правило не перебивает: у них приоритет выше. */
+body {
+  font-family: "Times Newer Roman", serif;
+}
+
+@page :first {
+  @bottom-right {
+    content: "" !important;
+  }
+  @bottom-left {
+    content: "" !important;
+  }
+  @bottom-center {
+    content: "" !important;
+  }
+  @top-right {
+    content: "" !important;
+  }
+  @top-left {
+    content: "" !important;
+  }
+  @top-center {
+    content: "" !important;
+  }
+}
+
+@page appendix_1_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение 1 к  уведомлению  № TEST-2026-09-28 от 28.09.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page esf_turnover_notice_appendix_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение к уведомлению № TEST-2026-09-28 от 28.09.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page esf_turnover_advice_appendix_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение к извещению № TEST-2026-09-28 от 28.09.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page appendix_2_ru {
+  size: landscape !important;
+  page-orientation: rotate-right !important;
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение 2 к  уведомлению  № TEST-2026-09-28 от 28.09.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+
+@page appendix_1_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "28.09.2026 ж. № TEST-2026-09-28  хабарламасына  1-қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page esf_turnover_notice_appendix_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "28.09.2026 ж. № TEST-2026-09-28 хабарламасына қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page esf_turnover_advice_appendix_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "28.09.2026 ж. № TEST-2026-09-28 хабархатқа қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page appendix_2_kk {
+  size: landscape !important;
+  page-orientation: rotate-right !important;
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "28.09.2026 ж. № TEST-2026-09-28  хабарламасына  2-қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@media print {
+  .appendix_1_kk {
+  }
+  .appendix_2_kk {
+  }
+  .appendix_1_ru {
+  }
+  .appendix_2_ru {
+  }
+  [data-print="paged"] > .appendix_1_kk {
+    page: appendix_1_kk !important;
+  }
+  [data-print="paged"] > .esf_turnover_notice_appendix_kk {
+    page: esf_turnover_notice_appendix_kk !important;
+  }
+  [data-print="paged"] > .esf_turnover_advice_appendix_kk {
+    page: esf_turnover_advice_appendix_kk !important;
+  }
+  [data-print="paged"] > .appendix_2_kk {
+    page: appendix_2_kk !important;
+  }
+  [data-print="paged"] > .appendix_1_ru {
+    page: appendix_1_ru !important;
+  }
+  [data-print="paged"] > .esf_turnover_notice_appendix_ru {
+    page: esf_turnover_notice_appendix_ru !important;
+  }
+  [data-print="paged"] > .esf_turnover_advice_appendix_ru {
+    page: esf_turnover_advice_appendix_ru !important;
+  }
+  [data-print="paged"] > .appendix_2_ru {
+    page: appendix_2_ru !important;
+  }
+}
+.qr {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-right: 10px;
+}
+.qr img {
+    width: 3cm;
+    height: auto;
+    aspect-ratio: 1;
+    max-width: 100%;
+    max-height: 100%;
+}
+.row{
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+}
+
+body { font-size: 9pt; line-height: 11pt; color: #172632 }
+h1 { font-size: 15pt; line-height: 18pt; margin: 0 0 6pt 0 }
+p { margin: 0 0 5pt 0; font-size: 9pt; line-height: 11pt }
+.row { margin: 4pt 0 8pt 0; padding: 3pt }
+.row p { margin: 0; font-size: 8pt; line-height: 10pt }
+.banner { width: 90mm }
+table { width: 180mm }
+th, td { border: 0.4pt solid #617487; padding: 2pt; font-size: 8pt; line-height: 10pt }
+th { background: #dce8f2; font-weight: 700 }
+.appendix_2_ru table, .appendix_2_kk table { width: 267mm }

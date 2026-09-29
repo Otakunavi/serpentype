@@ -1,0 +1,56 @@
+{
+  "source_css": "/Users/mini/Documents/dsrc/cameral-control/app/bg_worker/pdf_forming/templates/page_definition.css",
+  "sections": [
+    {
+      "page_name": "appendix_1_ru",
+      "title": "Приложение 1. Реестр нарушений",
+      "rows": 72
+    },
+    {
+      "page_name": "esf_turnover_notice_appendix_ru",
+      "title": "Приложение к уведомлению. Обороты ЭСФ",
+      "rows": 16
+    },
+    {
+      "page_name": "esf_turnover_advice_appendix_ru",
+      "title": "Приложение к извещению. Обороты ЭСФ",
+      "rows": 16
+    },
+    {
+      "page_name": "appendix_2_ru",
+      "title": "Приложение 2. Детализация по операциям",
+      "rows": 56
+    },
+    {
+      "page_name": "appendix_1_kk",
+      "title": "1-қосымша. Бұзушылықтар тізілімі",
+      "rows": 72
+    },
+    {
+      "page_name": "esf_turnover_notice_appendix_kk",
+      "title": "Хабарламаға қосымша. Айналымдар",
+      "rows": 16
+    },
+    {
+      "page_name": "esf_turnover_advice_appendix_kk",
+      "title": "Хабархатқа қосымша. Айналымдар",
+      "rows": 16
+    },
+    {
+      "page_name": "appendix_2_kk",
+      "title": "2-қосымша. Операциялар тізімі",
+      "rows": 56
+    }
+  ],
+  "total_table_rows": 320,
+  "image_elements": 16,
+  "template_bytes": 89426,
+  "css_bytes": 6316,
+  "source_css_sha256": "5a17e3a48818223b2ea0acb10bc4c51370eae58d99bb8a7ded340ad18f9b4b87",
+  "template_sha256": "540143e904023459b7f5e411c2ceb6f23a39382d3093703a72aadc789be0c518",
+  "rendered_css_sha256": "6387e856eba93de2a420e2fd495c89c5fdf3f0d460b493fdbd99ee59d5dda381",
+  "image_sha256": {
+    "chart.jpg": "bde43358dc1a1b91e511a8089e7d0af5a76becbab3097948c29604a9c8771196",
+    "qr.png": "648b8132f53106c6a973711c975330c3331097332ee5bac7a3e2b020b349ddaf"
+  }
+}

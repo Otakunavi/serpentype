@@ -1,0 +1,39 @@
+name: wheels
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            interpreter: python3.10
+          - os: macos-15
+            interpreter: python
+          - os: macos-15-intel
+            interpreter: python
+          - os: windows-2022
+            interpreter: python
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --locked -i ${{ matrix.interpreter }}
+          manylinux: '2_28'
+      - name: Install and smoke test wheel
+        shell: bash
+        run: |
+          python -c 'import glob, subprocess, sys; wheels=glob.glob("target/wheels/*.whl"); assert wheels; subprocess.check_call([sys.executable,"-m","pip","install","--no-deps",wheels[0]])'
+          python -I -c 'import serpentype; f=serpentype.FontRegistry(); f.register_file(serpentype.bundled_font_path(),family="Noto Sans"); d=serpentype.Renderer(fonts=f).layout("<p>Привет</p>"); assert d.page_count==1 and d.to_pdf().startswith(b"%PDF")'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: target/wheels/*.whl

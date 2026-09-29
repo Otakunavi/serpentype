@@ -1,0 +1,7 @@
+# Dependency assessment
+
+The implementation deliberately uses one Rust crate with modules rather than a crate workspace. The direct dependencies are `kuchiki` (HTML5 parsing), `ttf-parser` (font metrics), `sha2` (content keys), `flate2` (PDF streams), `subsetter` (TrueType glyph subsets), `image` with only PNG/JPEG features, and `pyo3` for Python bindings. `cssparser` arrives transitively through `kuchiki`; Serpentype implements its own small CSS cascade. `Taffy` does not provide page fragmentation, so it is not used. `Parley` and `Krilla` are candidates for later shaping and PDF features but are not needed for the controlled first implementation.
+
+`cargo metadata --locked --offline` on 2026-09-29 found 114 resolved packages. License fields were MIT, Apache-2.0, BSD-2/3-Clause, 0BSD, Zlib, Unicode-3.0, Unlicense, or MPL-2.0 (the CSS parser/selector family); no GPL/AGPL license field appeared. Review the locked dependency graph and the wheel SBOM before redistribution under a different policy. The wheel bundles Noto Sans Regular/Bold under SIL OFL 1.1 with its notice in `serpentype/assets/OFL.txt`.
+
+The selected native Rust features do not require a browser or system rendering library. The wheel built locally as `cp310-abi3-macosx_11_0_arm64`, installed in a clean virtual environment, and ran end-to-end tests. Other platform wheel configurations are in CI but not yet verified here. Installing WeasyPrint for the optional benchmark can require its separate native dependencies; those are not Serpentype runtime dependencies.
