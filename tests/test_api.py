@@ -157,18 +157,9 @@ class ApiTests(unittest.TestCase):
             for i, (_, text) in enumerate(result):
                 self.assertIn(f"Поток {i}", text)
 
-    def test_page_definition_css_when_source_is_available(self):
-        path = Path("/Users/mini/Documents/dsrc/cameral-control/app/bg_worker/pdf_forming/templates/page_definition.css")
-        if not path.exists():
-            self.skipTest("source project stylesheet is unavailable")
-        css = re.sub(
-            r'{% if cameral.document_type == "ADVICE" %}(.*?){% else %}(.*?){% endif %}',
-            lambda match: match.group(2),
-            path.read_text(),
-        )
-        css = css.replace("{{ cameral.notice.reg_number }}", "123").replace(
-            "{{ cameral.notice.reg_date }}", "28.09.2026"
-        )
+    def test_page_definition_css_fixture(self):
+        path = Path(__file__).resolve().parents[1] / "output/benchmark/page_definition_stress/rendered_page_definition.css"
+        css = path.read_text()
         fonts = registry()
         fonts.register_file(bundled_font_path(), family="Times Newer Roman")
         renderer = Renderer(fonts=fonts, strict=True)

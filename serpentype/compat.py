@@ -6,18 +6,18 @@ still uses Serpentype's documented HTML/CSS subset.
 
 from __future__ import annotations
 
-import base64
 import html as html_module
+import base64
+import mimetypes
 import os
 import re
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from urllib.parse import unquote, urlsplit
-from xml.etree import ElementTree
+from urllib.parse import unquote, urljoin, urlsplit
 
 from ._serpentype import FontRegistry, Renderer
+from .resources import ResourceKind, ResourceLoader
 
 
 _FONT_FACE = re.compile(r"@font-face\s*\{([^{}]*)\}", re.IGNORECASE | re.DOTALL)
@@ -78,6 +78,19 @@ def _local_path(url: str, base_url, inferred_base=None) -> Path:
     return (base_path / unquote(parsed.path)).resolve()
 
 
+def _resource_url(url: str, base_url, inferred_base=None) -> str:
+    if urlsplit(url).scheme:
+        return url
+    if base_url is not None:
+        base = os.fspath(base_url)
+        if urlsplit(base).scheme in ("http", "https", "file"):
+            return urljoin(base, url)
+        return str(_local_path(url, base, inferred_base))
+    if inferred_base is not None:
+        return str((inferred_base / url).resolve())
+    return url
+
+
 def _declaration(block: str, name: str):
     match = re.search(rf"(?:^|;)\s*{re.escape(name)}\s*:\s*([^;]+)", block, re.IGNORECASE)
     return match.group(1).strip() if match else None
@@ -85,13 +98,13 @@ def _declaration(block: str, name: str):
 
 @dataclass(frozen=True)
 class _FontFace:
-    path: Path
+    source: Path | bytes
     family: str
     weight: int
     style: str
 
 
-def _extract_font_faces(css: str, base_url, inferred_base):
+def _extract_font_faces(css: str, base_url, inferred_base, loader=None):
     faces = []
 
     def remove_face(match):
@@ -103,16 +116,21 @@ def _extract_font_faces(css: str, base_url, inferred_base):
         urls = [candidate for _, candidate in _URL.findall(source)]
         if not urls:
             raise ValueError(f"@font-face has no url() source: {family}")
-        candidates = [url for url in urls if Path(urlsplit(url).path).suffix.lower() in {".ttf", ".otf"}]
+        candidates = [url for url in urls if Path(urlsplit(url).path).suffix.lower()
+                      in {".ttf", ".otf", ".woff", ".woff2"}]
         if not candidates:
-            raise ValueError(f"@font-face requires a local TTF-outline font: {family}")
-        path = _local_path(candidates[0], base_url, inferred_base)
-        if not path.is_file():
-            raise FileNotFoundError(path)
+            raise ValueError(f"@font-face requires a TTF, OTF, WOFF or WOFF2 font: {family}")
+        if loader is None:
+            source = _local_path(candidates[0], base_url, inferred_base)
+            if not source.is_file():
+                raise FileNotFoundError(source)
+        else:
+            source = loader.load(_resource_url(candidates[0], base_url, inferred_base),
+                                 ResourceKind.FONT).data
         weight_text = (_declaration(block, "font-weight") or "400").lower()
         weight = 700 if weight_text == "bold" else int(weight_text)
         style = (_declaration(block, "font-style") or "normal").lower()
-        faces.append(_FontFace(path, family.strip("'\" "), weight, style))
+        faces.append(_FontFace(source, family.strip("'\" "), weight, style))
         return ""
 
     return _FONT_FACE.sub(remove_face, css), tuple(faces)
@@ -134,11 +152,19 @@ class CSS:
     """Stylesheet constructed from string, filename, or a readable file object."""
 
     def __init__(self, *, string=None, filename=None, file_obj=None, base_url=None,
-                 font_config=None, encoding=None):
+                 font_config=None, encoding=None, resource_loader=None, url_fetcher=None):
         source, inferred_base = _read_source(
             string=string, filename=filename, file_obj=file_obj, encoding=encoding
         )
-        self.text, self.font_faces = _extract_font_faces(source, base_url, inferred_base)
+        if resource_loader is not None and url_fetcher is not None:
+            raise TypeError("provide resource_loader or url_fetcher")
+        self.resource_loader = resource_loader or (
+            ResourceLoader(callback=url_fetcher, allowed_schemes=("file", "data", "package", "memory", "http", "https"))
+            if url_fetcher is not None else None
+        )
+        self.text, self.font_faces = _extract_font_faces(
+            source, base_url, inferred_base, self.resource_loader
+        )
         self.base_url = base_url
         self.font_config = font_config
 
@@ -150,6 +176,15 @@ class Document:
         self._prepared = prepared
         self.pages = tuple(range(prepared.page_count))
         self.warnings = prepared.warnings
+        self.diagnostics = prepared.diagnostics
+        self.overflow_count = prepared.overflow_count
+        self.missing_glyphs = prepared.missing_glyphs
+        self.unsupported_features = prepared.unsupported_features
+        self.metadata = prepared.metadata
+
+    @property
+    def render_stats(self):
+        return self._prepared.render_stats
 
     def write_pdf(self, target=None):
         data = bytes(self._prepared.to_pdf())
@@ -162,11 +197,8 @@ class Document:
         return None
 
 
-def _materialize_data_images(source: str, directory: Path, base_url, inferred_base):
-    count = 0
-
+def _rewrite_file_images(source: str, base_url, inferred_base, loader=None):
     def rewrite_tag(match):
-        nonlocal count
         tag = match.group()
         src_match = _SRC.search(tag)
         if not src_match:
@@ -174,23 +206,14 @@ def _materialize_data_images(source: str, directory: Path, base_url, inferred_ba
         group = next(name for name in ("double", "single", "bare") if src_match.group(name) is not None)
         src = html_module.unescape(src_match.group(group))
         if src.startswith("data:"):
-            header, separator, payload = src.partition(",")
-            if not separator or not header.lower().endswith(";base64"):
-                raise ValueError("only base64 data: images are supported")
-            mime = header[5:-7].lower()
-            suffix = {
-                "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
-                "image/svg+xml": ".png",
-            }.get(mime)
-            if suffix is None:
-                raise ValueError(f"unsupported data: image type: {mime}")
-            data = base64.b64decode(payload, validate=True)
-            count += 1
-            path = directory / f"image-{count}{suffix}"
-            if mime == "image/svg+xml":
-                _rasterize_simple_svg(data, path)
-            else:
-                path.write_bytes(data)
+            return tag
+        if loader is not None:
+            resource = loader.load(_resource_url(src, base_url, inferred_base),
+                                   ResourceKind.IMAGE)
+            mime = resource.media_type or mimetypes.guess_type(src)[0] or "application/octet-stream"
+            replacement = f"data:{mime};base64,{base64.b64encode(resource.data).decode('ascii')}"
+            start, end = src_match.span(group)
+            return tag[:start] + replacement + tag[end:]
         elif src.startswith("file:"):
             path = _local_path(src, base_url, inferred_base)
         elif urlsplit(src).scheme:
@@ -203,84 +226,21 @@ def _materialize_data_images(source: str, directory: Path, base_url, inferred_ba
     return _IMG.sub(rewrite_tag, source)
 
 
-def _rasterize_simple_svg(data: bytes, destination: Path):
-    """Rasterize the line/text SVG QR placeholders used by cameral-control."""
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-    except ImportError as error:
-        raise RuntimeError("SVG QR placeholders need Pillow; install serpentype[weasy-compat]") from error
-
-    root = ElementTree.fromstring(data)
-    if root.tag.rsplit("}", 1)[-1] != "svg":
-        raise ValueError("data:image/svg+xml must contain an SVG root")
-    width = int(float(root.attrib.get("width", "0")))
-    height = int(float(root.attrib.get("height", "0")))
-    if not 0 < width <= 2048 or not 0 < height <= 2048:
-        raise ValueError("unsupported SVG dimensions")
-    scale = 2
-    image = Image.new("RGB", (width * scale, height * scale), "white")
-    draw = ImageDraw.Draw(image)
-    regular = str(files("serpentype").joinpath("assets", "NotoSans-Regular.ttf"))
-    bold = str(files("serpentype").joinpath("assets", "NotoSans-Bold.ttf"))
-
-    def coordinate(value, span):
-        value = str(value)
-        return float(value[:-1]) * span / 100 if value.endswith("%") else float(value)
-
-    def visit(element, stroke="black", stroke_width=1.0, fill="black", anchor="start"):
-        tag = element.tag.rsplit("}", 1)[-1]
-        stroke = element.attrib.get("stroke", stroke)
-        stroke_width = float(element.attrib.get("stroke-width", stroke_width))
-        fill = element.attrib.get("fill", fill)
-        anchor = element.attrib.get("text-anchor", anchor)
-        if tag in {"svg", "g"}:
-            for child in element:
-                visit(child, stroke, stroke_width, fill, anchor)
-        elif tag == "line":
-            xy = tuple(
-                coordinate(element.attrib[key], width if key.startswith("x") else height) * scale
-                for key in ("x1", "y1", "x2", "y2")
-            )
-            draw.line(xy, fill=stroke, width=max(1, round(stroke_width * scale)))
-        elif tag == "rect":
-            x = coordinate(element.attrib.get("x", 0), width) * scale
-            y = coordinate(element.attrib.get("y", 0), height) * scale
-            w = coordinate(element.attrib["width"], width) * scale
-            h = coordinate(element.attrib["height"], height) * scale
-            draw.rectangle((x, y, x + w, y + h), fill=fill if fill != "none" else None,
-                           outline=stroke if stroke != "none" else None,
-                           width=max(1, round(stroke_width * scale)))
-        elif tag == "text":
-            x = coordinate(element.attrib.get("x", 0), width) * scale
-            y = coordinate(element.attrib.get("y", 0), height) * scale
-            horizontal = "m" if anchor == "middle" else "l"
-            for child in element:
-                if child.tag.rsplit("}", 1)[-1] != "tspan":
-                    raise ValueError("unsupported SVG text child")
-                x = coordinate(child.attrib.get("x", element.attrib.get("x", 0)), width) * scale
-                if "y" in child.attrib:
-                    y = coordinate(child.attrib["y"], height) * scale
-                y += float(child.attrib.get("dy", 0)) * scale
-                size = round(float(child.attrib.get("font-size", 12)) * scale)
-                font_path = bold if child.attrib.get("font-weight") in {"bold", "700"} else regular
-                font = ImageFont.truetype(font_path, size)
-                draw.text((x, y), "".join(child.itertext()), font=font,
-                          fill=child.attrib.get("fill", fill), anchor=horizontal + "s")
-        else:
-            raise ValueError(f"unsupported SVG element: {tag}")
-
-    visit(root)
-    image.resize((width, height), Image.Resampling.LANCZOS).save(destination, format="PNG")
-
-
 class HTML:
     """HTML entry point for the call forms used by cameral-control."""
 
-    def __init__(self, *, string=None, filename=None, file_obj=None, base_url=None, encoding=None):
+    def __init__(self, *, string=None, filename=None, file_obj=None, base_url=None,
+                 encoding=None, resource_loader=None, url_fetcher=None):
         self._source, self._inferred_base = _read_source(
             string=string, filename=filename, file_obj=file_obj, encoding=encoding
         )
         self.base_url = base_url
+        if resource_loader is not None and url_fetcher is not None:
+            raise TypeError("provide resource_loader or url_fetcher")
+        self.resource_loader = resource_loader or (
+            ResourceLoader(callback=url_fetcher, allowed_schemes=("file", "data", "package", "memory", "http", "https"))
+            if url_fetcher is not None else None
+        )
 
     def render(self, *, stylesheets=None, font_config=None, presentational_hints=False):
         sheets = tuple(stylesheets or ())
@@ -291,21 +251,26 @@ class HTML:
         ) or FontConfiguration()
         for sheet in sheets:
             for face in sheet.font_faces:
-                config.registry.register_file(
-                    str(face.path), family=face.family, weight=face.weight, style=face.style
-                )
+                if isinstance(face.source, bytes):
+                    config.registry.register_bytes(
+                        face.source, family=face.family, weight=face.weight, style=face.style
+                    )
+                else:
+                    config.registry.register_file(
+                        str(face.source), family=face.family, weight=face.weight, style=face.style
+                    )
         # The argument is accepted for source compatibility. Presentational
         # attributes beyond Serpentype's controlled HTML/CSS subset are not emulated.
         _ = presentational_hints
         css_text = "\n".join(sheet.text for sheet in sheets)
-        base_dir = _local_path(".", self.base_url, self._inferred_base)
-        with TemporaryDirectory(prefix="serpentype-images-") as temp:
-            html = _materialize_data_images(
-                self._source, Path(temp), self.base_url, self._inferred_base
-            )
-            prepared = Renderer(fonts=config.registry, base_dir=str(base_dir)).layout(
-                html, css_text
-            )
+        base_dir = (Path.cwd() if self.resource_loader is not None and self.base_url
+                    and urlsplit(os.fspath(self.base_url)).scheme in ("http", "https")
+                    else _local_path(".", self.base_url, self._inferred_base))
+        html = _rewrite_file_images(self._source, self.base_url, self._inferred_base,
+                                    self.resource_loader)
+        prepared = Renderer(fonts=config.registry, base_dir=str(base_dir)).layout(
+            html, css_text
+        )
         return Document(prepared)
 
     def write_pdf(self, target=None, *, stylesheets=None, font_config=None,

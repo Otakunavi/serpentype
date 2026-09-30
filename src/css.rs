@@ -27,22 +27,279 @@ pub fn length(value: &str) -> Option<f32> {
     None
 }
 
+/// Resolve a length using the current font size; `rem` uses the 12pt root default.
+pub fn computed_length(value: &str, font_size: f32) -> Option<f32> {
+    let value = value.trim();
+    if let Some(inner) = value
+        .strip_prefix("calc(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        let parts: Vec<&str> = inner.split_whitespace().collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        let left = computed_length(parts[0], font_size)?;
+        let right = computed_length(parts[2], font_size)?;
+        return match parts[1] {
+            "+" => Some(left + right),
+            "-" => Some(left - right),
+            _ => None,
+        }
+        .filter(|v| v.is_finite());
+    }
+    if let Some(number) = value.strip_suffix("rem") {
+        return number
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .map(|v| v * 12.0);
+    }
+    if let Some(number) = value.strip_suffix("em") {
+        return number
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .map(|v| v * font_size);
+    }
+    length(value)
+}
+fn border_length(value: &str, font_size: f32) -> Option<f32> {
+    match value {
+        "thin" => Some(0.75),
+        "medium" => Some(2.25),
+        "thick" => Some(3.75),
+        _ => computed_length(value, font_size),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color(pub f32, pub f32, pub f32);
 
+fn named_color(value: &str) -> Option<&'static str> {
+    Some(match value {
+        "aliceblue" => "#f0f8ff",
+        "antiquewhite" => "#faebd7",
+        "aqua" => "#00ffff",
+        "aquamarine" => "#7fffd4",
+        "azure" => "#f0ffff",
+        "beige" => "#f5f5dc",
+        "bisque" => "#ffe4c4",
+        "black" => "#000000",
+        "blanchedalmond" => "#ffebcd",
+        "blue" => "#0000ff",
+        "blueviolet" => "#8a2be2",
+        "brown" => "#a52a2a",
+        "burlywood" => "#deb887",
+        "cadetblue" => "#5f9ea0",
+        "chartreuse" => "#7fff00",
+        "chocolate" => "#d2691e",
+        "coral" => "#ff7f50",
+        "cornflowerblue" => "#6495ed",
+        "cornsilk" => "#fff8dc",
+        "crimson" => "#dc143c",
+        "cyan" => "#00ffff",
+        "darkblue" => "#00008b",
+        "darkcyan" => "#008b8b",
+        "darkgoldenrod" => "#b8860b",
+        "darkgray" => "#a9a9a9",
+        "darkgreen" => "#006400",
+        "darkgrey" => "#a9a9a9",
+        "darkkhaki" => "#bdb76b",
+        "darkmagenta" => "#8b008b",
+        "darkolivegreen" => "#556b2f",
+        "darkorange" => "#ff8c00",
+        "darkorchid" => "#9932cc",
+        "darkred" => "#8b0000",
+        "darksalmon" => "#e9967a",
+        "darkseagreen" => "#8fbc8f",
+        "darkslateblue" => "#483d8b",
+        "darkslategray" => "#2f4f4f",
+        "darkslategrey" => "#2f4f4f",
+        "darkturquoise" => "#00ced1",
+        "darkviolet" => "#9400d3",
+        "deeppink" => "#ff1493",
+        "deepskyblue" => "#00bfff",
+        "dimgray" => "#696969",
+        "dimgrey" => "#696969",
+        "dodgerblue" => "#1e90ff",
+        "firebrick" => "#b22222",
+        "floralwhite" => "#fffaf0",
+        "forestgreen" => "#228b22",
+        "fuchsia" => "#ff00ff",
+        "gainsboro" => "#dcdcdc",
+        "ghostwhite" => "#f8f8ff",
+        "gold" => "#ffd700",
+        "goldenrod" => "#daa520",
+        "gray" => "#808080",
+        "green" => "#008000",
+        "greenyellow" => "#adff2f",
+        "grey" => "#808080",
+        "honeydew" => "#f0fff0",
+        "hotpink" => "#ff69b4",
+        "indianred" => "#cd5c5c",
+        "indigo" => "#4b0082",
+        "ivory" => "#fffff0",
+        "khaki" => "#f0e68c",
+        "lavender" => "#e6e6fa",
+        "lavenderblush" => "#fff0f5",
+        "lawngreen" => "#7cfc00",
+        "lemonchiffon" => "#fffacd",
+        "lightblue" => "#add8e6",
+        "lightcoral" => "#f08080",
+        "lightcyan" => "#e0ffff",
+        "lightgoldenrodyellow" => "#fafad2",
+        "lightgray" => "#d3d3d3",
+        "lightgreen" => "#90ee90",
+        "lightgrey" => "#d3d3d3",
+        "lightpink" => "#ffb6c1",
+        "lightsalmon" => "#ffa07a",
+        "lightseagreen" => "#20b2aa",
+        "lightskyblue" => "#87cefa",
+        "lightslategray" => "#778899",
+        "lightslategrey" => "#778899",
+        "lightsteelblue" => "#b0c4de",
+        "lightyellow" => "#ffffe0",
+        "lime" => "#00ff00",
+        "limegreen" => "#32cd32",
+        "linen" => "#faf0e6",
+        "magenta" => "#ff00ff",
+        "maroon" => "#800000",
+        "mediumaquamarine" => "#66cdaa",
+        "mediumblue" => "#0000cd",
+        "mediumorchid" => "#ba55d3",
+        "mediumpurple" => "#9370db",
+        "mediumseagreen" => "#3cb371",
+        "mediumslateblue" => "#7b68ee",
+        "mediumspringgreen" => "#00fa9a",
+        "mediumturquoise" => "#48d1cc",
+        "mediumvioletred" => "#c71585",
+        "midnightblue" => "#191970",
+        "mintcream" => "#f5fffa",
+        "mistyrose" => "#ffe4e1",
+        "moccasin" => "#ffe4b5",
+        "navajowhite" => "#ffdead",
+        "navy" => "#000080",
+        "oldlace" => "#fdf5e6",
+        "olive" => "#808000",
+        "olivedrab" => "#6b8e23",
+        "orange" => "#ffa500",
+        "orangered" => "#ff4500",
+        "orchid" => "#da70d6",
+        "palegoldenrod" => "#eee8aa",
+        "palegreen" => "#98fb98",
+        "paleturquoise" => "#afeeee",
+        "palevioletred" => "#db7093",
+        "papayawhip" => "#ffefd5",
+        "peachpuff" => "#ffdab9",
+        "peru" => "#cd853f",
+        "pink" => "#ffc0cb",
+        "plum" => "#dda0dd",
+        "powderblue" => "#b0e0e6",
+        "purple" => "#800080",
+        "rebeccapurple" => "#663399",
+        "red" => "#ff0000",
+        "rosybrown" => "#bc8f8f",
+        "royalblue" => "#4169e1",
+        "saddlebrown" => "#8b4513",
+        "salmon" => "#fa8072",
+        "sandybrown" => "#f4a460",
+        "seagreen" => "#2e8b57",
+        "seashell" => "#fff5ee",
+        "sienna" => "#a0522d",
+        "silver" => "#c0c0c0",
+        "skyblue" => "#87ceeb",
+        "slateblue" => "#6a5acd",
+        "slategray" => "#708090",
+        "slategrey" => "#708090",
+        "snow" => "#fffafa",
+        "springgreen" => "#00ff7f",
+        "steelblue" => "#4682b4",
+        "tan" => "#d2b48c",
+        "teal" => "#008080",
+        "thistle" => "#d8bfd8",
+        "tomato" => "#ff6347",
+        "turquoise" => "#40e0d0",
+        "violet" => "#ee82ee",
+        "wheat" => "#f5deb3",
+        "white" => "#ffffff",
+        "whitesmoke" => "#f5f5f5",
+        "yellow" => "#ffff00",
+        "yellowgreen" => "#9acd32",
+        _ => return None,
+    })
+}
+fn finite_f32(raw: &str) -> Option<f32> {
+    raw.parse::<f32>().ok().filter(|value| value.is_finite())
+}
+
 pub fn color(value: &str) -> Option<Color> {
     let v = value.trim().to_ascii_lowercase();
-    let hex = match v.as_str() {
-        "black" => "#000000",
-        "white" => "#ffffff",
-        "red" => "#ff0000",
-        "blue" => "#0000ff",
-        "green" => "#008000",
-        "gray" | "grey" => "#808080",
-        "yellow" => "#ffff00",
-        "transparent" => return None,
-        _ => &v,
-    };
+    if v == "transparent" {
+        return None;
+    }
+    if let Some(body) = v
+        .strip_prefix("rgb(")
+        .or_else(|| v.strip_prefix("rgba("))
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        let parts: Vec<&str> = body
+            .split(|c: char| c == ',' || c == '/' || c.is_whitespace())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.len() != 3 && parts.len() != 4 {
+            return None;
+        }
+        if parts.len() == 4 && parts[3] != "1" && parts[3] != "100%" {
+            return None;
+        }
+        let channel = |raw: &str| -> Option<f32> {
+            if let Some(p) = raw.strip_suffix('%') {
+                Some(finite_f32(p)?.clamp(0.0, 100.0) / 100.0)
+            } else {
+                Some(finite_f32(raw)?.clamp(0.0, 255.0) / 255.0)
+            }
+        };
+        return Some(Color(
+            channel(parts[0])?,
+            channel(parts[1])?,
+            channel(parts[2])?,
+        ));
+    }
+    if let Some(body) = v
+        .strip_prefix("hsl(")
+        .or_else(|| v.strip_prefix("hsla("))
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        let parts: Vec<&str> = body
+            .split(|c: char| c == ',' || c == '/' || c.is_whitespace())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.len() != 3 && parts.len() != 4 {
+            return None;
+        }
+        if parts.len() == 4 && parts[3] != "1" && parts[3] != "100%" {
+            return None;
+        }
+        let hue = finite_f32(parts[0].trim_end_matches("deg"))?.rem_euclid(360.0);
+        let saturation = finite_f32(parts[1].strip_suffix('%')?)?.clamp(0.0, 100.0) / 100.0;
+        let lightness = finite_f32(parts[2].strip_suffix('%')?)?.clamp(0.0, 100.0) / 100.0;
+        let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+        let segment = hue / 60.0;
+        let secondary = chroma * (1.0 - (segment.rem_euclid(2.0) - 1.0).abs());
+        let (r, g, b) = match segment as u8 {
+            0 => (chroma, secondary, 0.0),
+            1 => (secondary, chroma, 0.0),
+            2 => (0.0, chroma, secondary),
+            3 => (0.0, secondary, chroma),
+            4 => (secondary, 0.0, chroma),
+            _ => (chroma, 0.0, secondary),
+        };
+        let m = lightness - chroma / 2.0;
+        return Some(Color(r + m, g + m, b + m));
+    }
+    let hex = named_color(&v).unwrap_or(&v);
     let raw = hex.strip_prefix('#')?;
     let full = if raw.len() == 3 {
         raw.chars().flat_map(|c| [c, c]).collect::<String>()
@@ -104,12 +361,23 @@ impl Default for PageStyle {
 #[derive(Clone, Debug)]
 pub struct Style {
     pub display: String,
+    pub position: String,
+    pub inset: [Option<f32>; 4],
     pub family: Vec<String>,
     pub weight: u16,
     pub font_style: String,
+    pub font_stretch: f32,
     pub font_size: f32,
     pub line_height: f32,
     pub text_align: String,
+    pub text_indent: f32,
+    pub overflow_wrap: String,
+    pub word_break: String,
+    pub text_decoration: String,
+    pub vertical_align: String,
+    pub white_space: String,
+    pub letter_spacing: f32,
+    pub word_spacing: f32,
     pub color: Color,
     pub background: Option<Color>,
     pub margin: [f32; 4],
@@ -117,7 +385,9 @@ pub struct Style {
     pub border_width: f32,
     pub border_color: Color,
     pub width: Option<f32>,
+    pub width_percent: Option<f32>,
     pub height: Option<f32>,
+    pub height_percent: Option<f32>,
     pub max_width_percent: Option<f32>,
     pub max_height_percent: Option<f32>,
     pub aspect_ratio: Option<f32>,
@@ -126,20 +396,38 @@ pub struct Style {
     pub align_items: String,
     pub justify_content: String,
     pub grid_columns: Option<usize>,
+    pub row_gap: f32,
+    pub column_gap: f32,
+    pub table_layout: String,
     pub break_before: bool,
     pub break_after: bool,
+    pub break_before_side: Option<String>,
+    pub break_after_side: Option<String>,
     pub break_inside_avoid: bool,
+    pub orphans: usize,
+    pub widows: usize,
 }
 impl Default for Style {
     fn default() -> Self {
         Self {
             display: "block".into(),
+            position: "static".into(),
+            inset: [None; 4],
             family: vec!["Noto Sans".into()],
             weight: 400,
             font_style: "normal".into(),
+            font_stretch: 100.0,
             font_size: 12.0,
             line_height: 14.4,
             text_align: "left".into(),
+            text_indent: 0.0,
+            overflow_wrap: "break-word".into(),
+            word_break: "normal".into(),
+            text_decoration: "none".into(),
+            vertical_align: "baseline".into(),
+            white_space: "normal".into(),
+            letter_spacing: 0.0,
+            word_spacing: 0.0,
             color: Color(0.0, 0.0, 0.0),
             background: None,
             margin: [0.0; 4],
@@ -147,7 +435,9 @@ impl Default for Style {
             border_width: 0.0,
             border_color: Color(0.0, 0.0, 0.0),
             width: None,
+            width_percent: None,
             height: None,
+            height_percent: None,
             max_width_percent: None,
             max_height_percent: None,
             aspect_ratio: None,
@@ -156,9 +446,16 @@ impl Default for Style {
             align_items: "stretch".into(),
             justify_content: "start".into(),
             grid_columns: None,
+            row_gap: 0.0,
+            column_gap: 0.0,
+            table_layout: "auto".into(),
             break_before: false,
             break_after: false,
+            break_before_side: None,
+            break_after_side: None,
             break_inside_avoid: false,
+            orphans: 2,
+            widows: 2,
         }
     }
 }
@@ -168,11 +465,20 @@ impl Style {
             family: parent.family.clone(),
             weight: parent.weight,
             font_style: parent.font_style.clone(),
+            font_stretch: parent.font_stretch,
             font_size: parent.font_size,
             line_height: parent.line_height,
             text_align: parent.text_align.clone(),
+            overflow_wrap: parent.overflow_wrap.clone(),
+            word_break: parent.word_break.clone(),
+            text_decoration: parent.text_decoration.clone(),
+            white_space: parent.white_space.clone(),
+            letter_spacing: parent.letter_spacing,
+            word_spacing: parent.word_spacing,
             color: parent.color,
             page_name: parent.page_name.clone(),
+            orphans: parent.orphans,
+            widows: parent.widows,
             ..Self::default()
         }
     }
@@ -199,6 +505,7 @@ pub struct FontFace {
 pub struct Sheet {
     pub page: PageStyle,
     pub named_pages: HashMap<String, PageStyle>,
+    pub pseudo_pages: HashMap<String, PageStyle>,
     pub first_boxes: HashMap<String, MarginBox>,
     margin_rules: Vec<MarginRule>,
     pub rules: Vec<Rule>,
@@ -210,6 +517,7 @@ pub struct Sheet {
 struct MarginRule {
     page_name: Option<String>,
     first: bool,
+    pseudo: Option<String>,
     box_name: String,
     declarations: Vec<(String, String)>,
 }
@@ -217,12 +525,28 @@ struct MarginRule {
 impl Sheet {
     /// Resolve page-margin declarations by importance, page-selector specificity,
     /// and source order. A named page outranks `:first` at equal importance.
-    pub fn margin_boxes_for(&self, name: Option<&str>, first: bool) -> HashMap<String, MarginBox> {
+    pub fn margin_boxes_for(
+        &self,
+        name: Option<&str>,
+        index: usize,
+        blank: bool,
+    ) -> HashMap<String, MarginBox> {
         type Priority = (bool, u8, u8, usize, usize);
         let mut winners: HashMap<(String, String), (Priority, &str)> = HashMap::new();
         for (rule_index, rule) in self.margin_rules.iter().enumerate() {
-            if rule.first && !first {
+            if rule.first && index != 0 {
                 continue;
+            }
+            if let Some(pseudo) = rule.pseudo.as_deref() {
+                let applies = match pseudo {
+                    ":left" => (index + 1).is_multiple_of(2),
+                    ":right" => !(index + 1).is_multiple_of(2),
+                    ":blank" => blank,
+                    _ => false,
+                };
+                if !applies {
+                    continue;
+                }
             }
             if let Some(page_name) = &rule.page_name {
                 if Some(page_name.as_str()) != name {
@@ -243,7 +567,13 @@ impl Sheet {
                 let priority = (
                     raw.trim().ends_with("!important"),
                     u8::from(rule.page_name.is_some()),
-                    u8::from(rule.first),
+                    if rule.first {
+                        2
+                    } else if rule.pseudo.as_deref() == Some(":blank") {
+                        3
+                    } else {
+                        u8::from(rule.pseudo.is_some())
+                    },
                     rule_index,
                     declaration_index,
                 );
@@ -336,8 +666,24 @@ fn box_values(value: &str) -> Option<[f32; 4]> {
         _ => None,
     }
 }
+fn box_values_ctx(value: &str, font_size: f32) -> Option<[f32; 4]> {
+    if value.starts_with("calc(") && value.ends_with(')') {
+        return Some([computed_length(value, font_size)?; 4]);
+    }
+    let values: Vec<f32> = value
+        .split_whitespace()
+        .map(|v| computed_length(v, font_size))
+        .collect::<Option<Vec<_>>>()?;
+    match values.as_slice() {
+        [a] => Some([*a; 4]),
+        [a, b] => Some([*a, *b, *a, *b]),
+        [a, b, c] => Some([*a, *b, *c, *b]),
+        [a, b, c, d] => Some([*a, *b, *c, *d]),
+        _ => None,
+    }
+}
 fn unsupported(warnings: &mut Vec<Diagnostic>, code: &'static str, msg: String) {
-    warnings.push(Diagnostic { code, message: msg });
+    warnings.push(Diagnostic::new(code, msg));
 }
 fn valid_selector(s: &str) -> bool {
     !s.is_empty()
@@ -547,7 +893,7 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
             parse_rules(body, sheet)?;
         } else if selector.starts_with("@page") {
             let name = selector.trim_start_matches("@page").trim();
-            if name.starts_with(':') && name != ":first" {
+            if name.starts_with(':') && !matches!(name, ":first" | ":left" | ":right" | ":blank") {
                 unsupported(
                     &mut sheet.warnings,
                     "at-rule",
@@ -555,8 +901,14 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
                 );
                 continue;
             }
-            let mut page = if name.is_empty() || name == ":first" {
+            let mut page = if name.is_empty() {
                 sheet.page.clone()
+            } else if name.starts_with(':') {
+                sheet
+                    .pseudo_pages
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| sheet.page.clone())
             } else {
                 sheet
                     .named_pages
@@ -565,13 +917,6 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
                     .unwrap_or_else(|| sheet.page.clone())
             };
             let (nested, plain) = blocks(body)?;
-            if name == ":first" && !plain.trim().is_empty() {
-                unsupported(
-                    &mut sheet.warnings,
-                    "css-property",
-                    "@page :first supports margin boxes only".into(),
-                );
-            }
             parse_page_declarations(&mut page, declarations(&plain), &mut sheet.warnings);
             for (box_name, box_body) in nested {
                 if matches!(
@@ -585,12 +930,13 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
                 ) {
                     let box_style = parse_margin_box(box_body, &mut sheet.warnings);
                     sheet.margin_rules.push(MarginRule {
-                        page_name: if name.is_empty() || name == ":first" {
+                        page_name: if name.is_empty() || name.starts_with(':') {
                             None
                         } else {
                             Some(name.into())
                         },
                         first: name == ":first",
+                        pseudo: matches!(name, ":left" | ":right" | ":blank").then(|| name.into()),
                         box_name: box_name.into(),
                         declarations: declarations(box_body),
                     });
@@ -609,7 +955,9 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
             }
             if name.is_empty() {
                 sheet.page = page;
-            } else if name != ":first" {
+            } else if name.starts_with(':') {
+                sheet.pseudo_pages.insert(name.into(), page);
+            } else {
                 sheet.named_pages.insert(name.into(), page);
             }
         } else if selector == "@font-face" {
@@ -680,6 +1028,7 @@ pub fn parse(css: &str, strict: bool) -> Result<Sheet> {
     let mut sheet = Sheet {
         page: PageStyle::default(),
         named_pages: HashMap::new(),
+        pseudo_pages: HashMap::new(),
         first_boxes: HashMap::new(),
         margin_rules: vec![],
         rules: vec![],
@@ -772,8 +1121,29 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
     let v = value_without_important(value);
     let mut bad = false;
     match key {
-        "display" if matches!(v, "none" | "block" | "inline" | "flex" | "grid") => {
+        "display"
+            if matches!(
+                v,
+                "none" | "block" | "inline" | "inline-block" | "flex" | "grid"
+            ) =>
+        {
             style.display = v.into()
+        }
+        "position" if matches!(v, "static" | "relative") => style.position = v.into(),
+        "top" | "right" | "bottom" | "left" => {
+            let idx = match key {
+                "top" => 0,
+                "right" => 1,
+                "bottom" => 2,
+                _ => 3,
+            };
+            if v == "auto" {
+                style.inset[idx] = None;
+            } else if let Some(n) = computed_length(v, style.font_size) {
+                style.inset[idx] = Some(n);
+            } else {
+                bad = true;
+            }
         }
         "page" if v == "auto" => style.page_name = None,
         "page" if !v.is_empty() && v.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => {
@@ -795,6 +1165,34 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
                 bad = true;
             }
         }
+        "row-gap" | "column-gap" => {
+            if let Some(n) = computed_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                if key == "row-gap" {
+                    style.row_gap = n;
+                } else {
+                    style.column_gap = n;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "gap" => {
+            let values: Vec<_> = v.split_whitespace().collect();
+            if values.len() == 1 || values.len() == 2 {
+                let row = computed_length(values[0], style.font_size).filter(|n| *n >= 0.0);
+                let column =
+                    computed_length(values.get(1).copied().unwrap_or(values[0]), style.font_size)
+                        .filter(|n| *n >= 0.0);
+                if let (Some(row), Some(column)) = (row, column) {
+                    style.row_gap = row;
+                    style.column_gap = column;
+                } else {
+                    bad = true;
+                }
+            } else {
+                bad = true;
+            }
+        }
         "font-family" => {
             style.family = v
                 .split(',')
@@ -803,7 +1201,11 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         }
         "font-weight" => {
             if let Ok(n) = v.parse::<u16>() {
-                style.weight = n
+                if (100..=900).contains(&n) {
+                    style.weight = n
+                } else {
+                    bad = true
+                }
             } else if v == "bold" {
                 style.weight = 700
             } else if v == "normal" {
@@ -812,9 +1214,31 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
                 bad = true
             }
         }
-        "font-style" if matches!(v, "normal" | "italic") => style.font_style = v.into(),
+        "font-style" if matches!(v, "normal" | "italic" | "oblique") => style.font_style = v.into(),
+        "font-stretch" => {
+            let stretch = match v {
+                "ultra-condensed" => Some(50.0),
+                "extra-condensed" => Some(62.5),
+                "condensed" => Some(75.0),
+                "semi-condensed" => Some(87.5),
+                "normal" => Some(100.0),
+                "semi-expanded" => Some(112.5),
+                "expanded" => Some(125.0),
+                "extra-expanded" => Some(150.0),
+                "ultra-expanded" => Some(200.0),
+                _ => v
+                    .strip_suffix('%')
+                    .and_then(finite_f32)
+                    .filter(|value| (50.0..=200.0).contains(value)),
+            };
+            if let Some(stretch) = stretch {
+                style.font_stretch = stretch;
+            } else {
+                bad = true;
+            }
+        }
         "font-size" => {
-            if let Some(n) = length(v) {
+            if let Some(n) = computed_length(v, style.font_size).filter(|n| *n > 0.0) {
                 style.font_size = n;
                 style.line_height = n * 1.2
             } else {
@@ -822,15 +1246,58 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             }
         }
         "line-height" => {
-            if let Some(n) = length(v) {
+            if let Some(n) = computed_length(v, style.font_size).filter(|n| *n > 0.0) {
                 style.line_height = n
-            } else if let Ok(n) = v.parse::<f32>() {
+            } else if let Some(n) = finite_f32(v).filter(|n| *n > 0.0) {
                 style.line_height = style.font_size * n
             } else {
                 bad = true
             }
         }
-        "text-align" if matches!(v, "left" | "center" | "right") => style.text_align = v.into(),
+        "text-align" if matches!(v, "left" | "center" | "right" | "justify") => {
+            style.text_align = v.into()
+        }
+        "text-indent" => {
+            if let Some(n) = computed_length(v, style.font_size) {
+                style.text_indent = n
+            } else {
+                bad = true
+            }
+        }
+        "overflow-wrap" if matches!(v, "normal" | "break-word" | "anywhere") => {
+            style.overflow_wrap = v.into()
+        }
+        "word-break" if matches!(v, "normal" | "break-all" | "keep-all") => {
+            style.word_break = v.into()
+        }
+        "text-decoration" if matches!(v, "none" | "underline" | "line-through") => {
+            style.text_decoration = v.into()
+        }
+        "vertical-align"
+            if matches!(
+                v,
+                "baseline" | "middle" | "top" | "bottom" | "super" | "sub"
+            ) =>
+        {
+            style.vertical_align = v.into()
+        }
+        "white-space" if matches!(v, "normal" | "nowrap" | "pre" | "pre-wrap") => {
+            style.white_space = v.into()
+        }
+        "letter-spacing" => {
+            if let Some(n) = computed_length(v, style.font_size) {
+                style.letter_spacing = n
+            } else {
+                bad = true
+            }
+        }
+        "word-spacing" => {
+            if let Some(n) = computed_length(v, style.font_size) {
+                style.word_spacing = n
+            } else {
+                bad = true
+            }
+        }
         "color" => {
             if let Some(c) = color(v) {
                 style.color = c
@@ -848,14 +1315,16 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             }
         }
         "margin" => {
-            if let Some(n) = box_values(v) {
+            if let Some(n) = box_values_ctx(v, style.font_size) {
                 style.margin = n
             } else {
                 bad = true
             }
         }
         "padding" => {
-            if let Some(n) = box_values(v) {
+            if let Some(n) =
+                box_values_ctx(v, style.font_size).filter(|values| values.iter().all(|n| *n >= 0.0))
+            {
                 style.padding = n
             } else {
                 bad = true
@@ -863,7 +1332,9 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         }
         "margin-top" | "margin-right" | "margin-bottom" | "margin-left" | "padding-top"
         | "padding-right" | "padding-bottom" | "padding-left" => {
-            if let Some(n) = length(v) {
+            if let Some(n) = computed_length(v, style.font_size)
+                .filter(|n| key.starts_with("margin") || *n >= 0.0)
+            {
                 let idx = if key.ends_with("top") {
                     0
                 } else if key.ends_with("right") {
@@ -888,9 +1359,12 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
                 && parts.len() <= 3
                 && parts[1] == "solid"
                 && parts.get(2).is_none_or(|c| color(c).is_some())
-                && parts.first().and_then(|s| length(s)).is_some()
+                && parts
+                    .first()
+                    .and_then(|s| border_length(s, style.font_size))
+                    .is_some_and(|n| n >= 0.0)
             {
-                let n = length(parts[0]).unwrap_or(0.0);
+                let n = border_length(parts[0], style.font_size).unwrap_or(0.0);
                 style.border_width = n;
                 if let Some(c) = parts.get(2).and_then(|s| color(s)) {
                     style.border_color = c;
@@ -900,7 +1374,7 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             }
         }
         "border-width" => {
-            if let Some(n) = length(v) {
+            if let Some(n) = border_length(v, style.font_size).filter(|n| *n >= 0.0) {
                 style.border_width = n
             } else {
                 bad = true
@@ -914,17 +1388,34 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             }
         }
         "width" => {
-            if let Some(n) = length(v) {
-                style.width = Some(n)
+            if let Some(n) = v
+                .strip_suffix('%')
+                .and_then(|p| p.trim().parse::<f32>().ok())
+                .filter(|n| n.is_finite() && *n >= 0.0)
+            {
+                style.width_percent = Some(n / 100.0);
+                style.width = None;
+            } else if let Some(n) = computed_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                style.width = Some(n);
+                style.width_percent = None;
             } else {
                 bad = true
             }
         }
         "height" => {
             if v == "auto" {
-                style.height = None
-            } else if let Some(n) = length(v) {
-                style.height = Some(n)
+                style.height = None;
+                style.height_percent = None;
+            } else if let Some(n) = v
+                .strip_suffix('%')
+                .and_then(|p| p.trim().parse::<f32>().ok())
+                .filter(|n| n.is_finite() && *n >= 0.0)
+            {
+                style.height_percent = Some(n / 100.0);
+                style.height = None;
+            } else if let Some(n) = computed_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                style.height = Some(n);
+                style.height_percent = None;
             } else {
                 bad = true
             }
@@ -950,22 +1441,81 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             bad = style.aspect_ratio.is_none();
         }
         "break-before" | "page-break-before" if v == "page" || v == "always" => {
-            style.break_before = true
+            style.break_before = true;
+            style.break_before_side = None;
+        }
+        "break-before" | "page-break-before"
+            if matches!(v, "left" | "right" | "recto" | "verso") =>
+        {
+            style.break_before = true;
+            style.break_before_side = Some(
+                if matches!(v, "left" | "verso") {
+                    "left"
+                } else {
+                    "right"
+                }
+                .into(),
+            );
         }
         "break-after" | "page-break-after" if v == "page" || v == "always" => {
-            style.break_after = true
+            style.break_after = true;
+            style.break_after_side = None;
+        }
+        "break-after" | "page-break-after" if matches!(v, "left" | "right" | "recto" | "verso") => {
+            style.break_after = true;
+            style.break_after_side = Some(
+                if matches!(v, "left" | "verso") {
+                    "left"
+                } else {
+                    "right"
+                }
+                .into(),
+            );
         }
         "break-inside" | "page-break-inside" if v == "avoid" => style.break_inside_avoid = true,
-        "break-before" | "break-after" | "break-inside" | "page-break-before"
-        | "page-break-after" | "page-break-inside"
-            if v == "auto" => {}
+        "table-layout" if matches!(v, "auto" | "fixed") => style.table_layout = v.into(),
+        "orphans" => {
+            if let Some(value) = v
+                .parse::<usize>()
+                .ok()
+                .filter(|value| (1..=1000).contains(value))
+            {
+                style.orphans = value;
+            } else {
+                bad = true;
+            }
+        }
+        "widows" => {
+            if let Some(value) = v
+                .parse::<usize>()
+                .ok()
+                .filter(|value| (1..=1000).contains(value))
+            {
+                style.widows = value;
+            } else {
+                bad = true;
+            }
+        }
+        "break-before" | "page-break-before" if v == "auto" => {
+            style.break_before = false;
+            style.break_before_side = None;
+        }
+        "break-after" | "page-break-after" if v == "auto" => {
+            style.break_after = false;
+            style.break_after_side = None;
+        }
+        "break-inside" | "page-break-inside" if v == "auto" => {
+            style.break_inside_avoid = false;
+        }
         _ => bad = true,
     }
-    if bad {
-        unsupported(
-            warnings,
-            "css-property",
-            format!("unsupported CSS declaration: {key}: {v}"),
+    if bad && !matches!(key, "cursor" | "caret-color" | "user-select") {
+        warnings.push(
+            Diagnostic::new(
+                "css-property",
+                format!("unsupported CSS declaration: {key}: {v}"),
+            )
+            .property(key, v),
         );
     }
 }

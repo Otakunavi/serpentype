@@ -1,7 +1,12 @@
 """Controlled HTML/CSS pagination and PDF generation."""
 from importlib.resources import files
-from ._serpentype import CacheStats, Diagnostic, FontRegistry, PreparedDocument, Renderer
+from ._serpentype import (CacheStats, CancelToken, Diagnostic, FontRegistry,
+                          MissingGlyphError,
+                          PreparedDocument, RenderCancelledError, RenderLimitError,
+                          RenderLimits, RenderStats, Renderer, capabilities)
 from .compat import CSS, HTML, Document, FontConfiguration
+from .resources import (Resource, ResourceKind, ResourceLoader, ResourceLimitError,
+                        ResourceCancelledError)
 
 
 def bundled_font_path(weight: int = 400) -> str:
@@ -10,4 +15,4 @@ def bundled_font_path(weight: int = 400) -> str:
     return str(files("serpentype").joinpath("assets", name))
 
 
-__all__ = ["CSS", "HTML", "Document", "FontConfiguration", "CacheStats", "Diagnostic", "FontRegistry", "PreparedDocument", "Renderer", "bundled_font_path"]
+__all__ = ["CSS", "HTML", "Document", "FontConfiguration", "Resource", "ResourceKind", "ResourceLoader", "ResourceLimitError", "ResourceCancelledError", "CacheStats", "CancelToken", "Diagnostic", "FontRegistry", "MissingGlyphError", "PreparedDocument", "RenderCancelledError", "RenderLimitError", "RenderLimits", "RenderStats", "Renderer", "bundled_font_path", "capabilities"]

@@ -1,13 +1,12 @@
 #[test]
-fn parses_page_definition_from_source_project_when_available() {
-    let path = "/Users/mini/Documents/dsrc/cameral-control/app/bg_worker/pdf_forming/templates/page_definition.css";
-    if let Ok(source) = std::fs::read_to_string(path) {
-        let sheet = serpentype::css::parse(&source, true).unwrap();
-        assert_eq!(sheet.named_pages.len(), 8);
-        assert_eq!(sheet.first_boxes.len(), 6);
-        assert_eq!(sheet.named_pages["appendix_2_ru"].rotation, 90);
-        assert_eq!(sheet.named_pages["appendix_2_ru"].width, 841.89);
-    }
+fn parses_page_definition_fixture() {
+    let source =
+        include_str!("../output/benchmark/page_definition_stress/rendered_page_definition.css");
+    let sheet = serpentype::css::parse(source, true).unwrap();
+    assert_eq!(sheet.named_pages.len(), 8);
+    assert_eq!(sheet.first_boxes.len(), 6);
+    assert_eq!(sheet.named_pages["appendix_2_ru"].rotation, 90);
+    assert_eq!(sheet.named_pages["appendix_2_ru"].width, 841.89);
 }
 
 fn font_registry() -> serpentype::font::FontRegistry {

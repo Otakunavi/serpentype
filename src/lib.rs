@@ -11,8 +11,37 @@ mod python;
 /// A diagnostic emitted for an unsupported or invalid construct.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
+    pub severity: &'static str,
     pub code: &'static str,
     pub message: String,
+    pub source: Option<String>,
+    pub line: Option<usize>,
+    pub column: Option<usize>,
+    pub selector: Option<String>,
+    pub property: Option<String>,
+    pub value: Option<String>,
+    pub occurrences: usize,
+}
+impl Diagnostic {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            severity: "warning",
+            code,
+            message: message.into(),
+            source: None,
+            line: None,
+            column: None,
+            selector: None,
+            property: None,
+            value: None,
+            occurrences: 1,
+        }
+    }
+    pub fn property(mut self, property: &str, value: &str) -> Self {
+        self.property = Some(property.into());
+        self.value = Some(value.into());
+        self
+    }
 }
 
 /// Errors from parsing, layout, resource loading, or PDF export.

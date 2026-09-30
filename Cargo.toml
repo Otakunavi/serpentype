@@ -1,7 +1,8 @@
 [package]
 name = "serpentype"
-version = "0.1.0"
+version = "0.2.0-alpha.1"
 edition = "2021"
+rust-version = "1.98.1"
 license = "MIT"
 description = "Controlled HTML/CSS document pagination and PDF generation"
 
@@ -18,6 +19,12 @@ kuchiki = "0.8.1"
 ttf-parser = "0.25"
 sha2 = "0.10"
 flate2 = "1"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+base64 = "0.22"
+rustybuzz = "0.20.1"
+unicode-bidi = "0.3.18"
+unicode-segmentation = "1.12"
+resvg = "0.48.1"
 pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"], optional = true }
-subsetter = { version = "0.2.6", default-features = false }
+subsetter = { version = "0.2.6", features = ["variable-fonts"] }
+wuff = "0.2.9"

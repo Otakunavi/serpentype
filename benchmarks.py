@@ -5,6 +5,7 @@ Only the font loading declaration differs: Serpentype imports bytes explicitly,
 while WeasyPrint uses @font-face with the exact same TTF files.
 """
 import argparse
+import base64
 import json
 import os
 import resource
@@ -32,16 +33,24 @@ def corpus():
     broken = "<h1>Договор</h1><p>Стороны согласовали условия.</p><div class='breaker'></div>" + "".join("<p>Подробное условие договора и текст на русском языке.</p>" for _ in range(50))
     rows = "".join(f"<tr><td style='width:10mm'>{i}</td><td style='width:130mm'>Описание позиции {i} с переменной длиной текста "+("длинное описание "*(i%5))+f"</td><td style='width:30mm'>{i*100} ₽</td></tr>" for i in range(60))
     table = "<h1>Реестр</h1><table><thead><tr><th style='width:10mm'>№</th><th style='width:130mm'>Описание</th><th style='width:30mm'>Сумма</th></tr></thead><tbody>"+rows+"</tbody></table>"
-    return css, {"simple":simple,"broken":broken,"table":table}
+    svg = ("<svg xmlns='http://www.w3.org/2000/svg' width='240' height='100'>"
+           "<defs><linearGradient id='g'><stop stop-color='#2196f3'/>"
+           "<stop offset='1' stop-color='#5e35b1'/></linearGradient></defs>"
+           "<rect x='4' y='4' width='232' height='92' rx='12' fill='url(#g)'/>"
+           "<text x='20' y='60' fill='white' font-family='Noto Sans' font-size='30'>SVG PDF</text>"
+           "</svg>")
+    svg_uri = "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+    svg_document = f"<h1>SVG</h1><img src='{svg_uri}'>"
+    return css, {"simple":simple,"broken":broken,"table":table,"svg":svg_document}
 
 
-def make_engine(backend, css):
+def make_engine(backend, css, experimental_shaping=False):
     if backend == "serpentype":
         from serpentype import FontRegistry, Renderer, bundled_font_path
         fonts=FontRegistry()
         fonts.register_file(bundled_font_path(),family="Noto Sans")
         fonts.register_file(bundled_font_path(700),family="Noto Sans",weight=700)
-        renderer=Renderer(fonts=fonts)
+        renderer=Renderer(fonts=fonts, experimental_shaping=experimental_shaping)
         def layout(html):return renderer.layout(html,css)
         def export(doc):return doc.to_pdf()
         def pages(doc):return doc.page_count
@@ -60,10 +69,10 @@ def make_engine(backend, css):
     return layout,export,pages
 
 
-def measure(backend,repeats):
+def measure(backend,repeats,experimental_shaping=False):
     css,documents=corpus()
-    layout,export,pages=make_engine(backend,css)
-    result={"backend":backend,"repeats":repeats,"documents":{},"throughput":{}}
+    layout,export,pages=make_engine(backend,css,experimental_shaping)
+    result={"backend":backend,"experimental_shaping":experimental_shaping,"repeats":repeats,"documents":{},"throughput":{}}
     for name,html in documents.items():
         records=[]
         for _ in range(repeats+1):
@@ -87,11 +96,14 @@ if __name__=="__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("--backend",choices=("serpentype","weasyprint","both"),default="both")
     parser.add_argument("--repeats",type=int,default=3)
+    parser.add_argument("--experimental-shaping",action="store_true")
     args=parser.parse_args()
     if args.backend=="both":
         # Separate processes make peak RSS and cold initialization comparable.
         for backend in ("serpentype","weasyprint"):
-            output=subprocess.check_output([sys.executable,"-I",__file__,"--backend",backend,"--repeats",str(args.repeats)])
+            command=[sys.executable,"-I",__file__,"--backend",backend,"--repeats",str(args.repeats)]
+            if backend=="serpentype" and args.experimental_shaping:command.append("--experimental-shaping")
+            output=subprocess.check_output(command)
             print(output.decode().strip())
     else:
-        print(json.dumps(measure(args.backend,args.repeats),ensure_ascii=False))
+        print(json.dumps(measure(args.backend,args.repeats,args.experimental_shaping),ensure_ascii=False))

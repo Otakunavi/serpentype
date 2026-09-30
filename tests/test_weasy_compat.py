@@ -68,7 +68,7 @@ class WeasyCompatTests(unittest.TestCase):
         self.assertTrue(pdf.startswith(b"%PDF-"))
         self.assertIn(b"/Subtype /Image", pdf)
 
-    def test_svg_qr_placeholder_and_unsupported_svg(self):
+    def test_svg_qr_placeholder_and_path(self):
         svg = (
             b'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">'
             b'<g stroke="#000" stroke-width="4"><line x1="12" y1="12" x2="36" y2="12"/></g>'
@@ -78,11 +78,14 @@ class WeasyCompatTests(unittest.TestCase):
         encoded = base64.b64encode(svg).decode()
         pdf = HTML(string=f'<img src="data:image/svg+xml;base64,{encoded}">').write_pdf()
         self.assertIn(b"/Subtype /Image", pdf)
-        unsupported = base64.b64encode(
+        path_svg = base64.b64encode(
             b'<svg width="20" height="20"><path d="M0 0L20 20"/></svg>'
         ).decode()
-        with self.assertRaisesRegex(ValueError, "unsupported SVG element: path"):
-            HTML(string=f'<img src="data:image/svg+xml;base64,{unsupported}">').write_pdf()
+        path_pdf = HTML(string=f'<img src="data:image/svg+xml;base64,{path_svg}">').write_pdf()
+        self.assertIn(b"/Subtype /Image", path_pdf)
+        malformed = base64.b64encode(b'<svg><path').decode()
+        with self.assertRaisesRegex(ValueError, "SVG"):
+            HTML(string=f'<img src="data:image/svg+xml;base64,{malformed}">').write_pdf()
 
 
 if __name__ == "__main__":

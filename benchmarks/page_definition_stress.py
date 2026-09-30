@@ -27,9 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_CSS = Path(
-    "/Users/mini/Documents/dsrc/cameral-control/app/bg_worker/pdf_forming/templates/page_definition.css"
-)
+SOURCE_CSS = ROOT / "output" / "benchmark" / "page_definition_stress" / "rendered_page_definition.css"
 OUTPUT = ROOT / "output" / "benchmark" / "page_definition_stress"
 PDF_OUTPUT = ROOT / "output" / "pdf"
 _WORKER_ENGINE = None
@@ -136,7 +134,9 @@ def create_fixture(css_path, out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
     make_assets(out_dir / "assets")
     source = css_path.read_text()
-    css = render_source_css(source) + EXTRA_CSS
+    css = render_source_css(source)
+    if css_path.resolve() != SOURCE_CSS.resolve():
+        css += EXTRA_CSS
     html = '<!doctype html><html lang="ru"><body><article data-print="paged">'
     html += "".join(section_html(*entry, index) for index, entry in enumerate(SECTIONS))
     html += "</article></body></html>"
