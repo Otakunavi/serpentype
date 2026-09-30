@@ -1,5 +1,31 @@
 use serpentype::css::{self, Color, Style};
 
+fn renderer() -> serpentype::layout::Renderer {
+    let fonts = serpentype::font::FontRegistry::new(1_000_000);
+    fonts
+        .register_file(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/serpentype/assets/NotoSans-Regular.ttf"
+            ),
+            "Noto Sans",
+            400,
+            "normal",
+        )
+        .unwrap();
+    serpentype::layout::Renderer::new(fonts, ".".into(), true)
+}
+
+fn text_position(doc: &serpentype::layout::PreparedDocument, target: char) -> Option<(f32, f32)> {
+    doc.pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .find_map(|item| match item {
+            serpentype::layout::Item::Text { ch, x, y, .. } if *ch == target => Some((*x, *y)),
+            _ => None,
+        })
+}
+
 #[test]
 fn css_colors_and_lengths() {
     assert_eq!(
@@ -30,6 +56,139 @@ fn style_accepts_contextual_units() {
 
     css::apply(&mut style, "width", "50%", &mut warnings);
     assert_eq!(style.width_percent, Some(0.5));
+}
+
+#[test]
+fn visibility_hidden_keeps_block_layout_without_painting() {
+    let renderer = renderer();
+    let hidden = renderer
+        .layout(
+            "<p>A</p><p class='hidden'>HIDDEN</p><p>B</p>",
+            "p { margin:0; line-height:20pt } .hidden { visibility:hidden; background:red }",
+        )
+        .unwrap();
+    let visible = renderer
+        .layout(
+            "<p>A</p><p>HIDDEN</p><p>B</p>",
+            "p { margin:0; line-height:20pt }",
+        )
+        .unwrap();
+    let removed = renderer
+        .layout(
+            "<p>A</p><p class='removed'>HIDDEN</p><p>B</p>",
+            "p { margin:0; line-height:20pt } .removed { display:none }",
+        )
+        .unwrap();
+
+    let painted: String = hidden
+        .pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .filter_map(|item| match item {
+            serpentype::layout::Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(painted, "AB");
+    assert_eq!(text_position(&hidden, 'B'), text_position(&visible, 'B'));
+    assert!(text_position(&hidden, 'B').unwrap().1 > text_position(&removed, 'B').unwrap().1);
+    assert!(!hidden.pages.iter().flat_map(|page| &page.items).any(|item| {
+        matches!(item, serpentype::layout::Item::Rect { fill: Some(color), .. } if *color == Color(1.0, 0.0, 0.0))
+    }));
+
+    let break_after_hidden = renderer
+        .layout(
+            "<p style='visibility:hidden'>HIDDEN</p><p style='break-before:page'>B</p>",
+            "p { margin:0 }",
+        )
+        .unwrap();
+    assert_eq!(break_after_hidden.page_count(), 2);
+}
+
+#[test]
+fn inline_visibility_hidden_preserves_advance_without_painting() {
+    let renderer = renderer();
+    let hidden = renderer
+        .layout(
+            "<p>A<span style='visibility:hidden'>XX</span>B</p>",
+            "p { margin:0 }",
+        )
+        .unwrap();
+    let visible = renderer.layout("<p>AXXB</p>", "p { margin:0 }").unwrap();
+    let painted: String = hidden.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            serpentype::layout::Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(painted, "AB");
+    assert_eq!(text_position(&hidden, 'B'), text_position(&visible, 'B'));
+
+    let restored = renderer
+        .layout(
+            "<p style='visibility:hidden'>A<span style='visibility:visible'>B</span>C</p>",
+            "p { margin:0 }",
+        )
+        .unwrap();
+    let restored_text: String = restored.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            serpentype::layout::Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(restored_text, "B");
+}
+
+#[test]
+fn box_sizing_controls_declared_width() {
+    let renderer = renderer();
+    let rect_width = |box_sizing: &str| {
+        let doc = renderer
+            .layout(
+                "<p>Text</p>",
+                &format!(
+                    "@page {{ size:200pt 200pt; margin:10pt }} p {{ margin:0; width:100pt; padding:10pt; border:2pt solid black; background:red; box-sizing:{box_sizing} }}"
+                ),
+            )
+            .unwrap();
+        doc.pages[0]
+            .items
+            .iter()
+            .find_map(|item| match item {
+                serpentype::layout::Item::Rect { w, .. } => Some(*w),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert!((rect_width("content-box") - 124.0).abs() < 0.01);
+    assert!((rect_width("border-box") - 100.0).abs() < 0.01);
+}
+
+#[test]
+fn min_max_dimensions_constrain_block_geometry_without_clipping_text() {
+    let renderer = renderer();
+    let doc = renderer
+        .layout(
+            "<p class='max'>Wide</p><p class='min'>Tall</p><p>After</p>",
+            "@page { size:200pt 250pt; margin:10pt } p { margin:0; box-sizing:border-box } .max { width:120pt; max-width:80pt; background:red } .min { width:40pt; min-width:70pt; min-height:50pt; background:blue }",
+        )
+        .unwrap();
+    let rects: Vec<(f32, f32)> = doc.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            serpentype::layout::Item::Rect { w, h, .. } => Some((*w, *h)),
+            _ => None,
+        })
+        .collect();
+    assert!((rects[0].0 - 80.0).abs() < 0.01);
+    assert!((rects[1].0 - 70.0).abs() < 0.01);
+    assert!((rects[1].1 - 50.0).abs() < 0.01);
+    assert!(text_position(&doc, 'A').unwrap().1 >= rects[1].1);
 }
 
 #[test]

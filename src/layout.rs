@@ -648,6 +648,7 @@ struct Glyph {
     decoration: TextDecoration,
     href: Option<Arc<str>>,
     preserve_space: bool,
+    visible: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TextDecoration {
@@ -812,6 +813,7 @@ fn lines_for(
                 },
                 href: run.href.clone(),
                 preserve_space: preserve,
+                visible: style.visibility == "visible",
             };
             let available = if lines.is_empty() {
                 width - first_indent
@@ -916,6 +918,7 @@ fn shape_segment(
                 decoration,
                 href: href.clone(),
                 preserve_space: false,
+                visible: style.visibility == "visible",
             },
             can_wrap,
             break_word,
@@ -926,6 +929,7 @@ fn shape_segment(
 
 fn reorder_bidi_line(line: &mut Line) {
     let mut logical = String::new();
+    let mut visible_logical = String::new();
     let mut glyph_offsets = Vec::with_capacity(line.glyphs.len());
     let mut last_offset = 0usize;
     for glyph in &line.glyphs {
@@ -940,6 +944,9 @@ fn reorder_bidi_line(line: &mut Line) {
             last_offset = logical.len();
             glyph_offsets.push(last_offset);
             logical.push_str(&value);
+            if glyph.visible {
+                visible_logical.extend(value.chars().filter(|ch| !is_bidi_control(*ch)));
+            }
         }
     }
     if logical.is_empty() {
@@ -950,7 +957,9 @@ fn reorder_bidi_line(line: &mut Line) {
         line.glyphs.retain(|glyph| glyph.id != 0);
         return;
     }
-    line.actual_text = Some(logical.chars().filter(|ch| !is_bidi_control(*ch)).collect());
+    if !visible_logical.is_empty() {
+        line.actual_text = Some(visible_logical);
+    }
     let Some(paragraph) = bidi.paragraphs.first() else {
         return;
     };
@@ -1053,6 +1062,7 @@ fn lines_for_shaped(
                         decoration: TextDecoration::None,
                         href: None,
                         preserve_space: false,
+                        visible: false,
                     },
                     false,
                     false,
@@ -1131,6 +1141,7 @@ fn lines_for_shaped(
                         decoration: TextDecoration::None,
                         href: run.href.clone(),
                         preserve_space: preserve,
+                        visible: style.visibility == "visible",
                     },
                     !matches!(style.white_space.as_str(), "nowrap" | "pre"),
                     style.overflow_wrap != "normal" || style.word_break == "break-all",
@@ -1260,7 +1271,20 @@ struct Flow {
     pending_break_side: Option<String>,
     frame: Option<(f32, f32)>,
     center_children: bool,
+    paint_visible: bool,
 }
+
+fn resolved_dimension(fixed: Option<f32>, percent: Option<f32>, reference: f32) -> Option<f32> {
+    fixed.or_else(|| percent.map(|value| reference * value))
+}
+
+fn constrained_dimension(value: f32, minimum: Option<f32>, maximum: Option<f32>) -> f32 {
+    // CSS sizing gives the minimum precedence when min > max.
+    value
+        .min(maximum.unwrap_or(f32::INFINITY))
+        .max(minimum.unwrap_or(0.0))
+}
+
 impl Flow {
     fn margin_content(raw: &str, page: usize, pages: usize) -> String {
         let mut out = String::new();
@@ -1477,6 +1501,7 @@ impl Flow {
             pending_break_side: None,
             frame: None,
             center_children: false,
+            paint_visible: true,
         }
     }
     fn content_width(&self) -> f32 {
@@ -1592,6 +1617,18 @@ impl Flow {
         }
     }
     fn item(&mut self, item: Item) {
+        let destination = matches!(item, Item::Destination { .. });
+        if !destination {
+            self.page_content = true;
+        }
+        if !self.paint_visible && !destination {
+            return;
+        }
+        if let Some(page) = self.pages.last_mut() {
+            page.items.push(item);
+        }
+    }
+    fn visible_item(&mut self, item: Item) {
         if !matches!(item, Item::Destination { .. }) {
             self.page_content = true;
         }
@@ -1614,6 +1651,13 @@ impl Flow {
         if self.iterations > self.limits.max_layout_iterations {
             return Err(Error("render limit exceeded: max_layout_iterations".into()));
         }
+        let old_visibility = self.paint_visible;
+        self.paint_visible = node.style.visibility == "visible";
+        let result = self.positioned_node(node);
+        self.paint_visible = old_visibility;
+        result
+    }
+    fn positioned_node(&mut self, node: &Node) -> Result<()> {
         if node.style.position != "relative" {
             return self.node_content(node);
         }
@@ -1815,7 +1859,8 @@ impl Flow {
         Ok(())
     }
     fn paint_box(&mut self, x: f32, y: f32, w: f32, h: f32, style: &Style) {
-        if style.background.is_some() || style.border_width > 0.0 {
+        if style.visibility == "visible" && (style.background.is_some() || style.border_width > 0.0)
+        {
             self.item(Item::Rect {
                 x,
                 y,
@@ -1828,8 +1873,11 @@ impl Flow {
         }
     }
     fn draw_line(&mut self, line: &Line, x: f32, y: f32, width: f32, align: &str, last: bool) {
-        if let Some(actual) = &line.actual_text {
-            self.item(Item::BeginActualText(actual.clone()));
+        let has_visible_glyph = line.glyphs.iter().any(|glyph| glyph.visible);
+        if has_visible_glyph {
+            if let Some(actual) = &line.actual_text {
+                self.visible_item(Item::BeginActualText(actual.clone()));
+            }
         }
         let offset = match align {
             "center" => (width - line.width) / 2.0,
@@ -1845,24 +1893,26 @@ impl Flow {
         };
         for glyph in &line.glyphs {
             let baseline = y + line.baseline - glyph.shift;
-            self.item(Item::Text {
-                ch: glyph.ch,
-                glyph: glyph.id,
-                unicode: glyph.unicode.clone(),
-                natural_advance: glyph.natural_advance,
-                font: glyph.font.clone(),
-                x: pen + glyph.x_offset,
-                y: baseline - glyph.y_offset,
-                size: glyph.size,
-                color: glyph.color,
-            });
-            if glyph.decoration != TextDecoration::None {
+            if glyph.visible {
+                self.visible_item(Item::Text {
+                    ch: glyph.ch,
+                    glyph: glyph.id,
+                    unicode: glyph.unicode.clone(),
+                    natural_advance: glyph.natural_advance,
+                    font: glyph.font.clone(),
+                    x: pen + glyph.x_offset,
+                    y: baseline - glyph.y_offset,
+                    size: glyph.size,
+                    color: glyph.color,
+                });
+            }
+            if glyph.visible && glyph.decoration != TextDecoration::None {
                 let decoration_y = if glyph.decoration == TextDecoration::Underline {
                     baseline + glyph.size * 0.08
                 } else {
                     baseline - glyph.size * 0.3
                 };
-                self.item(Item::Rect {
+                self.visible_item(Item::Rect {
                     x: pen,
                     y: decoration_y,
                     w: glyph.advance.max(0.0),
@@ -1871,34 +1921,50 @@ impl Flow {
                     stroke: None,
                 });
             }
-            if let Some(target) = &glyph.href {
-                self.item(Item::Link {
-                    x: pen,
-                    y,
-                    w: glyph.advance.max(0.0),
-                    h: line.height,
-                    target: target.to_string(),
-                });
+            if glyph.visible {
+                if let Some(target) = &glyph.href {
+                    self.visible_item(Item::Link {
+                        x: pen,
+                        y,
+                        w: glyph.advance.max(0.0),
+                        h: line.height,
+                        target: target.to_string(),
+                    });
+                }
             }
             pen += glyph.advance;
             if glyph.ch == ' ' {
                 pen += justify_gap;
             }
         }
-        if line.actual_text.is_some() {
-            self.item(Item::EndActualText);
+        if has_visible_glyph && line.actual_text.is_some() {
+            self.visible_item(Item::EndActualText);
         }
     }
     fn paragraph(&mut self, node: &Node) -> Result<()> {
         self.begin(&node.style)?;
         let s = &node.style;
+        let containing_width = self.content_width();
         let x = self.content_x() + s.margin[3];
-        let w = s
-            .width
-            .or_else(|| s.width_percent.map(|p| self.content_width() * p))
-            .unwrap_or(self.content_width() - s.margin[1] - s.margin[3])
-            .min(self.content_width());
-        let inner = w - s.padding[1] - s.padding[3] - 2.0 * s.border_width;
+        let horizontal_edges = s.padding[1] + s.padding[3] + 2.0 * s.border_width;
+        let available_outer = containing_width - s.margin[1] - s.margin[3];
+        let declared = resolved_dimension(s.width, s.width_percent, containing_width);
+        let minimum = resolved_dimension(s.min_width, s.min_width_percent, containing_width);
+        let maximum = resolved_dimension(s.max_width, s.max_width_percent, containing_width);
+        let sizing_width = declared.unwrap_or_else(|| {
+            if s.box_sizing == "border-box" {
+                available_outer
+            } else {
+                available_outer - horizontal_edges
+            }
+        });
+        let sizing_width = constrained_dimension(sizing_width, minimum, maximum);
+        let w = if s.box_sizing == "border-box" {
+            sizing_width
+        } else {
+            sizing_width + horizontal_edges
+        };
+        let inner = w - horizontal_edges;
         if inner <= 0.0 {
             return Err(Error("paragraph has no usable width".into()));
         }
@@ -1912,7 +1978,35 @@ impl Flow {
             &self.shaping_ns,
         )?;
         let body_height: f32 = lines.iter().map(|l| l.height).sum();
-        let box_height = body_height + s.padding[0] + s.padding[2] + 2.0 * s.border_width;
+        let vertical_edges = s.padding[0] + s.padding[2] + 2.0 * s.border_width;
+        let natural_height = body_height + vertical_edges;
+        let height_reference = self.full_height();
+        let declared_height = resolved_dimension(s.height, s.height_percent, height_reference);
+        let minimum_height =
+            resolved_dimension(s.min_height, s.min_height_percent, height_reference);
+        let maximum_height =
+            resolved_dimension(s.max_height, s.max_height_percent, height_reference);
+        let requested_sizing_height = declared_height.unwrap_or_else(|| {
+            if s.box_sizing == "border-box" {
+                natural_height
+            } else {
+                body_height
+            }
+        });
+        let requested_sizing_height =
+            constrained_dimension(requested_sizing_height, minimum_height, maximum_height);
+        let requested_outer_height = if s.box_sizing == "border-box" {
+            requested_sizing_height
+        } else {
+            requested_sizing_height + vertical_edges
+        };
+        // Overflow remains visible, so a max-height never discards or overlaps text.
+        let box_height = natural_height.max(requested_outer_height);
+        if (declared_height.is_some() || minimum_height.is_some())
+            && requested_outer_height > self.full_height() + EPS
+        {
+            return Err(Error("paragraph box exceeds page content height".into()));
+        }
         let full_needed = s.margin[0] + box_height + s.margin[2];
         if (s.break_inside_avoid || lines.len() == 1)
             && full_needed <= self.full_height() + EPS
@@ -1966,6 +2060,11 @@ impl Flow {
                     }
                 }
             }
+            if offset == 0 && end == lines.len() {
+                used = used.max(box_height);
+            }
+            // Visibility affects paint only; this fragment still occupies the page.
+            self.page_content = true;
             if offset == 0 {
                 self.destination(node, x, start);
             }
@@ -2159,19 +2258,43 @@ impl Flow {
             .or_else(|| node.style.width_percent.map(|p| self.content_width() * p))
             .unwrap_or(iw)
             .min(self.content_width());
-        if let Some(percent) = node.style.max_width_percent {
-            width = width.min(self.content_width() * percent);
-        }
+        width = constrained_dimension(
+            width,
+            resolved_dimension(
+                node.style.min_width,
+                node.style.min_width_percent,
+                self.content_width(),
+            ),
+            resolved_dimension(
+                node.style.max_width,
+                node.style.max_width_percent,
+                self.content_width(),
+            ),
+        );
         let mut height = node
             .style
             .height
             .or_else(|| node.style.height_percent.map(|p| self.full_height() * p))
             .unwrap_or_else(|| width / node.style.aspect_ratio.unwrap_or(iw / ih));
-        if let Some(percent) = node.style.max_height_percent {
-            let max_height = self.full_height() * percent;
+        if let Some(max_height) = resolved_dimension(
+            node.style.max_height,
+            node.style.max_height_percent,
+            self.full_height(),
+        ) {
             if height > max_height {
                 let scale = max_height / height;
                 height = max_height;
+                width *= scale;
+            }
+        }
+        if let Some(min_height) = resolved_dimension(
+            node.style.min_height,
+            node.style.min_height_percent,
+            self.full_height(),
+        ) {
+            if height < min_height {
+                let scale = min_height / height;
+                height = min_height;
                 width *= scale;
             }
         }

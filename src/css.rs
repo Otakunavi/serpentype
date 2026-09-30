@@ -357,10 +357,11 @@ impl Default for PageStyle {
     }
 }
 
-/// Resolved visual properties; only text properties inherit.
+/// Resolved visual properties; text properties and visibility inherit.
 #[derive(Clone, Debug)]
 pub struct Style {
     pub display: String,
+    pub visibility: String,
     pub position: String,
     pub inset: [Option<f32>; 4],
     pub family: Vec<String>,
@@ -384,10 +385,17 @@ pub struct Style {
     pub padding: [f32; 4],
     pub border_width: f32,
     pub border_color: Color,
+    pub box_sizing: String,
     pub width: Option<f32>,
     pub width_percent: Option<f32>,
+    pub min_width: Option<f32>,
+    pub min_width_percent: Option<f32>,
+    pub max_width: Option<f32>,
     pub height: Option<f32>,
     pub height_percent: Option<f32>,
+    pub min_height: Option<f32>,
+    pub min_height_percent: Option<f32>,
+    pub max_height: Option<f32>,
     pub max_width_percent: Option<f32>,
     pub max_height_percent: Option<f32>,
     pub aspect_ratio: Option<f32>,
@@ -411,6 +419,7 @@ impl Default for Style {
     fn default() -> Self {
         Self {
             display: "block".into(),
+            visibility: "visible".into(),
             position: "static".into(),
             inset: [None; 4],
             family: vec!["Noto Sans".into()],
@@ -434,10 +443,17 @@ impl Default for Style {
             padding: [0.0; 4],
             border_width: 0.0,
             border_color: Color(0.0, 0.0, 0.0),
+            box_sizing: "content-box".into(),
             width: None,
             width_percent: None,
+            min_width: None,
+            min_width_percent: None,
+            max_width: None,
             height: None,
             height_percent: None,
+            min_height: None,
+            min_height_percent: None,
+            max_height: None,
             max_width_percent: None,
             max_height_percent: None,
             aspect_ratio: None,
@@ -462,6 +478,7 @@ impl Default for Style {
 impl Style {
     pub fn inherit(parent: &Style) -> Self {
         Self {
+            visibility: parent.visibility.clone(),
             family: parent.family.clone(),
             weight: parent.weight,
             font_style: parent.font_style.clone(),
@@ -1129,6 +1146,8 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         {
             style.display = v.into()
         }
+        "visibility" if matches!(v, "visible" | "hidden") => style.visibility = v.into(),
+        "box-sizing" if matches!(v, "content-box" | "border-box") => style.box_sizing = v.into(),
         "position" if matches!(v, "static" | "relative") => style.position = v.into(),
         "top" | "right" | "bottom" | "left" => {
             let idx = match key {
@@ -1388,7 +1407,10 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             }
         }
         "width" => {
-            if let Some(n) = v
+            if v == "auto" {
+                style.width = None;
+                style.width_percent = None;
+            } else if let Some(n) = v
                 .strip_suffix('%')
                 .and_then(|p| p.trim().parse::<f32>().ok())
                 .filter(|n| n.is_finite() && *n >= 0.0)
@@ -1420,21 +1442,71 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
                 bad = true
             }
         }
-        "max-width" if v.ends_with('%') => {
-            style.max_width_percent = v[..v.len() - 1]
-                .parse::<f32>()
-                .ok()
-                .filter(|n| (0.0..=100.0).contains(n))
-                .map(|n| n / 100.0);
-            bad = style.max_width_percent.is_none();
+        "min-width" => {
+            if let Some(n) = v
+                .strip_suffix('%')
+                .and_then(|p| finite_f32(p.trim()))
+                .filter(|n| *n >= 0.0)
+            {
+                style.min_width_percent = Some(n / 100.0);
+                style.min_width = None;
+            } else if let Some(n) = computed_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                style.min_width = Some(n);
+                style.min_width_percent = None;
+            } else {
+                bad = true;
+            }
         }
-        "max-height" if v.ends_with('%') => {
-            style.max_height_percent = v[..v.len() - 1]
-                .parse::<f32>()
-                .ok()
-                .filter(|n| (0.0..=100.0).contains(n))
-                .map(|n| n / 100.0);
-            bad = style.max_height_percent.is_none();
+        "max-width" => {
+            if v == "none" {
+                style.max_width = None;
+                style.max_width_percent = None;
+            } else if let Some(n) = v
+                .strip_suffix('%')
+                .and_then(|p| finite_f32(p.trim()))
+                .filter(|n| *n >= 0.0)
+            {
+                style.max_width_percent = Some(n / 100.0);
+                style.max_width = None;
+            } else if let Some(n) = computed_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                style.max_width = Some(n);
+                style.max_width_percent = None;
+            } else {
+                bad = true;
+            }
+        }
+        "min-height" => {
+            if let Some(n) = v
+                .strip_suffix('%')
+                .and_then(|p| finite_f32(p.trim()))
+                .filter(|n| *n >= 0.0)
+            {
+                style.min_height_percent = Some(n / 100.0);
+                style.min_height = None;
+            } else if let Some(n) = computed_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                style.min_height = Some(n);
+                style.min_height_percent = None;
+            } else {
+                bad = true;
+            }
+        }
+        "max-height" => {
+            if v == "none" {
+                style.max_height = None;
+                style.max_height_percent = None;
+            } else if let Some(n) = v
+                .strip_suffix('%')
+                .and_then(|p| finite_f32(p.trim()))
+                .filter(|n| *n >= 0.0)
+            {
+                style.max_height_percent = Some(n / 100.0);
+                style.max_height = None;
+            } else if let Some(n) = computed_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                style.max_height = Some(n);
+                style.max_height_percent = None;
+            } else {
+                bad = true;
+            }
         }
         "aspect-ratio" => {
             style.aspect_ratio = v.parse::<f32>().ok().filter(|n| n.is_finite() && *n > 0.0);

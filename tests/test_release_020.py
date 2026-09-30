@@ -53,6 +53,24 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(matrix["css.paged.recto-verso"], "partial")
         self.assertEqual(matrix["css.paged.pseudo-pages"], "partial")
         self.assertEqual(matrix["layout.gap"], "partial")
+        self.assertEqual(matrix["css.box-sizing"], "partial")
+        self.assertEqual(matrix["css.box.min-max"], "partial")
+        self.assertEqual(matrix["css.visibility"], "partial")
+        self.assertTrue(self.renderer.supports("css.visibility"))
+
+    def test_visibility_hidden_keeps_content_out_of_pdf_text(self):
+        from pypdf import PdfReader
+        doc = self.renderer.layout(
+            "<p>A<span style='visibility:hidden'>SECRET</span>B</p>"
+            "<p style='visibility:hidden;background:red'>BLOCK</p>"
+            "<p>C</p>"
+        )
+        extracted = PdfReader(io.BytesIO(bytes(doc.to_pdf()))).pages[0].extract_text()
+        self.assertIn("A", extracted)
+        self.assertIn("B", extracted)
+        self.assertIn("C", extracted)
+        self.assertNotIn("SECRET", extracted)
+        self.assertNotIn("BLOCK", extracted)
 
     def test_resource_loader_mapping_and_limits(self):
         payload = Path(__file__).parent.joinpath("fixtures", "alpha.png").read_bytes()
