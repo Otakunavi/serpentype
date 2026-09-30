@@ -1148,7 +1148,15 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         "display"
             if matches!(
                 v,
-                "none" | "block" | "inline" | "inline-block" | "flex" | "grid"
+                "none"
+                    | "block"
+                    | "inline"
+                    | "inline-block"
+                    | "flex"
+                    | "grid"
+                    | "table-row-group"
+                    | "table-header-group"
+                    | "table-footer-group"
             ) =>
         {
             style.display = v.into()

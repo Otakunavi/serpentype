@@ -5,6 +5,8 @@
 - Add atomic `inline-block` boxes with independent sizing, padding, borders, backgrounds, margins and internally wrapped inline text.
 - Implement `hyphens: none | manual`; soft hyphens remain invisible unless selected as a line break in both default and experimental shaping paths.
 - Parse `border-collapse` and one/two-value `border-spacing`; apply spacing to separate table tracks and rows while collapsed tables ignore it.
+- Complete the 0.2 table scope: deterministic collapsed-border conflicts, line-safe pagination of oversized rowspan groups, rowspan in repeated headers/footers, nested table layout, constrained table/column/cell sizing and opt-in HTML presentational hints.
+- Allow footer repetition to be disabled with `tfoot { display: table-row-group }`.
 
 ## 0.2.0-alpha.1 — 2026-09-30
 

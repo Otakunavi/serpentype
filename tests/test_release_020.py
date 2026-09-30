@@ -44,10 +44,10 @@ class Release020Tests(unittest.TestCase):
                            "font.missing-glyph-diagnostic"):
             self.assertEqual(matrix[capability], "partial")
             self.assertTrue(self.renderer.supports(capability))
-        self.assertEqual(matrix["html.table.colspan"], "partial")
-        self.assertEqual(matrix["html.table.rowspan"], "partial")
+        self.assertEqual(matrix["html.table.colspan"], "full")
+        self.assertEqual(matrix["html.table.rowspan"], "full")
         self.assertTrue(self.renderer.supports("html.table.rowspan"))
-        self.assertEqual(matrix["html.table.repeat-tfoot"], "partial")
+        self.assertEqual(matrix["html.table.repeat-tfoot"], "full")
         self.assertEqual(matrix["resource.loader"], "partial")
         self.assertEqual(matrix["css.position.relative"], "partial")
         self.assertEqual(matrix["css.paged.recto-verso"], "partial")
@@ -59,7 +59,10 @@ class Release020Tests(unittest.TestCase):
         self.assertTrue(self.renderer.supports("css.visibility"))
         self.assertEqual(matrix["css.display.inline-block"], "partial")
         self.assertEqual(matrix["css.hyphens.manual"], "full")
-        self.assertEqual(matrix["html.table.border-model"], "partial")
+        self.assertEqual(matrix["html.table.border-model"], "full")
+        self.assertEqual(matrix["html.table.nested"], "full")
+        self.assertEqual(matrix["html.table.sizing"], "full")
+        self.assertEqual(matrix["html.table.presentational-hints"], "full")
 
     def test_inline_block_and_manual_soft_hyphen_export(self):
         from pypdf import PdfReader
@@ -226,6 +229,30 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(combined.count("GROUP"), 1)
         for index in range(18):
             self.assertEqual(combined.count(f"Row {index:02d}"), 1)
+
+    def test_fragmented_rowspan_and_nested_table_preserve_pdf_text(self):
+        from pypdf import PdfReader
+
+        tokens = " ".join(f"TOKEN{index:02d}" for index in range(50))
+        html = (
+            "<table class='outer'><tbody><tr><td rowspan='2'>" + tokens + "</td>"
+            "<td><table class='inner'><tr><td>INNER-A</td></tr><tr><td>INNER-B</td></tr>"
+            "</table></td></tr><tr><td>TAIL</td></tr></tbody></table>"
+        )
+        css = (
+            "@page { size:160pt 100pt; margin:10pt } "
+            ".outer { width:140pt; table-layout:fixed; border-collapse:collapse } "
+            ".inner { width:100%; table-layout:fixed; border-collapse:collapse } "
+            "td { border:1pt solid black; padding:1pt; font-size:8pt; line-height:10pt }"
+        )
+        document = self.renderer.layout(html, css)
+        pages = PdfReader(io.BytesIO(bytes(document.to_pdf()))).pages
+        self.assertGreater(len(pages), 1)
+        text = "\n".join(page.extract_text() for page in pages)
+        for index in range(50):
+            self.assertEqual(text.count(f"TOKEN{index:02d}"), 1)
+        for expected in ("INNER-A", "INNER-B", "TAIL"):
+            self.assertEqual(text.count(expected), 1)
 
     def test_recto_break_exports_a_blank_pdf_page(self):
         from pypdf import PdfReader

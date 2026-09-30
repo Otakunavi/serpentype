@@ -2,7 +2,7 @@
 
 This is the canonical progress tracker for the final 0.2.0 release. A checkbox is closed only when the implementation, mandatory Rust and installed-wheel Python tests, capability entry, and relevant documentation are present. Broad capability groups may remain `partial` while their individual checkboxes close.
 
-Current snapshot after the inline/text/table slice: **32 closed, 40 open**.
+Current snapshot after completing the table slice: **38 closed, 34 open**.
 
 ## Text and fonts
 
@@ -36,12 +36,12 @@ Current snapshot after the inline/text/table slice: **32 closed, 40 open**.
 - [x] Support auto/fixed tables, colspan, body rowspan, cell vertical alignment and repeated headers/optional footers.
 - [x] Keep connected rowspan groups together or return a controlled error without losing content.
 - [x] Apply one/two-value `border-spacing` to separate table geometry and suppress it for collapsed tables.
-- [ ] Implement collapsed-border conflict resolution.
-- [ ] Fragment oversized rowspan groups across pages with continued backgrounds and borders.
-- [ ] Support rowspan in repeating header/footer groups.
-- [ ] Lay out nested tables without flattening or losing content.
-- [ ] Complete fixed/percentage/min/max sizing for tables, columns and cells.
-- [ ] Complete `cellpadding`, `cellspacing`, width/height, align/valign and border presentational hints.
+- [x] Resolve collapsed-border conflicts deterministically by width and document order within the supported solid-border model.
+- [x] Fragment oversized rowspan groups across pages with continued backgrounds and borders without splitting a text line.
+- [x] Support connected rowspan groups in repeating headers and footers.
+- [x] Lay out nested tables in an independent inner formatting context without flattening or losing content.
+- [x] Apply fixed/percentage/min/max sizing to tables, column groups, columns and cells.
+- [x] Apply `cellpadding`, `cellspacing`, width/height, align/valign and border presentational hints when explicitly enabled.
 
 ## Resources, images and SVG
 
@@ -104,3 +104,4 @@ Current snapshot after the inline/text/table slice: **32 closed, 40 open**.
 
 - `0d45eea`: `visibility`, paragraph `box-sizing`, paragraph and raster-image min/max dimensions, bidi-aware hidden inline text, Rust regression tests, installed-wheel Python coverage, capability documentation and benchmark verification.
 - Current slice: atomic painted inline-blocks, manual soft-hyphen breaks in both text paths, and separate/collapsed table spacing geometry.
+- Current table slice: collapsed-border conflict resolution, fragmented rowspan groups, rowspan in repeated sections, nested tables, constrained column sizing and opt-in presentational hints.

@@ -51,6 +51,20 @@ class WeasyCompatTests(unittest.TestCase):
             self.assertIsNone(document.write_pdf(path))
             self.assertEqual(path.read_bytes(), pdf_bytes)
 
+    def test_table_presentational_hints_are_applied_only_when_requested(self):
+        from pypdf import PdfReader
+
+        source = HTML(string=(
+            "<table width='160' height='80' cellpadding='6' cellspacing='4' border='2'>"
+            "<tr><td align='right' valign='bottom'>A</td><td>B</td></tr></table>"
+        ))
+        without_hints = source.write_pdf(presentational_hints=False)
+        with_hints = source.write_pdf(presentational_hints=True)
+        self.assertNotEqual(without_hints, with_hints)
+        plain_stream = PdfReader(BytesIO(without_hints)).pages[0].get_contents().get_data()
+        hinted_stream = PdfReader(BytesIO(with_hints)).pages[0].get_contents().get_data()
+        self.assertGreater(hinted_stream.count(b" re"), plain_stream.count(b" re"))
+
     def test_file_base_url_and_data_png_image(self):
         image = (ROOT / "tests" / "fixtures" / "blue.png").read_bytes()
         encoded = base64.b64encode(image).decode("ascii")

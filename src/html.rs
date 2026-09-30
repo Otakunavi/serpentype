@@ -42,7 +42,7 @@ impl Node {
 const TAGS: &[&str] = &[
     "html", "head", "body", "style", "div", "section", "article", "p", "h1", "h2", "h3", "h4",
     "h5", "h6", "span", "strong", "b", "em", "i", "u", "a", "sup", "sub", "br", "img", "table",
-    "thead", "tbody", "tfoot", "tr", "th", "td",
+    "colgroup", "col", "thead", "tbody", "tfoot", "tr", "th", "td",
 ];
 
 fn defaults(tag: &str, style: &mut Style) {
@@ -82,8 +82,94 @@ fn defaults(tag: &str, style: &mut Style) {
             style.vertical_align = if tag == "sup" { "super" } else { "sub" }.into();
         }
         "table" => style.display = "table".into(),
+        "colgroup" => style.display = "table-column-group".into(),
+        "col" => style.display = "table-column".into(),
+        "thead" => style.display = "table-header-group".into(),
+        "tbody" => style.display = "table-row-group".into(),
+        "tfoot" => style.display = "table-footer-group".into(),
         "tr" => style.display = "table-row".into(),
         _ => {}
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct TableHints {
+    cell_padding: Option<f32>,
+    cell_border: Option<f32>,
+}
+
+fn html_length(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if value.ends_with('%') {
+        return Some(value.to_owned());
+    }
+    value
+        .parse::<f32>()
+        .ok()
+        .filter(|number| number.is_finite() && *number >= 0.0)
+        .map(|number| format!("{number}px"))
+}
+
+fn numeric_hint(value: Option<&str>) -> Option<f32> {
+    value?
+        .trim()
+        .parse::<f32>()
+        .ok()
+        .filter(|number| number.is_finite() && *number >= 0.0)
+        .map(|number| number * 0.75)
+}
+
+fn apply_presentational_hints(
+    tag: &str,
+    attrs: &HashMap<String, String>,
+    inherited: TableHints,
+    style: &mut Style,
+    warnings: &mut Vec<Diagnostic>,
+) -> TableHints {
+    if matches!(tag, "table" | "colgroup" | "col" | "td" | "th") {
+        if let Some(width) = attrs.get("width").and_then(|value| html_length(value)) {
+            css::apply(style, "width", &width, warnings);
+        }
+        if let Some(height) = attrs.get("height").and_then(|value| html_length(value)) {
+            css::apply(style, "height", &height, warnings);
+        }
+    }
+    if matches!(tag, "td" | "th") {
+        if let Some(padding) = inherited.cell_padding {
+            style.padding = [padding; 4];
+        }
+        if let Some(border) = inherited.cell_border {
+            style.border_width = border;
+        }
+        if let Some(align) = attrs.get("align").map(|value| value.to_ascii_lowercase()) {
+            css::apply(style, "text-align", &align, warnings);
+        }
+        if let Some(align) = attrs.get("valign").map(|value| value.to_ascii_lowercase()) {
+            css::apply(style, "vertical-align", &align, warnings);
+        }
+    }
+    if tag != "table" {
+        return inherited;
+    }
+    if let Some(spacing) = attrs
+        .get("cellspacing")
+        .and_then(|value| html_length(value))
+    {
+        css::apply(style, "border-spacing", &spacing, warnings);
+    }
+    if let Some(align) = attrs.get("align").map(|value| value.to_ascii_lowercase()) {
+        css::apply(style, "text-align", &align, warnings);
+    }
+    let cell_border = numeric_hint(attrs.get("border").map(String::as_str));
+    if let Some(border) = cell_border {
+        style.border_width = border;
+    }
+    TableHints {
+        cell_padding: numeric_hint(attrs.get("cellpadding").map(String::as_str)),
+        cell_border,
     }
 }
 
@@ -92,6 +178,8 @@ fn convert(
     parent: &Style,
     sheet: &Sheet,
     warnings: &mut Vec<Diagnostic>,
+    presentational_hints: bool,
+    inherited_table_hints: TableHints,
 ) -> Option<Node> {
     if let Some(text) = dom.as_text() {
         return Some(Node {
@@ -123,6 +211,11 @@ fn convert(
         .collect();
     let mut style = Style::inherit(parent);
     defaults(&tag, &mut style);
+    let child_table_hints = if presentational_hints {
+        apply_presentational_hints(&tag, &attrs, inherited_table_hints, &mut style, warnings)
+    } else {
+        TableHints::default()
+    };
     let matched: Vec<_> = sheet
         .rules
         .iter()
@@ -162,6 +255,7 @@ fn convert(
         && tag != "img"
         && style.display != "flex"
         && style.display != "inline-block"
+        && !matches!(tag.as_str(), "table" | "tr" | "td" | "th")
         && !matches!(tag.as_str(), "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
     {
         warnings.push(Diagnostic::new(
@@ -216,7 +310,16 @@ fn convert(
     }
     let children = dom
         .children()
-        .filter_map(|c| convert(&c, &style, sheet, warnings))
+        .filter_map(|c| {
+            convert(
+                &c,
+                &style,
+                sheet,
+                warnings,
+                presentational_hints,
+                child_table_hints,
+            )
+        })
         .collect();
     Some(Node {
         tag,
@@ -237,6 +340,15 @@ pub fn parse_with_metadata(
     html: &str,
     sheet: &Sheet,
     strict: bool,
+) -> Result<(Node, Vec<Diagnostic>, DocumentMetadata)> {
+    parse_with_metadata_and_hints(html, sheet, strict, false)
+}
+
+pub fn parse_with_metadata_and_hints(
+    html: &str,
+    sheet: &Sheet,
+    strict: bool,
+    presentational_hints: bool,
 ) -> Result<(Node, Vec<Diagnostic>, DocumentMetadata)> {
     let dom = kuchiki::parse_html().one(html);
     let mut metadata = DocumentMetadata {
@@ -275,8 +387,15 @@ pub fn parse_with_metadata(
         ));
     }
     let root_style = Style::default();
-    let root = convert(body.as_node(), &root_style, sheet, &mut warnings)
-        .ok_or_else(|| Error("empty HTML body".into()))?;
+    let root = convert(
+        body.as_node(),
+        &root_style,
+        sheet,
+        &mut warnings,
+        presentational_hints,
+        TableHints::default(),
+    )
+    .ok_or_else(|| Error("empty HTML body".into()))?;
     let mut anchors = HashSet::new();
     fn collect_anchors(node: &Node, anchors: &mut HashSet<String>) {
         if matches!(

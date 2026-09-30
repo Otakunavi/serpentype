@@ -1,3 +1,4 @@
+use serpentype::css::Color;
 use serpentype::font::FontRegistry;
 use serpentype::layout::{Item, Renderer};
 
@@ -15,6 +16,18 @@ fn renderer() -> Renderer {
         )
         .unwrap();
     Renderer::new(fonts, ".".into(), true)
+}
+
+fn text_x(document: &serpentype::layout::PreparedDocument, target: char) -> f32 {
+    document
+        .pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .find_map(|item| match item {
+            Item::Text { ch, x, .. } if *ch == target => Some(*x),
+            _ => None,
+        })
+        .unwrap()
 }
 
 #[test]
@@ -108,7 +121,12 @@ fn collapsed_table_ignores_border_spacing() {
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::Rect { x, w, .. } => Some((*x, *w)),
+            Item::Rect {
+                x,
+                w,
+                fill: Some(color),
+                ..
+            } if *color == Color(1.0, 1.0, 1.0) => Some((*x, *w)),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -301,17 +319,31 @@ fn rowspan_cannot_cross_its_row_group() {
 }
 
 #[test]
-fn oversized_rowspan_group_fails_instead_of_clipping_text() {
-    let long = (0..12).map(|_| "line<br>").collect::<String>();
+fn oversized_rowspan_group_fragments_without_clipping_text() {
+    let long = (0..120)
+        .map(|index| format!("TOKEN{index:03}"))
+        .collect::<Vec<_>>()
+        .join(" ");
     let html = format!(
         "<table><tbody><tr><td rowspan='2'>{long}</td><td>A</td></tr>\
          <tr><td>B</td></tr></tbody></table>"
     );
-    let css = "@page { size: 120pt 100pt; margin: 10pt } \
-               td { font-size: 10pt; line-height: 12pt }";
-    match renderer().layout(&html, css) {
-        Err(error) => assert!(error.to_string().contains("rowspan group")),
-        Ok(_) => panic!("oversized rowspan group was clipped"),
+    let css = "@page { size: 140pt 90pt; margin: 10pt } \
+               table { width:120pt; table-layout:fixed } \
+               td { border:0.5pt solid black; font-size:8pt; line-height:10pt }";
+    let document = renderer().layout(&html, css).unwrap();
+    assert!(document.page_count() > 2);
+    let text = document
+        .pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .filter_map(|item| match item {
+            Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect::<String>();
+    for index in 0..120 {
+        assert_eq!(text.matches(&format!("TOKEN{index:03}")).count(), 1);
     }
 }
 
@@ -348,4 +380,188 @@ fn table_footer_repeats_after_page_breaks_without_losing_rows() {
     for index in 0..18 {
         assert_eq!(combined.matches(&format!("R{index:02}")).count(), 1);
     }
+}
+
+#[test]
+fn table_footer_repeat_can_be_disabled_with_row_group_display() {
+    let rows = (0..18)
+        .map(|index| format!("<tr><td>R{index:02}</td></tr>"))
+        .collect::<String>();
+    let document = renderer()
+        .layout(
+            &format!(
+                "<table><thead><tr><th>HEAD</th></tr></thead><tbody>{rows}</tbody>\
+                 <tfoot><tr><td>FINAL</td></tr></tfoot></table>"
+            ),
+            "@page { size:140pt 110pt; margin:10pt } table { width:120pt } \
+             tfoot { display:table-row-group } \
+             td, th { font-size:8pt; line-height:10pt }",
+        )
+        .unwrap();
+    let pages = document
+        .pages
+        .iter()
+        .map(|page| {
+            page.items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Text { ch, .. } => Some(*ch),
+                    _ => None,
+                })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    assert!(pages.len() > 1);
+    assert_eq!(
+        pages.iter().filter(|text| text.contains("FINAL")).count(),
+        1
+    );
+    assert!(pages.last().unwrap().contains("FINAL"));
+}
+
+#[test]
+fn collapsed_border_conflicts_choose_the_wider_later_cell_border() {
+    let document = renderer()
+        .layout(
+            "<table><tr><td class='a'>A</td><td class='b'>B</td></tr></table>",
+            "table { width:120pt; table-layout:fixed; border-collapse:collapse } \
+             td { background:white } .a { border:1pt solid black } .b { border:4pt solid red }",
+        )
+        .unwrap();
+    let red_edges = document.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Rect {
+                x,
+                y,
+                w,
+                h,
+                fill: Some(color),
+                stroke: None,
+            } if *color == Color(1.0, 0.0, 0.0) => Some((*x, *y, *w, *h)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(red_edges
+        .iter()
+        .any(|(_, _, width, height)| *width >= 3.9 && *height > 10.0));
+}
+
+#[test]
+fn rowspan_in_repeating_header_is_repeated_as_a_connected_group() {
+    let rows = (0..18)
+        .map(|index| format!("<tr><td>R{index:02}</td><td>V{index:02}</td></tr>"))
+        .collect::<String>();
+    let document = renderer()
+        .layout(
+            &format!(
+                "<table><thead><tr><th rowspan='2'>HEAD</th><th>TOP</th></tr>\
+                 <tr><th>SUB</th></tr></thead><tbody>{rows}</tbody>\
+                 <tfoot><tr><td rowspan='2'>FOOT</td><td>F1</td></tr>\
+                 <tr><td>F2</td></tr></tfoot></table>"
+            ),
+            "@page { size:160pt 110pt; margin:10pt } table { width:140pt; table-layout:fixed } \
+             td, th { border:0.5pt solid black; padding:1pt; font-size:8pt; line-height:10pt }",
+        )
+        .unwrap();
+    assert!(document.page_count() > 1);
+    for page in &document.pages {
+        let text = page
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Text { ch, .. } => Some(*ch),
+                _ => None,
+            })
+            .collect::<String>();
+        assert!(text.contains("HEAD"));
+        assert!(text.contains("TOP"));
+        assert!(text.contains("SUB"));
+        assert!(text.contains("FOOT"));
+        assert!(text.contains("F1"));
+        assert!(text.contains("F2"));
+    }
+}
+
+#[test]
+fn nested_table_keeps_its_own_grid_and_content() {
+    let document = renderer()
+        .layout(
+            "<table class='outer'><tr><td>OUT</td><td><table class='inner'>\
+             <tr><td>I1</td><td>I2</td></tr><tr><td>I3</td><td>I4</td></tr>\
+             </table></td></tr></table>",
+            ".outer { width:180pt; table-layout:fixed } \
+             .inner { width:80pt; table-layout:fixed; border-spacing:3pt } \
+             td { border:0.5pt solid black; padding:1pt } .inner td { background:red }",
+        )
+        .unwrap();
+    let text = document.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect::<String>();
+    for expected in ["OUT", "I1", "I2", "I3", "I4"] {
+        assert_eq!(text.matches(expected).count(), 1);
+    }
+    let inner_rects = document.pages[0]
+        .items
+        .iter()
+        .filter(|item| {
+            matches!(item, Item::Rect { fill: Some(color), .. } if *color == Color(1.0, 0.0, 0.0))
+        })
+        .count();
+    assert_eq!(inner_rects, 4);
+}
+
+#[test]
+fn table_column_and_cell_constraints_determine_track_widths() {
+    let document = renderer()
+        .layout(
+            "<table><colgroup><col style='width:25%'><col></colgroup>\
+             <tr><td style='max-width:40pt'>A</td><td style='min-width:80pt'>B</td></tr></table>",
+            "table { width:160pt; min-width:140pt; max-width:160pt; table-layout:fixed } \
+             td { padding:0; background:white }",
+        )
+        .unwrap();
+    assert!((text_x(&document, 'B') - text_x(&document, 'A') - 40.0).abs() < 0.2);
+}
+
+#[test]
+fn table_wider_than_the_containing_block_is_a_controlled_error() {
+    match renderer().layout(
+        "<table style='width:120pt'><tr><td>A</td></tr></table>",
+        "@page { size:100pt 100pt; margin:10pt }",
+    ) {
+        Err(error) => assert!(error.to_string().contains("exceeds available width")),
+        Ok(_) => panic!("overwide table was silently accepted"),
+    }
+}
+
+#[test]
+fn table_presentational_hints_are_opt_in_and_css_still_wins() {
+    let mut renderer = renderer();
+    renderer.presentational_hints = true;
+    let document = renderer
+        .layout(
+            "<table width='120' height='60' cellpadding='4' cellspacing='6' border='2'>\
+             <tr><td align='right' valign='bottom' height='40'>A</td><td>B</td></tr></table>",
+            "table { width:120pt }",
+        )
+        .unwrap();
+    let cells = document.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Rect { x, y, w, h, .. } => Some((*x, *y, *w, *h)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(cells.len(), 2);
+    assert!((cells[1].0 - (cells[0].0 + cells[0].2) - 4.5).abs() < 0.2);
+    assert!(cells[0].3 >= 40.0);
+    assert!(text_x(&document, 'A') > cells[0].0 + cells[0].2 / 2.0);
 }

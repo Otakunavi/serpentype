@@ -283,7 +283,7 @@ const CAPABILITIES: &[(&str, &str)] = &[
     ("css.visibility", "partial"),
     ("css.display.inline-block", "partial"),
     ("css.hyphens.manual", "full"),
-    ("html.table.border-model", "partial"),
+    ("html.table.border-model", "full"),
     ("css.color.named", "full"),
     ("css.color.rgb", "partial"),
     ("css.color.hsl", "partial"),
@@ -302,9 +302,12 @@ const CAPABILITIES: &[(&str, &str)] = &[
     ("font.synthetic-bold", "partial"),
     ("font.synthetic-italic", "partial"),
     ("font.missing-glyph-diagnostic", "partial"),
-    ("html.table.rowspan", "partial"),
-    ("html.table.colspan", "partial"),
-    ("html.table.repeat-tfoot", "partial"),
+    ("html.table.rowspan", "full"),
+    ("html.table.colspan", "full"),
+    ("html.table.repeat-tfoot", "full"),
+    ("html.table.nested", "full"),
+    ("html.table.sizing", "full"),
+    ("html.table.presentational-hints", "full"),
     ("image.svg", "partial"),
     ("image.data-uri", "partial"),
     ("pdf.links", "partial"),
@@ -402,7 +405,7 @@ impl PyRenderer {
     }
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(fonts=None, base_dir=".", strict=false, limits=None, experimental_shaping=false, svg_dpi=144.0, synthetic_bold=false, synthetic_italic=false))]
+    #[pyo3(signature=(fonts=None, base_dir=".", strict=false, limits=None, experimental_shaping=false, svg_dpi=144.0, synthetic_bold=false, synthetic_italic=false, presentational_hints=false))]
     fn new(
         fonts: Option<PyRef<'_, PyFontRegistry>>,
         base_dir: &str,
@@ -412,6 +415,7 @@ impl PyRenderer {
         svg_dpi: f32,
         synthetic_bold: bool,
         synthetic_italic: bool,
+        presentational_hints: bool,
     ) -> PyResult<Self> {
         if !svg_dpi.is_finite() || svg_dpi <= 0.0 {
             return Err(PyValueError::new_err(
@@ -429,6 +433,7 @@ impl PyRenderer {
         inner.svg_dpi = svg_dpi;
         inner.synthetic_bold = synthetic_bold;
         inner.synthetic_italic = synthetic_italic;
+        inner.presentational_hints = presentational_hints;
         Ok(Self { inner })
     }
     #[pyo3(signature=(html, css="", cancel_token=None))]

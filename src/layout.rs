@@ -454,6 +454,7 @@ pub struct Renderer {
     pub synthetic_bold: bool,
     pub synthetic_italic: bool,
     pub svg_dpi: f32,
+    pub presentational_hints: bool,
     images: Arc<Mutex<ImageCache>>,
 }
 impl Renderer {
@@ -468,6 +469,7 @@ impl Renderer {
             synthetic_bold: false,
             synthetic_italic: false,
             svg_dpi: 144.0,
+            presentational_hints: false,
             images: Arc::new(Mutex::new(ImageCache::default())),
         }
     }
@@ -541,7 +543,12 @@ impl Renderer {
             )?;
         }
         let parse_start = Instant::now();
-        let (root, warnings, metadata) = html::parse_with_metadata(html, &sheet, self.strict)?;
+        let (root, warnings, metadata) = html::parse_with_metadata_and_hints(
+            html,
+            &sheet,
+            self.strict,
+            self.presentational_hints,
+        )?;
         let parse_ms = parse_start.elapsed().as_secs_f64() * 1000.0;
         fn count_tree(node: &Node) -> (usize, usize) {
             node.children.iter().fold(
@@ -2743,9 +2750,33 @@ impl Flow {
 struct Cell {
     style: Style,
     lines: Vec<Line>,
+    items: Vec<Item>,
+    content_height: f32,
     column: usize,
     colspan: usize,
     rowspan: usize,
+    borders: [TableBorder; 4],
+    draw_borders: [bool; 4],
+}
+#[derive(Clone, Copy)]
+struct TableBorder {
+    width: f32,
+    color: Color,
+}
+impl TableBorder {
+    fn from_style(style: &Style) -> Self {
+        Self {
+            width: style.border_width,
+            color: style.border_color,
+        }
+    }
+    fn winner(self, other: Self) -> Self {
+        if other.width + EPS >= self.width {
+            other
+        } else {
+            self
+        }
+    }
 }
 #[derive(Clone)]
 struct Row {
@@ -2753,8 +2784,10 @@ struct Row {
     line_count: usize,
     step: f32,
     pad: f32,
+    x: f32,
     column_gap: f32,
     row_gap: f32,
+    collapsed: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2806,14 +2839,42 @@ impl Flow {
                 out.push((child.clone(), section, group));
             } else if matches!(child.tag.as_str(), "thead" | "tbody" | "tfoot") {
                 let child_section = match child.tag.as_str() {
-                    "thead" => TableSection::Head,
-                    "tfoot" => TableSection::Foot,
+                    "thead" if child.style.display == "table-header-group" => TableSection::Head,
+                    "tfoot" if child.style.display == "table-footer-group" => TableSection::Foot,
                     _ => TableSection::Body,
                 };
                 *next_group += 1;
                 Self::rows(child, child_section, *next_group, next_group, out);
             }
         }
+    }
+    fn columns(node: &Node, out: &mut Vec<Style>) -> Result<()> {
+        for child in &node.children {
+            if child.tag == "col" {
+                let span = child
+                    .attr("span")
+                    .unwrap_or("1")
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|span| (1..=1024).contains(span))
+                    .ok_or_else(|| Error("invalid table column span".into()))?;
+                out.extend(std::iter::repeat_n(child.style.clone(), span));
+            } else if child.tag == "colgroup" {
+                if child.children.iter().any(|column| column.tag == "col") {
+                    Self::columns(child, out)?;
+                } else {
+                    let span = child
+                        .attr("span")
+                        .unwrap_or("1")
+                        .parse::<usize>()
+                        .ok()
+                        .filter(|span| (1..=1024).contains(span))
+                        .ok_or_else(|| Error("invalid table column-group span".into()))?;
+                    out.extend(std::iter::repeat_n(child.style.clone(), span));
+                }
+            }
+        }
+        Ok(())
     }
     fn place_rows(row_nodes: Vec<(Node, TableSection, usize)>) -> Result<(Vec<PlacedRow>, usize)> {
         let mut rows = Vec::with_capacity(row_nodes.len());
@@ -2879,6 +2940,7 @@ impl Flow {
     }
     fn table(&mut self, table: &Node) -> Result<()> {
         self.begin(&table.style)?;
+        self.y += table.style.margin[0];
         let mut row_nodes = Vec::new();
         let mut next_group = 0usize;
         Self::rows(
@@ -2897,12 +2959,31 @@ impl Flow {
             self.finish(&table.style);
             return Ok(());
         }
-        let width = table
-            .style
-            .width
-            .or_else(|| table.style.width_percent.map(|p| self.content_width() * p))
-            .unwrap_or(self.content_width())
-            .min(self.content_width());
+        let containing_width = self.content_width();
+        let available_width = containing_width - table.style.margin[1] - table.style.margin[3];
+        let declared_width = resolved_dimension(
+            table.style.width,
+            table.style.width_percent,
+            containing_width,
+        )
+        .unwrap_or(available_width);
+        let minimum_width = resolved_dimension(
+            table.style.min_width,
+            table.style.min_width_percent,
+            containing_width,
+        );
+        let maximum_width = resolved_dimension(
+            table.style.max_width,
+            table.style.max_width_percent,
+            containing_width,
+        );
+        let width = constrained_dimension(declared_width, minimum_width, maximum_width);
+        if width <= 0.0 || width > available_width + EPS {
+            return Err(Error(format!(
+                "table width {width:.3} exceeds available width {available_width:.3}"
+            )));
+        }
+        let table_x = self.content_x() + table.style.margin[3];
         let spacing = if table.style.border_collapse == "separate" {
             table.style.border_spacing
         } else {
@@ -2912,8 +2993,11 @@ impl Flow {
         if track_width <= 0.0 {
             return Err(Error("table border spacing leaves no usable width".into()));
         }
+        let mut column_styles = Vec::new();
+        Self::columns(table, &mut column_styles)?;
         let widths = self.column_widths(
             &row_nodes,
+            &column_styles,
             columns,
             track_width,
             table.style.table_layout == "fixed",
@@ -2921,9 +3005,19 @@ impl Flow {
         let mut heads = Vec::new();
         let mut bodies = Vec::new();
         let mut foots = Vec::new();
+        let mut layouts = Vec::new();
         for row in row_nodes {
-            let layout = self.layout_row(&row, &widths, spacing)?;
-            match row.section {
+            let layout = self.layout_row(
+                &row,
+                &widths,
+                spacing,
+                table_x,
+                table.style.border_collapse == "collapse",
+            )?;
+            layouts.push((row.section, layout));
+        }
+        for (section, layout) in layouts {
+            match section {
                 TableSection::Head => heads.push(layout),
                 TableSection::Body => bodies.push(layout),
                 TableSection::Foot => foots.push(layout),
@@ -2935,24 +3029,60 @@ impl Flow {
         if bodies.is_empty() {
             bodies.append(&mut foots);
         }
-        if heads
-            .iter()
-            .chain(&foots)
-            .any(|row| row.cells.iter().any(|cell| cell.rowspan > 1))
-        {
-            return Err(Error(
-                "rowspan in a repeating table header or footer is unsupported".into(),
-            ));
+        if table.style.border_collapse == "collapse" {
+            let head_count = heads.len();
+            let body_count = bodies.len();
+            let mut rows = heads
+                .iter()
+                .chain(&bodies)
+                .chain(&foots)
+                .cloned()
+                .collect::<Vec<_>>();
+            Self::resolve_collapsed_borders(&mut rows, columns);
+            heads = rows.drain(..head_count).collect();
+            bodies = rows.drain(..body_count).collect();
+            foots = rows;
         }
-        let header_height: f32 = heads.iter().map(Self::table_row_height).sum();
-        let footer_height: f32 = foots.iter().map(Self::table_row_height).sum();
+        let natural_height = Self::table_section_height(&heads)
+            + Self::table_section_height(&bodies)
+            + Self::table_section_height(&foots);
+        let height_reference = self.full_height();
+        let declared_height = resolved_dimension(
+            table.style.height,
+            table.style.height_percent,
+            height_reference,
+        );
+        let minimum_height = resolved_dimension(
+            table.style.min_height,
+            table.style.min_height_percent,
+            height_reference,
+        );
+        let maximum_height = resolved_dimension(
+            table.style.max_height,
+            table.style.max_height_percent,
+            height_reference,
+        );
+        let target_height = constrained_dimension(
+            declared_height.unwrap_or(natural_height),
+            minimum_height,
+            maximum_height,
+        )
+        .max(natural_height);
+        if target_height > natural_height + EPS {
+            let row_count = heads.len() + bodies.len() + foots.len();
+            let extra = (target_height - natural_height) / row_count.max(1) as f32;
+            for row in heads.iter_mut().chain(&mut bodies).chain(&mut foots) {
+                row.pad += extra;
+            }
+        }
+        let header_height = Self::table_section_height(&heads);
+        let footer_height = Self::table_section_height(&foots);
         if header_height + footer_height >= self.full_height() - EPS {
             return Err(Error(
                 "repeating table header and footer fill page content area".into(),
             ));
         }
-        let total_height =
-            header_height + footer_height + bodies.iter().map(Self::table_row_height).sum::<f32>();
+        let total_height = header_height + footer_height + Self::table_section_height(&bodies);
         if table.style.break_inside_avoid
             && total_height <= self.full_height() + EPS
             && self.y + total_height > self.limit() + EPS
@@ -2968,29 +3098,59 @@ impl Flow {
                 let heights = Self::rowspan_group_heights(&bodies, row_index, group_end);
                 let group_height: f32 = heights.iter().sum();
                 let usable = self.full_height() - header_height - footer_height;
-                if group_height > usable + EPS {
-                    return Err(Error(
-                        "table rowspan group is taller than the available page area".into(),
-                    ));
-                }
                 if !header_drawn {
-                    if self.y + header_height + group_height + footer_height > self.limit() + EPS
+                    let required = group_height.min(usable);
+                    if self.y + header_height + required + footer_height > self.limit() + EPS
                         && self.page_has_content()
                     {
                         self.new_page()?;
                     }
-                    for row in &heads {
-                        self.draw_row(row, &widths, 0, row.line_count);
-                    }
+                    self.draw_table_section(&heads, &widths);
                     header_drawn = true;
-                } else if self.y + group_height > self.limit() - footer_height + EPS {
+                } else if group_height <= usable + EPS
+                    && self.y + group_height > self.limit() - footer_height + EPS
+                {
                     self.draw_table_footer(&foots, &widths);
                     self.new_page()?;
-                    for row in &heads {
-                        self.draw_row(row, &widths, 0, row.line_count);
+                    self.draw_table_section(&heads, &widths);
+                }
+                if group_height <= usable + EPS {
+                    self.draw_rowspan_group(&bodies, &widths, row_index, group_end, &heights);
+                } else {
+                    let mut fragment_start = 0.0;
+                    while fragment_start < group_height - EPS {
+                        let available = self.limit() - footer_height - self.y;
+                        if available <= EPS {
+                            self.draw_table_footer(&foots, &widths);
+                            self.new_page()?;
+                            self.draw_table_section(&heads, &widths);
+                            continue;
+                        }
+                        let desired_end = (fragment_start + available).min(group_height);
+                        let fragment_end = Self::rowspan_fragment_end(
+                            &bodies,
+                            row_index,
+                            group_end,
+                            &heights,
+                            fragment_start,
+                            desired_end,
+                        )?;
+                        self.draw_rowspan_fragment(
+                            &bodies,
+                            &widths,
+                            row_index,
+                            group_end,
+                            &heights,
+                            fragment_start..fragment_end,
+                        );
+                        fragment_start = fragment_end;
+                        if fragment_start < group_height - EPS {
+                            self.draw_table_footer(&foots, &widths);
+                            self.new_page()?;
+                            self.draw_table_section(&heads, &widths);
+                        }
                     }
                 }
-                self.draw_rowspan_group(&bodies, &widths, row_index, group_end, &heights);
                 row_index = group_end;
                 continue;
             }
@@ -3036,6 +3196,7 @@ impl Flow {
             row_index += 1;
         }
         self.draw_table_footer(&foots, &widths);
+        self.y += table.style.margin[2];
         self.finish(&table.style);
         Ok(())
     }
@@ -3043,12 +3204,28 @@ impl Flow {
     fn column_widths(
         &self,
         rows: &[PlacedRow],
+        column_styles: &[Style],
         columns: usize,
         total: f32,
         fixed: bool,
     ) -> Result<Vec<f32>> {
         let mut desired = vec![if fixed { 0.0f32 } else { 20.0f32 }; columns];
+        let mut minimums = vec![1.0f32; columns];
+        let mut maximums = vec![f32::INFINITY; columns];
         let mut explicit = vec![false; columns];
+        for (index, style) in column_styles.iter().take(columns).enumerate() {
+            let minimum =
+                resolved_dimension(style.min_width, style.min_width_percent, total).unwrap_or(1.0);
+            let maximum = resolved_dimension(style.max_width, style.max_width_percent, total)
+                .unwrap_or(f32::INFINITY)
+                .max(minimum);
+            minimums[index] = minimum;
+            maximums[index] = maximum;
+            if let Some(width) = resolved_dimension(style.width, style.width_percent, total) {
+                desired[index] = width.clamp(minimum, maximum);
+                explicit[index] = true;
+            }
+        }
         for row in rows.iter().take(if fixed { 1 } else { rows.len() }) {
             for placed in &row.cells {
                 let cell = &placed.node;
@@ -3057,24 +3234,46 @@ impl Flow {
                 if column + span > columns {
                     return Err(Error("table colspan exceeds column count".into()));
                 }
-                if let Some(w) = cell.style.width {
+                let cell_min =
+                    resolved_dimension(cell.style.min_width, cell.style.min_width_percent, total)
+                        .unwrap_or(0.0);
+                let cell_max =
+                    resolved_dimension(cell.style.max_width, cell.style.max_width_percent, total)
+                        .unwrap_or(f32::INFINITY)
+                        .max(cell_min);
+                for i in column..column + span {
+                    minimums[i] = minimums[i].max(cell_min / span as f32);
+                    maximums[i] = maximums[i].min(cell_max / span as f32);
+                    maximums[i] = maximums[i].max(minimums[i]);
+                }
+                if let Some(w) =
+                    resolved_dimension(cell.style.width, cell.style.width_percent, total)
+                {
                     for i in column..column + span {
-                        desired[i] = desired[i].max(w / span as f32);
-                        explicit[i] = true;
-                    }
-                } else if let Some(p) = cell.style.width_percent {
-                    for i in column..column + span {
-                        desired[i] = desired[i].max(total * p / span as f32);
+                        desired[i] =
+                            desired[i].max((w / span as f32).clamp(minimums[i], maximums[i]));
                         explicit[i] = true;
                     }
                 } else if !fixed {
-                    let longest = cell
-                        .plain_text()
-                        .split_whitespace()
-                        .map(|w| w.chars().count())
+                    let text = cell.plain_text();
+                    let longest = if matches!(cell.style.white_space.as_str(), "nowrap" | "pre") {
+                        text.lines()
+                            .map(|line| line.chars().count())
+                            .max()
+                            .unwrap_or(0)
+                    } else if cell.style.overflow_wrap == "anywhere"
+                        || cell.style.word_break == "break-all"
+                    {
+                        usize::from(!text.is_empty())
+                    } else {
+                        text.split(|character: char| {
+                            character.is_whitespace() || character == '\u{00ad}'
+                        })
+                        .map(|word| word.chars().count())
                         .max()
                         .unwrap_or(0)
-                        .min(40);
+                    }
+                    .min(80);
                     let minimum = (longest as f32 * cell.style.font_size * 0.55
                         + cell.style.padding[1]
                         + cell.style.padding[3]
@@ -3082,7 +3281,7 @@ impl Flow {
                         / span as f32;
                     for i in column..column + span {
                         if !explicit[i] {
-                            desired[i] = desired[i].max(minimum);
+                            desired[i] = desired[i].max(minimum).clamp(minimums[i], maximums[i]);
                         }
                     }
                 }
@@ -3105,13 +3304,118 @@ impl Flow {
                 }
             }
         }
+        for index in 0..columns {
+            desired[index] = desired[index].clamp(minimums[index], maximums[index]);
+        }
+        let minimum_sum: f32 = minimums.iter().sum();
+        if minimum_sum > total + EPS {
+            return Err(Error(
+                "table minimum column widths exceed available width".into(),
+            ));
+        }
+        for _ in 0..columns.saturating_mul(2).max(1) {
+            let sum: f32 = desired.iter().sum();
+            let delta = total - sum;
+            if delta.abs() <= EPS {
+                break;
+            }
+            let adjustable = (0..columns)
+                .filter(|index| {
+                    if delta > 0.0 {
+                        desired[*index] + EPS < maximums[*index]
+                    } else {
+                        desired[*index] > minimums[*index] + EPS
+                    }
+                })
+                .collect::<Vec<_>>();
+            if adjustable.is_empty() {
+                break;
+            }
+            let share = delta / adjustable.len() as f32;
+            for index in adjustable {
+                desired[index] = (desired[index] + share).clamp(minimums[index], maximums[index]);
+            }
+        }
         let sum: f32 = desired.iter().sum();
-        if sum <= 0.0 {
+        if sum <= 0.0 || (sum - total).abs() > 0.1 {
             return Err(Error("table width is zero".into()));
         }
-        Ok(desired.into_iter().map(|w| w * total / sum).collect())
+        Ok(desired)
     }
-    fn layout_row(&self, row: &PlacedRow, widths: &[f32], spacing: [f32; 2]) -> Result<Row> {
+    fn contains_nested_table(node: &Node) -> bool {
+        node.children
+            .iter()
+            .any(|child| child.tag == "table" || Self::contains_nested_table(child))
+    }
+    fn layout_nested_cell(&mut self, cell: &Node, width: f32) -> Result<(Vec<Item>, f32)> {
+        let mut local = Flow::new(
+            self.sheet.clone(),
+            self.fonts.clone(),
+            self.base_dir.clone(),
+            self.images.clone(),
+            vec![],
+            self.limits.clone(),
+            self.cancel.clone(),
+        );
+        let local_page = PageStyle {
+            width,
+            height: 1_000_000.0,
+            margin: [0.0; 4],
+            ..PageStyle::default()
+        };
+        local.page = local_page.clone();
+        local.pages = vec![Page {
+            items: vec![],
+            style: local_page,
+            name: None,
+        }];
+        local.y = 0.0;
+        local.frame = Some((0.0, width));
+        local.experimental_shaping = self.experimental_shaping;
+        local.svg_dpi = self.svg_dpi;
+        local.resource_bytes = self.resource_bytes;
+        let mut container = cell.clone();
+        container.tag = "div".into();
+        container.attrs.clear();
+        container.style.margin = [0.0; 4];
+        container.style.padding = [0.0; 4];
+        container.style.border_width = 0.0;
+        container.style.background = None;
+        container.style.width = None;
+        container.style.width_percent = None;
+        container.style.min_width = None;
+        container.style.min_width_percent = None;
+        container.style.max_width = None;
+        container.style.max_width_percent = None;
+        container.style.height = None;
+        container.style.height_percent = None;
+        container.style.min_height = None;
+        container.style.min_height_percent = None;
+        container.style.max_height = None;
+        container.style.max_height_percent = None;
+        container.style.break_before = false;
+        container.style.break_after = false;
+        local.node_content(&container)?;
+        if local.pages.len() != 1 {
+            return Err(Error(
+                "nested table exceeds the containing table cell".into(),
+            ));
+        }
+        self.resource_bytes = local.resource_bytes;
+        self.iterations = self.iterations.saturating_add(local.iterations);
+        self.shaping_ns
+            .fetch_add(local.shaping_ns.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.warnings.extend(local.warnings);
+        Ok((local.pages.remove(0).items, local.y))
+    }
+    fn layout_row(
+        &mut self,
+        row: &PlacedRow,
+        widths: &[f32],
+        spacing: [f32; 2],
+        x: f32,
+        collapsed: bool,
+    ) -> Result<Row> {
         let mut cells = Vec::new();
         let mut count = 1;
         let mut step = 0.0f32;
@@ -3127,26 +3431,56 @@ impl Flow {
             if inner <= 0.0 {
                 return Err(Error("table cell has no usable width".into()));
             }
-            let lines = lines_for(
-                cell,
-                inner,
-                0.0,
-                &self.fonts,
-                self.cancel.as_deref(),
-                self.experimental_shaping,
-                &self.shaping_ns,
-            )?;
-            step = step.max(lines.iter().map(|l| l.height).fold(s.line_height, f32::max));
+            let (lines, items, content_height) = if Self::contains_nested_table(cell) {
+                let (items, height) = self.layout_nested_cell(cell, inner)?;
+                (vec![], items, height)
+            } else {
+                let lines = lines_for(
+                    cell,
+                    inner,
+                    0.0,
+                    &self.fonts,
+                    self.cancel.as_deref(),
+                    self.experimental_shaping,
+                    &self.shaping_ns,
+                )?;
+                let height = lines.iter().map(|line| line.height).sum();
+                (lines, vec![], height)
+            };
+            let cell_step = if lines.is_empty() {
+                content_height.max(s.line_height)
+            } else {
+                lines
+                    .iter()
+                    .map(|line| line.height)
+                    .fold(s.line_height, f32::max)
+            };
+            step = step.max(cell_step);
             if placed.rowspan == 1 {
-                count = count.max(lines.len());
-                pad = pad.max(s.padding[0] + s.padding[2] + 2.0 * s.border_width);
+                count = count.max(lines.len().max(1));
+                let edges = s.padding[0] + s.padding[2] + 2.0 * s.border_width;
+                let natural = content_height + edges;
+                let requested = resolved_dimension(s.height, s.height_percent, self.full_height())
+                    .unwrap_or(natural);
+                let requested = constrained_dimension(
+                    requested,
+                    resolved_dimension(s.min_height, s.min_height_percent, self.full_height()),
+                    resolved_dimension(s.max_height, s.max_height_percent, self.full_height()),
+                )
+                .max(natural);
+                pad = pad.max(edges + (requested - natural));
             }
+            let border = TableBorder::from_style(s);
             cells.push(Cell {
                 style: s.clone(),
                 lines,
+                items,
+                content_height,
                 column,
                 colspan,
                 rowspan: placed.rowspan,
+                borders: [border; 4],
+                draw_borders: [true; 4],
             });
         }
         if step <= 0.0 {
@@ -3157,12 +3491,189 @@ impl Flow {
             line_count: count,
             step,
             pad,
+            x,
             column_gap: spacing[0],
             row_gap: spacing[1],
+            collapsed,
         })
     }
     fn table_row_height(row: &Row) -> f32 {
         row.line_count as f32 * row.step + row.pad + row.row_gap
+    }
+    fn table_section_height(rows: &[Row]) -> f32 {
+        let mut height = 0.0;
+        let mut index = 0;
+        while index < rows.len() {
+            let end = Self::rowspan_group_end(rows, index);
+            if end > index + 1 {
+                height += Self::rowspan_group_heights(rows, index, end)
+                    .iter()
+                    .sum::<f32>();
+            } else {
+                height += Self::table_row_height(&rows[index]);
+            }
+            index = end;
+        }
+        height
+    }
+    fn resolve_collapsed_borders(rows: &mut [Row], columns: usize) {
+        if rows.is_empty() {
+            return;
+        }
+        let mut owners = vec![vec![None; columns]; rows.len()];
+        for (row_index, row) in rows.iter().enumerate() {
+            for (cell_index, cell) in row.cells.iter().enumerate() {
+                for slots in owners
+                    .iter_mut()
+                    .take((row_index + cell.rowspan).min(rows.len()))
+                    .skip(row_index)
+                {
+                    for slot in slots
+                        .iter_mut()
+                        .take((cell.column + cell.colspan).min(columns))
+                        .skip(cell.column)
+                    {
+                        *slot = Some((row_index, cell_index));
+                    }
+                }
+            }
+        }
+        let borders = rows
+            .iter()
+            .map(|row| {
+                row.cells
+                    .iter()
+                    .map(|cell| TableBorder::from_style(&cell.style))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let row_count = rows.len();
+        for (row_index, row) in rows.iter_mut().enumerate() {
+            for (cell_index, cell) in row.cells.iter_mut().enumerate() {
+                cell.draw_borders = [false; 4];
+                let own = borders[row_index][cell_index];
+                let row_end = (row_index + cell.rowspan).min(owners.len());
+                let column_end = (cell.column + cell.colspan).min(columns);
+                let mut top = own;
+                if row_index == 0 {
+                    cell.draw_borders[0] = true;
+                } else {
+                    for owner in &owners[row_index - 1][cell.column..column_end] {
+                        if let Some((other_row, other_cell)) = *owner {
+                            if (other_row, other_cell) != (row_index, cell_index) {
+                                top = borders[other_row][other_cell].winner(top);
+                                cell.draw_borders[0] = true;
+                            }
+                        } else {
+                            cell.draw_borders[0] = true;
+                        }
+                    }
+                }
+                cell.borders[0] = top;
+                let mut left = own;
+                if cell.column == 0 {
+                    cell.draw_borders[3] = true;
+                } else {
+                    for slots in owners.iter().take(row_end).skip(row_index) {
+                        if let Some((other_row, other_cell)) = slots[cell.column - 1] {
+                            if (other_row, other_cell) != (row_index, cell_index) {
+                                left = borders[other_row][other_cell].winner(left);
+                                cell.draw_borders[3] = true;
+                            }
+                        } else {
+                            cell.draw_borders[3] = true;
+                        }
+                    }
+                }
+                cell.borders[3] = left;
+                if column_end == columns {
+                    cell.draw_borders[1] = true;
+                }
+                if row_end == row_count {
+                    cell.draw_borders[2] = true;
+                }
+            }
+        }
+    }
+    fn paint_table_cell(
+        &mut self,
+        cell: &Cell,
+        rect: (f32, f32, f32, f32),
+        fragment_edges: (bool, bool),
+        collapsed: bool,
+    ) {
+        let (x, y, width, height) = rect;
+        let (first_fragment, last_fragment) = fragment_edges;
+        if !collapsed {
+            self.paint_box(x, y, width, height, &cell.style);
+            return;
+        }
+        if cell.style.visibility != "visible" {
+            return;
+        }
+        if let Some(fill) = cell.style.background {
+            self.item(Item::Rect {
+                x,
+                y,
+                w: width,
+                h: height,
+                fill: Some(fill),
+                stroke: None,
+            });
+        }
+        let mut edge = |side: usize, ex: f32, ey: f32, ew: f32, eh: f32| {
+            let border = cell.borders[side];
+            if cell.draw_borders[side] && border.width > 0.0 {
+                self.item(Item::Rect {
+                    x: ex,
+                    y: ey,
+                    w: ew.max(border.width),
+                    h: eh.max(border.width),
+                    fill: Some(border.color),
+                    stroke: None,
+                });
+            }
+        };
+        if first_fragment {
+            edge(0, x, y, width, cell.borders[0].width);
+        }
+        edge(
+            1,
+            x + width - cell.borders[1].width,
+            y,
+            cell.borders[1].width,
+            height,
+        );
+        if last_fragment {
+            edge(
+                2,
+                x,
+                y + height - cell.borders[2].width,
+                width,
+                cell.borders[2].width,
+            );
+        }
+        edge(3, x, y, cell.borders[3].width, height);
+    }
+    fn draw_cell_items(&mut self, cell: &Cell, x: f32, y: f32) {
+        for original in &cell.items {
+            let mut item = original.clone();
+            translate_item(&mut item, x, y);
+            self.item(item);
+        }
+    }
+    fn draw_table_section(&mut self, rows: &[Row], widths: &[f32]) {
+        let mut index = 0;
+        while index < rows.len() {
+            let end = Self::rowspan_group_end(rows, index);
+            if end > index + 1 {
+                let heights = Self::rowspan_group_heights(rows, index, end);
+                self.draw_rowspan_group(rows, widths, index, end, &heights);
+            } else {
+                self.draw_row(&rows[index], widths, 0, rows[index].line_count);
+            }
+            index = end;
+        }
     }
     fn rowspan_group_end(rows: &[Row], start: usize) -> usize {
         let mut end = start + 1;
@@ -3188,15 +3699,27 @@ impl Flow {
                 let span_end = row_index + cell.rowspan;
                 let local_start = row_index - start;
                 let local_end = span_end - start;
-                let line_step = cell
-                    .lines
-                    .iter()
-                    .map(|line| line.height)
-                    .fold(cell.style.line_height, f32::max);
-                let required = cell.lines.len() as f32 * line_step
+                let natural = cell.content_height
                     + cell.style.padding[0]
                     + cell.style.padding[2]
                     + 2.0 * cell.style.border_width;
+                let requested =
+                    resolved_dimension(cell.style.height, cell.style.height_percent, natural)
+                        .unwrap_or(natural);
+                let required = constrained_dimension(
+                    requested,
+                    resolved_dimension(
+                        cell.style.min_height,
+                        cell.style.min_height_percent,
+                        natural,
+                    ),
+                    resolved_dimension(
+                        cell.style.max_height,
+                        cell.style.max_height_percent,
+                        natural,
+                    ),
+                )
+                .max(natural);
                 let current: f32 = heights[local_start..local_end].iter().sum::<f32>()
                     - rows[span_end - 1].row_gap;
                 if required > current {
@@ -3214,16 +3737,88 @@ impl Flow {
         end: usize,
         heights: &[f32],
     ) {
-        let group_y = self.y;
+        let height: f32 = heights.iter().sum();
+        self.draw_rowspan_fragment(rows, widths, start, end, heights, 0.0..height);
+    }
+    fn rowspan_offsets(heights: &[f32]) -> Vec<f32> {
         let mut offsets = Vec::with_capacity(heights.len() + 1);
         offsets.push(0.0);
         for height in heights {
             offsets.push(offsets.last().copied().unwrap_or(0.0) + height);
         }
+        offsets
+    }
+    fn rowspan_fragment_end(
+        rows: &[Row],
+        start: usize,
+        end: usize,
+        heights: &[f32],
+        fragment_start: f32,
+        desired_end: f32,
+    ) -> Result<f32> {
+        let offsets = Self::rowspan_offsets(heights);
+        let mut fragment_end = desired_end;
+        loop {
+            let mut adjusted = fragment_end;
+            for (row_index, row) in rows.iter().enumerate().take(end).skip(start) {
+                let local_row = row_index - start;
+                for cell in &row.cells {
+                    let span_end = local_row + cell.rowspan;
+                    let cell_height = offsets[span_end] - offsets[local_row] - row.row_gap;
+                    let content_top = offsets[local_row]
+                        + cell.style.border_width
+                        + cell.style.padding[0]
+                        + Self::table_cell_vertical_offset(
+                            &cell.style,
+                            cell_height,
+                            cell.content_height,
+                        );
+                    if cell.items.is_empty() {
+                        let mut line_top = content_top;
+                        for line in &cell.lines {
+                            let line_bottom = line_top + line.height;
+                            if line_top < adjusted - EPS && line_bottom > adjusted + EPS {
+                                adjusted = adjusted.min(line_top);
+                            }
+                            line_top = line_bottom;
+                        }
+                    } else {
+                        let content_bottom = content_top + cell.content_height;
+                        if content_top < adjusted - EPS && content_bottom > adjusted + EPS {
+                            adjusted = adjusted.min(content_top);
+                        }
+                    }
+                }
+            }
+            if (adjusted - fragment_end).abs() <= EPS {
+                break;
+            }
+            fragment_end = adjusted;
+        }
+        if fragment_end <= fragment_start + EPS {
+            return Err(Error(
+                "table rowspan content line exceeds available page area".into(),
+            ));
+        }
+        Ok(fragment_end)
+    }
+    fn draw_rowspan_fragment(
+        &mut self,
+        rows: &[Row],
+        widths: &[f32],
+        start: usize,
+        end: usize,
+        heights: &[f32],
+        fragment: std::ops::Range<f32>,
+    ) {
+        let fragment_start = fragment.start;
+        let fragment_end = fragment.end;
+        let page_y = self.y;
+        let offsets = Self::rowspan_offsets(heights);
         for (row_index, row) in rows.iter().enumerate().take(end).skip(start) {
             let local_row = row_index - start;
             for cell in &row.cells {
-                let x = self.content_x()
+                let x = row.x
                     + widths[..cell.column].iter().sum::<f32>()
                     + row.column_gap * cell.column as f32;
                 let width: f32 = widths[cell.column..cell.column + cell.colspan]
@@ -3231,33 +3826,54 @@ impl Flow {
                     .sum::<f32>()
                     + row.column_gap * cell.colspan.saturating_sub(1) as f32;
                 let span_end = local_row + cell.rowspan;
-                let y = group_y + offsets[local_row];
-                let height = offsets[span_end] - offsets[local_row] - row.row_gap;
-                self.paint_box(x, y, width, height, &cell.style);
+                let cell_start = offsets[local_row];
+                let cell_end = offsets[span_end] - row.row_gap;
+                let overlap_start = cell_start.max(fragment_start);
+                let overlap_end = cell_end.min(fragment_end);
+                if overlap_end <= overlap_start + EPS {
+                    continue;
+                }
+                let y = page_y + overlap_start - fragment_start;
+                let height = overlap_end - overlap_start;
+                self.paint_table_cell(cell, (x, y, width, height), (true, true), row.collapsed);
                 let text_x = x + cell.style.border_width + cell.style.padding[3];
-                let content_height: f32 = cell.lines.iter().map(|line| line.height).sum();
-                let mut line_y = y
+                let cell_height = cell_end - cell_start;
+                let content_top = cell_start
                     + cell.style.border_width
                     + cell.style.padding[0]
-                    + Self::table_cell_vertical_offset(&cell.style, height, content_height);
+                    + Self::table_cell_vertical_offset(
+                        &cell.style,
+                        cell_height,
+                        cell.content_height,
+                    );
                 let inner_width = width
                     - cell.style.padding[1]
                     - cell.style.padding[3]
                     - 2.0 * cell.style.border_width;
+                let mut line_top = content_top;
                 for (line_index, line) in cell.lines.iter().enumerate() {
-                    self.draw_line(
-                        line,
-                        text_x,
-                        line_y,
-                        inner_width,
-                        &cell.style.text_align,
-                        line_index + 1 == cell.lines.len(),
-                    );
-                    line_y += line.height;
+                    let line_bottom = line_top + line.height;
+                    if line_top >= fragment_start - EPS && line_bottom <= fragment_end + EPS {
+                        self.draw_line(
+                            line,
+                            text_x,
+                            page_y + line_top - fragment_start,
+                            inner_width,
+                            &cell.style.text_align,
+                            line_index + 1 == cell.lines.len(),
+                        );
+                    }
+                    line_top = line_bottom;
+                }
+                if !cell.items.is_empty() {
+                    let content_bottom = content_top + cell.content_height;
+                    if content_top >= fragment_start - EPS && content_bottom <= fragment_end + EPS {
+                        self.draw_cell_items(cell, text_x, page_y + content_top - fragment_start);
+                    }
                 }
             }
         }
-        self.y += offsets.last().copied().unwrap_or(0.0);
+        self.y += fragment_end - fragment_start;
     }
     fn table_cell_vertical_offset(style: &Style, box_height: f32, content_height: f32) -> f32 {
         let available = (box_height
@@ -3297,32 +3913,32 @@ impl Flow {
         {
             self.new_page()?;
         }
-        for row in heads {
-            self.draw_row(row, widths, 0, row.line_count);
-        }
+        self.draw_table_section(heads, widths);
         Ok(())
     }
     fn draw_table_footer(&mut self, foots: &[Row], widths: &[f32]) {
-        for row in foots {
-            self.draw_row(row, widths, 0, row.line_count);
-        }
+        self.draw_table_section(foots, widths);
     }
     // A row fragment consumes at least one line. Every continuation starts with the header.
     fn draw_row(&mut self, row: &Row, widths: &[f32], start: usize, count: usize) {
         let height = count as f32 * row.step + row.pad;
         let y = self.y;
         for cell in &row.cells {
-            let x = self.content_x()
+            let x = row.x
                 + widths[..cell.column].iter().sum::<f32>()
                 + row.column_gap * cell.column as f32;
             let w: f32 = widths[cell.column..cell.column + cell.colspan]
                 .iter()
                 .sum::<f32>()
                 + row.column_gap * cell.colspan.saturating_sub(1) as f32;
-            self.paint_box(x, y, w, height, &cell.style);
+            self.paint_table_cell(cell, (x, y, w, height), (true, true), row.collapsed);
             let text_x = x + cell.style.border_width + cell.style.padding[3];
             let visible_lines = cell.lines.len().saturating_sub(start).min(count);
-            let content_height = visible_lines as f32 * row.step;
+            let content_height = if cell.items.is_empty() {
+                visible_lines as f32 * row.step
+            } else {
+                cell.content_height
+            };
             let vertical_offset = if start == 0 && count >= cell.lines.len() {
                 Self::table_cell_vertical_offset(&cell.style, height, content_height)
             } else {
@@ -3341,6 +3957,9 @@ impl Flow {
                     start + local_index + 1 == cell.lines.len(),
                 );
                 line_y += row.step;
+            }
+            if !cell.items.is_empty() && start == 0 {
+                self.draw_cell_items(cell, text_x, line_y);
             }
         }
         self.y += height;

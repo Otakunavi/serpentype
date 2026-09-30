@@ -259,16 +259,14 @@ class HTML:
                     config.registry.register_file(
                         str(face.source), family=face.family, weight=face.weight, style=face.style
                     )
-        # The argument is accepted for source compatibility. Presentational
-        # attributes beyond Serpentype's controlled HTML/CSS subset are not emulated.
-        _ = presentational_hints
         css_text = "\n".join(sheet.text for sheet in sheets)
         base_dir = (Path.cwd() if self.resource_loader is not None and self.base_url
                     and urlsplit(os.fspath(self.base_url)).scheme in ("http", "https")
                     else _local_path(".", self.base_url, self._inferred_base))
         html = _rewrite_file_images(self._source, self.base_url, self._inferred_base,
                                     self.resource_loader)
-        prepared = Renderer(fonts=config.registry, base_dir=str(base_dir)).layout(
+        prepared = Renderer(fonts=config.registry, base_dir=str(base_dir),
+                            presentational_hints=presentational_hints).layout(
             html, css_text
         )
         return Document(prepared)

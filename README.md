@@ -24,7 +24,7 @@ The bundled Noto Sans TTF files are **not registered automatically**. Import the
 
 The development branch accepts registered TTF, CFF-outline OTF, WOFF and WOFF2 fonts. Variable `wght` and `wdth` fonts use the requested CSS weight and `font-stretch`; synthetic faces can be enabled with `Renderer(synthetic_bold=True, synthetic_italic=True)`. `Renderer(experimental_shaping=True)` enables the tested ligature, kerning, combining-mark, grapheme-cluster fallback and mixed-direction shaping path, including Arabic, Hebrew and explicit bidi controls. A missing glyph raises `MissingGlyphError` with structured code point and font request fields. See the [font support boundary](docs/capabilities.md) before using these features in production.
 
-Table pagination supports fixed/auto columns, `colspan`, body `rowspan`, and repeated `<thead>`/`<tfoot>`. A connected rowspan group is kept together when it fits; oversized groups return a controlled error rather than losing content. See the [capability matrix](docs/capabilities.md) for the remaining table limits.
+Table pagination supports fixed/auto and constrained columns, `colspan`, fragmented `rowspan`, nested tables, and repeated `<thead>`/`<tfoot>` including connected spans. Oversized rowspan groups continue across pages between complete text lines. Use `tfoot { display: table-row-group }` when the footer should appear once. See the [capability matrix](docs/capabilities.md) for the exact border and nested-pagination boundaries.
 
 The Python compatibility API accepts a bounded resource loader for images and `@font-face` fonts:
 
