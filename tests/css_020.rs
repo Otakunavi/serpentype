@@ -192,6 +192,161 @@ fn min_max_dimensions_constrain_block_geometry_without_clipping_text() {
 }
 
 #[test]
+fn inline_block_is_an_atomic_painted_box_inside_the_line() {
+    let doc = renderer()
+        .layout(
+            "<p>A<span class='box'>B</span>C</p>",
+            "@page { size:200pt 120pt; margin:10pt } p { margin:0 } \
+             .box { display:inline-block; width:40pt; padding:4pt; border:1pt solid black; background:red }",
+        )
+        .unwrap();
+    let (box_x, box_y, box_width, box_height) = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            serpentype::layout::Item::Rect {
+                x,
+                y,
+                w,
+                h,
+                fill: Some(color),
+                ..
+            } if *color == Color(1.0, 0.0, 0.0) => Some((*x, *y, *w, *h)),
+            _ => None,
+        })
+        .expect("inline-block background");
+    assert!((box_width - 50.0).abs() < 0.01);
+    assert!(box_height > 8.0);
+    let (b_x, b_y) = text_position(&doc, 'B').unwrap();
+    let (c_x, _) = text_position(&doc, 'C').unwrap();
+    assert!(b_x > box_x && b_x < box_x + box_width);
+    assert!(b_y > box_y && b_y < box_y + box_height);
+    assert!(c_x >= box_x + box_width - 0.01);
+}
+
+#[test]
+fn inline_block_wraps_as_one_unit_and_can_format_multiple_internal_lines() {
+    let doc = renderer()
+        .layout(
+            "<p>AAAA <span class='box'>one two</span>Z</p>",
+            "p { margin:0; width:70pt } .box { display:inline-block; width:28pt; padding:2pt; background:red }",
+        )
+        .unwrap();
+    let (_, a_y) = text_position(&doc, 'A').unwrap();
+    let (_, o_y) = text_position(&doc, 'o').unwrap();
+    let (_, t_y) = text_position(&doc, 't').unwrap();
+    assert!(o_y > a_y);
+    assert!(t_y > o_y);
+    let (_, box_y, _, box_height) = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            serpentype::layout::Item::Rect {
+                x,
+                y,
+                w,
+                h,
+                fill: Some(color),
+                ..
+            } if *color == Color(1.0, 0.0, 0.0) => Some((*x, *y, *w, *h)),
+            _ => None,
+        })
+        .unwrap();
+    assert!(box_y > a_y - 20.0);
+    assert!(box_height > 25.0);
+
+    let mut shaped_renderer = renderer();
+    shaped_renderer.experimental_shaping = true;
+    let shaped = shaped_renderer
+        .layout(
+            "<p>A<span class='box'>office</span>Z</p>",
+            "p { margin:0 } .box { display:inline-block; width:40pt; padding:2pt; background:red }",
+        )
+        .unwrap();
+    assert!(shaped.pages[0]
+        .items
+        .iter()
+        .any(|item| matches!(item, serpentype::layout::Item::Rect { .. })));
+    assert!(text_position(&shaped, 'o').is_some());
+
+    let linked = renderer()
+        .layout(
+            "<p><a href='https://example.com' style='display:inline-block;padding:2pt'>Link</a></p>",
+            "p { margin:0 }",
+        )
+        .unwrap();
+    assert_eq!(
+        linked.pages[0]
+            .items
+            .iter()
+            .filter(|item| matches!(item, serpentype::layout::Item::Link { .. }))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn manual_soft_hyphen_only_paints_when_used_for_a_break() {
+    let base_renderer = renderer();
+    let wide = base_renderer
+        .layout(
+            "<p>encyclo&shy;pedia</p>",
+            "p { margin:0; width:160pt; overflow-wrap:normal; hyphens:manual }",
+        )
+        .unwrap();
+    let narrow = base_renderer
+        .layout(
+            "<p>encyclo&shy;pedia</p>",
+            "p { margin:0; width:55pt; overflow-wrap:normal; hyphens:manual }",
+        )
+        .unwrap();
+    let text = |doc: &serpentype::layout::PreparedDocument| {
+        doc.pages[0]
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                serpentype::layout::Item::Text { ch, .. } => Some(*ch),
+                _ => None,
+            })
+            .collect::<String>()
+    };
+    assert_eq!(text(&wide), "encyclopedia");
+    assert_eq!(text(&narrow), "encyclo-pedia");
+    assert!(text_position(&narrow, 'p').unwrap().1 > text_position(&narrow, 'e').unwrap().1);
+
+    let none = base_renderer
+        .layout(
+            "<p>encyclo&shy;pedia</p>",
+            "p { margin:0; width:55pt; overflow-wrap:anywhere; hyphens:none }",
+        )
+        .unwrap();
+    assert_eq!(text(&none), "encyclopedia");
+
+    let mut shaped_renderer = renderer();
+    shaped_renderer.experimental_shaping = true;
+    let shaped = shaped_renderer
+        .layout(
+            "<p>encyclo&shy;pedia</p>",
+            "p { margin:0; width:55pt; overflow-wrap:normal; hyphens:manual }",
+        )
+        .unwrap();
+    assert_eq!(text(&shaped), "encyclo-pedia");
+
+    let nearest = base_renderer
+        .layout(
+            "<p>prefix encyclo&shy;pedia</p>",
+            "p { margin:0; width:85pt; overflow-wrap:normal; hyphens:manual }",
+        )
+        .unwrap();
+    assert_eq!(text(&nearest), "prefix encyclo-pedia");
+    assert_eq!(
+        text_position(&nearest, 'p').unwrap().1,
+        text_position(&nearest, '-').unwrap().1,
+        "the nearest soft hyphen must win over an earlier space"
+    );
+}
+
+#[test]
 fn percentage_width_uses_content_box() {
     let fonts = serpentype::font::FontRegistry::new(1_000_000);
     fonts

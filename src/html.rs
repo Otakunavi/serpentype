@@ -161,10 +161,15 @@ fn convert(
     if (style.height.is_some() || style.height_percent.is_some())
         && tag != "img"
         && style.display != "flex"
+        && style.display != "inline-block"
+        && !matches!(tag.as_str(), "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
     {
         warnings.push(Diagnostic::new(
             "css-property",
-            format!("height is only supported on <img>, not <{tag}>"),
+            format!(
+                "height is unsupported on <{tag}> with display:{}",
+                style.display
+            ),
         ));
     }
     if tag == "img" && (style.border_width > 0.0 || style.background.is_some()) {

@@ -649,6 +649,9 @@ struct Glyph {
     href: Option<Arc<str>>,
     preserve_space: bool,
     visible: bool,
+    soft_hyphen: bool,
+    soft_hyphen_advance: f32,
+    inline_box: Option<Arc<InlineBox>>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TextDecoration {
@@ -660,6 +663,17 @@ struct InlineRun {
     text: String,
     style: Style,
     href: Option<Arc<str>>,
+    inline_box: Option<Node>,
+}
+#[derive(Clone)]
+struct InlineBox {
+    lines: Vec<Line>,
+    style: Style,
+    width: f32,
+    height: f32,
+    inner_width: f32,
+    href: Option<Arc<str>>,
+    destination: Option<String>,
 }
 #[derive(Clone, Default)]
 struct Line {
@@ -679,11 +693,23 @@ fn push_line(lines: &mut Vec<Line>, mut glyphs: Vec<Glyph>, default_height: f32)
     let width = glyphs.iter().map(|g| g.advance).sum();
     let baseline = glyphs
         .iter()
-        .map(|g| g.size * 0.9 + g.shift)
+        .map(|g| {
+            g.inline_box
+                .as_ref()
+                .map_or(g.size * 0.9 + g.shift, |inline| {
+                    inline.style.margin[0] + inline.height + g.shift
+                })
+        })
         .fold(default_height * 0.75, f32::max);
     let descent = glyphs
         .iter()
-        .map(|g| g.size * 0.3 - g.shift)
+        .map(|g| {
+            g.inline_box
+                .as_ref()
+                .map_or(g.size * 0.3 - g.shift, |inline| {
+                    inline.style.margin[2] - g.shift
+                })
+        })
         .fold(default_height * 0.25, f32::max);
     let height = (baseline + descent).max(default_height);
     lines.push(Line {
@@ -694,7 +720,70 @@ fn push_line(lines: &mut Vec<Line>, mut glyphs: Vec<Glyph>, default_height: f32)
         actual_text: None,
     });
 }
-fn inline_runs(node: &Node, inherited_href: Option<Arc<str>>, out: &mut Vec<InlineRun>) {
+
+fn break_at_soft_hyphen(
+    current: &mut Vec<Glyph>,
+    lines: &mut Vec<Line>,
+    default_height: f32,
+) -> Option<f32> {
+    let index = current.iter().rposition(|glyph| glyph.soft_hyphen)?;
+    let trailing = current.split_off(index + 1);
+    let hyphen = current.last_mut()?;
+    hyphen.advance = hyphen.soft_hyphen_advance;
+    hyphen.unicode = None;
+    push_line(lines, std::mem::take(current), default_height);
+    *current = trailing;
+    Some(current.iter().map(|glyph| glyph.advance).sum())
+}
+
+fn last_break_opportunity(glyphs: &[Glyph]) -> Option<(usize, bool)> {
+    glyphs.iter().enumerate().rev().find_map(|(index, glyph)| {
+        (glyph.ch == ' ' || glyph.soft_hyphen).then_some((index, glyph.soft_hyphen))
+    })
+}
+
+fn soft_hyphen_glyph(
+    style: &Style,
+    fonts: &FontRegistry,
+    href: Option<Arc<str>>,
+    preserve_space: bool,
+) -> Result<Glyph> {
+    let font = fonts.resolve_with_stretch(
+        &style.family,
+        style.weight,
+        &style.font_style,
+        style.font_stretch,
+        '-',
+    )?;
+    let (id, units) = font.glyph('-')?;
+    let natural_advance = units as f32 * style.font_size / font.units_per_em as f32;
+    Ok(Glyph {
+        ch: '-',
+        id,
+        font,
+        advance: 0.0,
+        natural_advance,
+        x_offset: 0.0,
+        y_offset: 0.0,
+        unicode: Some(Arc::<str>::from("")),
+        size: style.font_size,
+        color: style.color,
+        shift: 0.0,
+        decoration: TextDecoration::None,
+        href,
+        preserve_space,
+        visible: style.visibility == "visible",
+        soft_hyphen: true,
+        soft_hyphen_advance: natural_advance + style.letter_spacing,
+        inline_box: None,
+    })
+}
+fn inline_runs(
+    node: &Node,
+    inherited_href: Option<Arc<str>>,
+    out: &mut Vec<InlineRun>,
+    root: bool,
+) {
     let href = node
         .attr("href")
         .filter(|target| {
@@ -708,11 +797,21 @@ fn inline_runs(node: &Node, inherited_href: Option<Arc<str>>, out: &mut Vec<Inli
         })
         .map(Arc::<str>::from)
         .or(inherited_href);
+    if !root && node.tag != "#text" && node.style.display == "inline-block" {
+        out.push(InlineRun {
+            text: String::new(),
+            style: node.style.clone(),
+            href,
+            inline_box: Some(node.clone()),
+        });
+        return;
+    }
     if node.tag == "br" {
         out.push(InlineRun {
             text: "\u{000b}".into(),
             style: node.style.clone(),
             href,
+            inline_box: None,
         });
         return;
     }
@@ -721,11 +820,184 @@ fn inline_runs(node: &Node, inherited_href: Option<Arc<str>>, out: &mut Vec<Inli
             text: node.text.clone(),
             style: node.style.clone(),
             href: href.clone(),
+            inline_box: None,
         });
     }
     for child in &node.children {
-        inline_runs(child, href.clone(), out);
+        inline_runs(child, href.clone(), out, false);
     }
+}
+
+fn inline_box_glyph(
+    node: &Node,
+    href: Option<Arc<str>>,
+    containing_width: f32,
+    fonts: &FontRegistry,
+    token: Option<&AtomicBool>,
+    experimental_shaping: bool,
+    shaping_ns: &AtomicU64,
+) -> Result<Glyph> {
+    let style = &node.style;
+    let mut content_node = node.clone();
+    if href.is_some() {
+        content_node.attrs.remove("href");
+    }
+    let horizontal_edges = style.padding[1] + style.padding[3] + 2.0 * style.border_width;
+    let horizontal_margins = style.margin[1] + style.margin[3];
+    let available_outer = containing_width - horizontal_margins;
+    if available_outer <= horizontal_edges + EPS {
+        return Err(Error("inline-block has no usable width".into()));
+    }
+    let declared = resolved_dimension(style.width, style.width_percent, containing_width);
+    let minimum = resolved_dimension(style.min_width, style.min_width_percent, containing_width);
+    let maximum = resolved_dimension(style.max_width, style.max_width_percent, containing_width);
+    let sizing_width = if let Some(declared) = declared {
+        declared
+    } else {
+        let intrinsic = lines_for(
+            &content_node,
+            1_000_000.0,
+            0.0,
+            fonts,
+            token,
+            experimental_shaping,
+            shaping_ns,
+        )?
+        .iter()
+        .map(|line| line.width)
+        .fold(0.0, f32::max);
+        if style.box_sizing == "border-box" {
+            (intrinsic + horizontal_edges).min(available_outer)
+        } else {
+            intrinsic.min(available_outer - horizontal_edges)
+        }
+    };
+    let sizing_width = constrained_dimension(sizing_width, minimum, maximum);
+    let width = if style.box_sizing == "border-box" {
+        sizing_width
+    } else {
+        sizing_width + horizontal_edges
+    };
+    let inner_width = width - horizontal_edges;
+    if inner_width <= 0.0 {
+        return Err(Error("inline-block has no usable content width".into()));
+    }
+    let lines = lines_for(
+        &content_node,
+        inner_width,
+        0.0,
+        fonts,
+        token,
+        experimental_shaping,
+        shaping_ns,
+    )?;
+    let body_height: f32 = lines.iter().map(|line| line.height).sum();
+    let vertical_edges = style.padding[0] + style.padding[2] + 2.0 * style.border_width;
+    let natural_height = body_height + vertical_edges;
+    let declared_height = resolved_dimension(style.height, style.height_percent, natural_height);
+    let minimum_height =
+        resolved_dimension(style.min_height, style.min_height_percent, natural_height);
+    let maximum_height =
+        resolved_dimension(style.max_height, style.max_height_percent, natural_height);
+    let sizing_height = declared_height.unwrap_or_else(|| {
+        if style.box_sizing == "border-box" {
+            natural_height
+        } else {
+            body_height
+        }
+    });
+    let sizing_height = constrained_dimension(sizing_height, minimum_height, maximum_height);
+    let requested_height = if style.box_sizing == "border-box" {
+        sizing_height
+    } else {
+        sizing_height + vertical_edges
+    };
+    let height = natural_height.max(requested_height);
+    let font = lines
+        .iter()
+        .flat_map(|line| &line.glyphs)
+        .find(|glyph| glyph.inline_box.is_none())
+        .map(|glyph| glyph.font.clone())
+        .map(Ok)
+        .unwrap_or_else(|| {
+            fonts.resolve_with_stretch(
+                &style.family,
+                style.weight,
+                &style.font_style,
+                style.font_stretch,
+                ' ',
+            )
+        })?;
+    let (id, _) = font.glyph(' ')?;
+    let shift = match style.vertical_align.as_str() {
+        "super" | "top" => style.font_size * 0.35,
+        "sub" | "bottom" => -style.font_size * 0.2,
+        "middle" => style.font_size * 0.1,
+        _ => 0.0,
+    };
+    let advance = style.margin[3] + width + style.margin[1];
+    Ok(Glyph {
+        ch: '\u{fffc}',
+        id,
+        font,
+        advance,
+        natural_advance: advance,
+        x_offset: 0.0,
+        y_offset: 0.0,
+        unicode: Some(Arc::<str>::from(node.plain_text())),
+        size: style.font_size,
+        color: style.color,
+        shift,
+        decoration: TextDecoration::None,
+        href: None,
+        preserve_space: false,
+        visible: style.visibility == "visible",
+        soft_hyphen: false,
+        soft_hyphen_advance: 0.0,
+        inline_box: Some(Arc::new(InlineBox {
+            lines,
+            style: style.clone(),
+            width,
+            height,
+            inner_width,
+            href,
+            destination: node.attr("id").map(str::to_owned),
+        })),
+    })
+}
+
+fn place_atomic_glyph(
+    glyph: Glyph,
+    lines: &mut Vec<Line>,
+    current: &mut Vec<Glyph>,
+    current_width: &mut f32,
+    width: f32,
+    first_indent: f32,
+    default_height: f32,
+) -> Result<()> {
+    let available = if lines.is_empty() {
+        width - first_indent
+    } else {
+        width
+    };
+    if *current_width + glyph.advance > available + EPS && !current.is_empty() {
+        push_line(lines, std::mem::take(current), default_height);
+        *current_width = 0.0;
+    }
+    let available = if lines.is_empty() {
+        width - first_indent
+    } else {
+        width
+    };
+    if glyph.advance > available + EPS {
+        return Err(Error(format!(
+            "inline-block width {:.3} exceeds available line width {:.3}",
+            glyph.advance, available
+        )));
+    }
+    *current_width += glyph.advance;
+    current.push(glyph);
+    Ok(())
 }
 fn lines_for(
     node: &Node,
@@ -746,7 +1018,7 @@ fn lines_for(
         return Err(Error("text-indent leaves no usable first line".into()));
     }
     let mut runs = Vec::new();
-    inline_runs(node, None, &mut runs);
+    inline_runs(node, None, &mut runs, true);
     let mut lines = Vec::new();
     let mut current = Vec::<Glyph>::new();
     let mut current_width = 0.0;
@@ -755,12 +1027,41 @@ fn lines_for(
     let mut character_index = 0usize;
     for run in runs {
         let style = &run.style;
+        if let Some(inline) = &run.inline_box {
+            let glyph = inline_box_glyph(
+                inline,
+                run.href.clone(),
+                width,
+                fonts,
+                token,
+                experimental_shaping,
+                shaping_ns,
+            )?;
+            place_atomic_glyph(
+                glyph,
+                &mut lines,
+                &mut current,
+                &mut current_width,
+                width,
+                first_indent,
+                default_height,
+            )?;
+            previous_space = false;
+            continue;
+        }
         for raw in run.text.chars() {
             if character_index.is_multiple_of(1024) {
                 cancelled(token)?;
             }
             character_index += 1;
             let preserve = matches!(style.white_space.as_str(), "pre" | "pre-wrap");
+            if raw == '\u{00ad}' {
+                previous_space = false;
+                if style.hyphens == "manual" {
+                    current.push(soft_hyphen_glyph(style, fonts, run.href.clone(), preserve)?);
+                }
+                continue;
+            }
             if raw == '\u{000b}' || (raw == '\n' && preserve) {
                 push_line(&mut lines, std::mem::take(&mut current), default_height);
                 current_width = 0.0;
@@ -814,6 +1115,9 @@ fn lines_for(
                 href: run.href.clone(),
                 preserve_space: preserve,
                 visible: style.visibility == "visible",
+                soft_hyphen: false,
+                soft_hyphen_advance: 0.0,
+                inline_box: None,
             };
             let available = if lines.is_empty() {
                 width - first_indent
@@ -825,16 +1129,24 @@ fn lines_for(
                 && !matches!(style.white_space.as_str(), "nowrap" | "pre")
             {
                 // Prefer the last word boundary; an overwide word falls back to glyph breaks.
-                if let Some(last_space) = current.iter().rposition(|g| g.ch == ' ') {
-                    let trailing = current.split_off(last_space + 1);
-                    current.pop();
-                    push_line(&mut lines, std::mem::take(&mut current), default_height);
-                    current = trailing;
-                    current_width = current.iter().map(|g| g.advance).sum();
-                } else {
-                    if style.overflow_wrap != "normal" || style.word_break == "break-all" {
+                match last_break_opportunity(&current) {
+                    Some((_, true)) => {
+                        current_width =
+                            break_at_soft_hyphen(&mut current, &mut lines, default_height)
+                                .unwrap_or(0.0);
+                    }
+                    Some((last_space, false)) => {
+                        let trailing = current.split_off(last_space + 1);
+                        current.pop();
                         push_line(&mut lines, std::mem::take(&mut current), default_height);
-                        current_width = 0.0;
+                        current = trailing;
+                        current_width = current.iter().map(|g| g.advance).sum();
+                    }
+                    None => {
+                        if style.overflow_wrap != "normal" || style.word_break == "break-all" {
+                            push_line(&mut lines, std::mem::take(&mut current), default_height);
+                            current_width = 0.0;
+                        }
                     }
                 }
             }
@@ -919,6 +1231,9 @@ fn shape_segment(
                 href: href.clone(),
                 preserve_space: false,
                 visible: style.visibility == "visible",
+                soft_hyphen: false,
+                soft_hyphen_advance: 0.0,
+                inline_box: None,
             },
             can_wrap,
             break_word,
@@ -988,7 +1303,7 @@ fn lines_for_shaped(
         return Err(Error("text-indent leaves no usable first line".into()));
     }
     let mut runs = Vec::new();
-    inline_runs(node, None, &mut runs);
+    inline_runs(node, None, &mut runs, true);
     let mut units = Vec::new();
     let mut previous_space = false;
     let mut character_index = 0usize;
@@ -996,6 +1311,24 @@ fn lines_for_shaped(
     for run in runs {
         let style = &run.style;
         let preserve = matches!(style.white_space.as_str(), "pre" | "pre-wrap");
+        if let Some(inline) = &run.inline_box {
+            units.push(ShapedUnit::Glyph(
+                inline_box_glyph(
+                    inline,
+                    run.href.clone(),
+                    width,
+                    fonts,
+                    token,
+                    true,
+                    &AtomicU64::new(0),
+                )?,
+                true,
+                false,
+            ));
+            previous_space = false;
+            preceding_rtl = false;
+            continue;
+        }
         let mut segment = String::new();
         let mut segment_font: Option<Arc<FontData>> = None;
         let mut segment_rtl: Option<bool> = None;
@@ -1011,6 +1344,22 @@ fn lines_for_shaped(
                 cancelled(token)?;
             }
             character_index += raw.chars().count();
+            if raw == "\u{00ad}" {
+                if let Some(font) = segment_font.take() {
+                    shape_segment(&segment, &font, style, &run.href, &mut units)?;
+                    segment.clear();
+                }
+                segment_rtl = None;
+                previous_space = false;
+                if style.hyphens == "manual" {
+                    units.push(ShapedUnit::Glyph(
+                        soft_hyphen_glyph(style, fonts, run.href.clone(), preserve)?,
+                        true,
+                        false,
+                    ));
+                }
+                continue;
+            }
             if raw == "\u{000b}" || (raw == "\n" && preserve) {
                 if let Some(font) = segment_font.take() {
                     shape_segment(&segment, &font, style, &run.href, &mut units)?;
@@ -1063,6 +1412,9 @@ fn lines_for_shaped(
                         href: None,
                         preserve_space: false,
                         visible: false,
+                        soft_hyphen: false,
+                        soft_hyphen_advance: 0.0,
+                        inline_box: None,
                     },
                     false,
                     false,
@@ -1142,6 +1494,9 @@ fn lines_for_shaped(
                         href: run.href.clone(),
                         preserve_space: preserve,
                         visible: style.visibility == "visible",
+                        soft_hyphen: false,
+                        soft_hyphen_advance: 0.0,
+                        inline_box: None,
                     },
                     !matches!(style.white_space.as_str(), "nowrap" | "pre"),
                     style.overflow_wrap != "normal" || style.word_break == "break-all",
@@ -1219,15 +1574,23 @@ fn lines_for_shaped(
             width
         };
         if current_width + glyph.advance > available + EPS && !current.is_empty() && can_wrap {
-            if let Some(last_space) = current.iter().rposition(|item| item.ch == ' ') {
-                let trailing = current.split_off(last_space + 1);
-                current.pop();
-                push_line(&mut lines, std::mem::take(&mut current), default_height);
-                current = trailing;
-                current_width = current.iter().map(|item| item.advance).sum();
-            } else if break_word {
-                push_line(&mut lines, std::mem::take(&mut current), default_height);
-                current_width = 0.0;
+            match last_break_opportunity(&current) {
+                Some((_, true)) => {
+                    current_width = break_at_soft_hyphen(&mut current, &mut lines, default_height)
+                        .unwrap_or(0.0);
+                }
+                Some((last_space, false)) => {
+                    let trailing = current.split_off(last_space + 1);
+                    current.pop();
+                    push_line(&mut lines, std::mem::take(&mut current), default_height);
+                    current = trailing;
+                    current_width = current.iter().map(|item| item.advance).sum();
+                }
+                None if break_word => {
+                    push_line(&mut lines, std::mem::take(&mut current), default_height);
+                    current_width = 0.0;
+                }
+                None => {}
             }
         }
         current_width += glyph.advance;
@@ -1893,7 +2256,57 @@ impl Flow {
         };
         for glyph in &line.glyphs {
             let baseline = y + line.baseline - glyph.shift;
-            if glyph.visible {
+            if let Some(inline) = &glyph.inline_box {
+                let box_x = pen + inline.style.margin[3];
+                let box_y = baseline - inline.height;
+                if let Some(name) = &inline.destination {
+                    self.visible_item(Item::Destination {
+                        name: name.clone(),
+                        x: box_x,
+                        y: box_y,
+                    });
+                }
+                if inline.style.visibility == "visible"
+                    && (inline.style.background.is_some() || inline.style.border_width > 0.0)
+                {
+                    self.visible_item(Item::Rect {
+                        x: box_x,
+                        y: box_y,
+                        w: inline.width,
+                        h: inline.height,
+                        fill: inline.style.background,
+                        stroke: (inline.style.border_width > 0.0)
+                            .then_some((inline.style.border_width, inline.style.border_color)),
+                    });
+                }
+                let content_x = box_x + inline.style.border_width + inline.style.padding[3];
+                let mut content_y = box_y + inline.style.border_width + inline.style.padding[0];
+                for (line_index, nested) in inline.lines.iter().enumerate() {
+                    self.draw_line(
+                        nested,
+                        content_x,
+                        content_y,
+                        inline.inner_width,
+                        &inline.style.text_align,
+                        line_index + 1 == inline.lines.len(),
+                    );
+                    content_y += nested.height;
+                }
+                if inline.style.visibility == "visible" {
+                    if let Some(target) = &inline.href {
+                        self.visible_item(Item::Link {
+                            x: box_x,
+                            y: box_y,
+                            w: inline.width,
+                            h: inline.height,
+                            target: target.to_string(),
+                        });
+                    }
+                }
+                pen += glyph.advance;
+                continue;
+            }
+            if glyph.visible && (!glyph.soft_hyphen || glyph.advance > 0.0) {
                 self.visible_item(Item::Text {
                     ch: glyph.ch,
                     glyph: glyph.id,
@@ -1906,7 +2319,10 @@ impl Flow {
                     color: glyph.color,
                 });
             }
-            if glyph.visible && glyph.decoration != TextDecoration::None {
+            if glyph.visible
+                && (!glyph.soft_hyphen || glyph.advance > 0.0)
+                && glyph.decoration != TextDecoration::None
+            {
                 let decoration_y = if glyph.decoration == TextDecoration::Underline {
                     baseline + glyph.size * 0.08
                 } else {
@@ -1921,7 +2337,7 @@ impl Flow {
                     stroke: None,
                 });
             }
-            if glyph.visible {
+            if glyph.visible && (!glyph.soft_hyphen || glyph.advance > 0.0) {
                 if let Some(target) = &glyph.href {
                     self.visible_item(Item::Link {
                         x: pen,
@@ -2337,6 +2753,8 @@ struct Row {
     line_count: usize,
     step: f32,
     pad: f32,
+    column_gap: f32,
+    row_gap: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2485,17 +2903,26 @@ impl Flow {
             .or_else(|| table.style.width_percent.map(|p| self.content_width() * p))
             .unwrap_or(self.content_width())
             .min(self.content_width());
+        let spacing = if table.style.border_collapse == "separate" {
+            table.style.border_spacing
+        } else {
+            [0.0; 2]
+        };
+        let track_width = width - spacing[0] * columns.saturating_sub(1) as f32;
+        if track_width <= 0.0 {
+            return Err(Error("table border spacing leaves no usable width".into()));
+        }
         let widths = self.column_widths(
             &row_nodes,
             columns,
-            width,
+            track_width,
             table.style.table_layout == "fixed",
         )?;
         let mut heads = Vec::new();
         let mut bodies = Vec::new();
         let mut foots = Vec::new();
         for row in row_nodes {
-            let layout = self.layout_row(&row, &widths)?;
+            let layout = self.layout_row(&row, &widths, spacing)?;
             match row.section {
                 TableSection::Head => heads.push(layout),
                 TableSection::Body => bodies.push(layout),
@@ -2517,25 +2944,15 @@ impl Flow {
                 "rowspan in a repeating table header or footer is unsupported".into(),
             ));
         }
-        let header_height: f32 = heads
-            .iter()
-            .map(|r| r.line_count as f32 * r.step + r.pad)
-            .sum();
-        let footer_height: f32 = foots
-            .iter()
-            .map(|r| r.line_count as f32 * r.step + r.pad)
-            .sum();
+        let header_height: f32 = heads.iter().map(Self::table_row_height).sum();
+        let footer_height: f32 = foots.iter().map(Self::table_row_height).sum();
         if header_height + footer_height >= self.full_height() - EPS {
             return Err(Error(
                 "repeating table header and footer fill page content area".into(),
             ));
         }
-        let total_height = header_height
-            + footer_height
-            + bodies
-                .iter()
-                .map(|r| r.line_count as f32 * r.step + r.pad)
-                .sum::<f32>();
+        let total_height =
+            header_height + footer_height + bodies.iter().map(Self::table_row_height).sum::<f32>();
         if table.style.break_inside_avoid
             && total_height <= self.full_height() + EPS
             && self.y + total_height > self.limit() + EPS
@@ -2585,7 +3002,7 @@ impl Flow {
             let mut offset = 0;
             while offset < row.line_count {
                 let remaining = row.line_count - offset;
-                let row_height = remaining as f32 * row.step + row.pad;
+                let row_height = remaining as f32 * row.step + row.pad + row.row_gap;
                 if row_height <= self.full_height() - header_height - footer_height + EPS
                     && self.y + row_height > self.limit() - footer_height + EPS
                     && self.page_has_content()
@@ -2594,7 +3011,7 @@ impl Flow {
                     self.new_page()?;
                     self.ensure_header(&heads, &widths, header_height, footer_height, row)?;
                 }
-                let available = self.limit() - footer_height - self.y - row.pad;
+                let available = self.limit() - footer_height - self.y - row.pad - row.row_gap;
                 let take = ((available + EPS) / row.step).floor().max(0.0) as usize;
                 if take == 0 {
                     if self.y > self.page.margin[0] + header_height + EPS {
@@ -2694,7 +3111,7 @@ impl Flow {
         }
         Ok(desired.into_iter().map(|w| w * total / sum).collect())
     }
-    fn layout_row(&self, row: &PlacedRow, widths: &[f32]) -> Result<Row> {
+    fn layout_row(&self, row: &PlacedRow, widths: &[f32], spacing: [f32; 2]) -> Result<Row> {
         let mut cells = Vec::new();
         let mut count = 1;
         let mut step = 0.0f32;
@@ -2703,7 +3120,8 @@ impl Flow {
             let cell = &placed.node;
             let column = placed.column;
             let colspan = placed.colspan;
-            let width: f32 = widths[column..column + colspan].iter().sum();
+            let width: f32 = widths[column..column + colspan].iter().sum::<f32>()
+                + spacing[0] * colspan.saturating_sub(1) as f32;
             let s = &cell.style;
             let inner = width - s.padding[1] - s.padding[3] - 2.0 * s.border_width;
             if inner <= 0.0 {
@@ -2739,7 +3157,12 @@ impl Flow {
             line_count: count,
             step,
             pad,
+            column_gap: spacing[0],
+            row_gap: spacing[1],
         })
+    }
+    fn table_row_height(row: &Row) -> f32 {
+        row.line_count as f32 * row.step + row.pad + row.row_gap
     }
     fn rowspan_group_end(rows: &[Row], start: usize) -> usize {
         let mut end = start + 1;
@@ -2755,7 +3178,7 @@ impl Flow {
     fn rowspan_group_heights(rows: &[Row], start: usize, end: usize) -> Vec<f32> {
         let mut heights = rows[start..end]
             .iter()
-            .map(|row| row.line_count as f32 * row.step + row.pad)
+            .map(Self::table_row_height)
             .collect::<Vec<_>>();
         for (row_index, row) in rows.iter().enumerate().take(end).skip(start) {
             for cell in &row.cells {
@@ -2774,7 +3197,8 @@ impl Flow {
                     + cell.style.padding[0]
                     + cell.style.padding[2]
                     + 2.0 * cell.style.border_width;
-                let current: f32 = heights[local_start..local_end].iter().sum();
+                let current: f32 = heights[local_start..local_end].iter().sum::<f32>()
+                    - rows[span_end - 1].row_gap;
                 if required > current {
                     heights[local_end - 1] += required - current;
                 }
@@ -2799,11 +3223,16 @@ impl Flow {
         for (row_index, row) in rows.iter().enumerate().take(end).skip(start) {
             let local_row = row_index - start;
             for cell in &row.cells {
-                let x = self.content_x() + widths[..cell.column].iter().sum::<f32>();
-                let width: f32 = widths[cell.column..cell.column + cell.colspan].iter().sum();
+                let x = self.content_x()
+                    + widths[..cell.column].iter().sum::<f32>()
+                    + row.column_gap * cell.column as f32;
+                let width: f32 = widths[cell.column..cell.column + cell.colspan]
+                    .iter()
+                    .sum::<f32>()
+                    + row.column_gap * cell.colspan.saturating_sub(1) as f32;
                 let span_end = local_row + cell.rowspan;
                 let y = group_y + offsets[local_row];
-                let height = offsets[span_end] - offsets[local_row];
+                let height = offsets[span_end] - offsets[local_row] - row.row_gap;
                 self.paint_box(x, y, width, height, &cell.style);
                 let text_x = x + cell.style.border_width + cell.style.padding[3];
                 let content_height: f32 = cell.lines.iter().map(|line| line.height).sum();
@@ -2851,13 +3280,13 @@ impl Flow {
         footer_height: f32,
         row: &Row,
     ) -> Result<()> {
-        let first_line = row.step + row.pad;
+        let first_line = row.step + row.pad + row.row_gap;
         if height + first_line + footer_height > self.full_height() + EPS {
             return Err(Error(
                 "table header and footer leave no room for a data line".into(),
             ));
         }
-        let complete_row = row.line_count as f32 * row.step + row.pad;
+        let complete_row = Self::table_row_height(row);
         let data_height = if height + complete_row + footer_height <= self.full_height() + EPS {
             complete_row
         } else {
@@ -2883,8 +3312,13 @@ impl Flow {
         let height = count as f32 * row.step + row.pad;
         let y = self.y;
         for cell in &row.cells {
-            let x = self.content_x() + widths[..cell.column].iter().sum::<f32>();
-            let w: f32 = widths[cell.column..cell.column + cell.colspan].iter().sum();
+            let x = self.content_x()
+                + widths[..cell.column].iter().sum::<f32>()
+                + row.column_gap * cell.column as f32;
+            let w: f32 = widths[cell.column..cell.column + cell.colspan]
+                .iter()
+                .sum::<f32>()
+                + row.column_gap * cell.colspan.saturating_sub(1) as f32;
             self.paint_box(x, y, w, height, &cell.style);
             let text_x = x + cell.style.border_width + cell.style.padding[3];
             let visible_lines = cell.lines.len().saturating_sub(start).min(count);
@@ -2910,5 +3344,8 @@ impl Flow {
             }
         }
         self.y += height;
+        if start + count >= row.line_count {
+            self.y += row.row_gap;
+        }
     }
 }

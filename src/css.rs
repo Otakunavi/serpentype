@@ -377,6 +377,7 @@ pub struct Style {
     pub text_decoration: String,
     pub vertical_align: String,
     pub white_space: String,
+    pub hyphens: String,
     pub letter_spacing: f32,
     pub word_spacing: f32,
     pub color: Color,
@@ -407,6 +408,8 @@ pub struct Style {
     pub row_gap: f32,
     pub column_gap: f32,
     pub table_layout: String,
+    pub border_collapse: String,
+    pub border_spacing: [f32; 2],
     pub break_before: bool,
     pub break_after: bool,
     pub break_before_side: Option<String>,
@@ -435,6 +438,7 @@ impl Default for Style {
             text_decoration: "none".into(),
             vertical_align: "baseline".into(),
             white_space: "normal".into(),
+            hyphens: "manual".into(),
             letter_spacing: 0.0,
             word_spacing: 0.0,
             color: Color(0.0, 0.0, 0.0),
@@ -465,6 +469,8 @@ impl Default for Style {
             row_gap: 0.0,
             column_gap: 0.0,
             table_layout: "auto".into(),
+            border_collapse: "separate".into(),
+            border_spacing: [0.0; 2],
             break_before: false,
             break_after: false,
             break_before_side: None,
@@ -490,6 +496,7 @@ impl Style {
             word_break: parent.word_break.clone(),
             text_decoration: parent.text_decoration.clone(),
             white_space: parent.white_space.clone(),
+            hyphens: parent.hyphens.clone(),
             letter_spacing: parent.letter_spacing,
             word_spacing: parent.word_spacing,
             color: parent.color,
@@ -1303,6 +1310,7 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         "white-space" if matches!(v, "normal" | "nowrap" | "pre" | "pre-wrap") => {
             style.white_space = v.into()
         }
+        "hyphens" if matches!(v, "none" | "manual") => style.hyphens = v.into(),
         "letter-spacing" => {
             if let Some(n) = computed_length(v, style.font_size) {
                 style.letter_spacing = n
@@ -1546,6 +1554,25 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         }
         "break-inside" | "page-break-inside" if v == "avoid" => style.break_inside_avoid = true,
         "table-layout" if matches!(v, "auto" | "fixed") => style.table_layout = v.into(),
+        "border-collapse" if matches!(v, "collapse" | "separate") => {
+            style.border_collapse = v.into()
+        }
+        "border-spacing" => {
+            let values = v.split_whitespace().collect::<Vec<_>>();
+            if matches!(values.len(), 1 | 2) {
+                let horizontal = computed_length(values[0], style.font_size).filter(|n| *n >= 0.0);
+                let vertical =
+                    computed_length(values.get(1).copied().unwrap_or(values[0]), style.font_size)
+                        .filter(|n| *n >= 0.0);
+                if let (Some(horizontal), Some(vertical)) = (horizontal, vertical) {
+                    style.border_spacing = [horizontal, vertical];
+                } else {
+                    bad = true;
+                }
+            } else {
+                bad = true;
+            }
+        }
         "orphans" => {
             if let Some(value) = v
                 .parse::<usize>()

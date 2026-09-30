@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add atomic `inline-block` boxes with independent sizing, padding, borders, backgrounds, margins and internally wrapped inline text.
+- Implement `hyphens: none | manual`; soft hyphens remain invisible unless selected as a line break in both default and experimental shaping paths.
+- Parse `border-collapse` and one/two-value `border-spacing`; apply spacing to separate table tracks and rows while collapsed tables ignore it.
+
 ## 0.2.0-alpha.1 — 2026-09-30
 
 - Keep the existing `Renderer`, `PreparedDocument`, `FontRegistry`, `HTML`, `CSS`, `Document` and `FontConfiguration` call forms.

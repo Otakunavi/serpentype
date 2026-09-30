@@ -74,6 +74,83 @@ fn fixed_table_layout_uses_first_row_widths() {
 }
 
 #[test]
+fn separate_table_borders_apply_horizontal_and_vertical_spacing() {
+    let document = renderer()
+        .layout(
+            "<table><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></table>",
+            "table { width:140pt; table-layout:fixed; border-collapse:separate; border-spacing:10pt 6pt } \
+             td { border:1pt solid black; background:white; padding:1pt; line-height:12pt }",
+        )
+        .unwrap();
+    let rects = document.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Rect { x, y, w, h, .. } => Some((*x, *y, *w, *h)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(rects.len(), 4);
+    assert!((rects[1].0 - (rects[0].0 + rects[0].2) - 10.0).abs() < 0.1);
+    assert!((rects[2].1 - (rects[0].1 + rects[0].3) - 6.0).abs() < 0.1);
+}
+
+#[test]
+fn collapsed_table_ignores_border_spacing() {
+    let document = renderer()
+        .layout(
+            "<table><tr><td>A</td><td>B</td></tr></table>",
+            "table { width:140pt; table-layout:fixed; border-collapse:collapse; border-spacing:20pt } \
+             td { border:1pt solid black; background:white; padding:1pt }",
+        )
+        .unwrap();
+    let rects = document.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Rect { x, w, .. } => Some((*x, *w)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(rects.len(), 2);
+    assert!((rects[1].0 - (rects[0].0 + rects[0].1)).abs() < 0.1);
+}
+
+#[test]
+fn separate_border_spacing_participates_in_table_pagination() {
+    let rows = (0..14)
+        .map(|index| format!("<tr><td>R{index:02}</td></tr>"))
+        .collect::<String>();
+    let document = renderer()
+        .layout(
+            &format!("<table><thead><tr><th>HEAD</th></tr></thead><tbody>{rows}</tbody></table>"),
+            "@page { size:140pt 100pt; margin:10pt } \
+             table { width:120pt; border-collapse:separate; border-spacing:0 3pt } \
+             td, th { border:0.5pt solid black; padding:1pt; font-size:8pt; line-height:10pt }",
+        )
+        .unwrap();
+    assert!(document.page_count() > 1);
+    let combined = document
+        .pages
+        .iter()
+        .map(|page| {
+            page.items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Text { ch, .. } => Some(*ch),
+                    _ => None,
+                })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    assert!(combined.iter().all(|page| page.contains("HEAD")));
+    let all = combined.join("|");
+    for index in 0..14 {
+        assert_eq!(all.matches(&format!("R{index:02}")).count(), 1);
+    }
+}
+
+#[test]
 fn cell_vertical_align_positions_short_content() {
     let document = renderer()
         .layout(

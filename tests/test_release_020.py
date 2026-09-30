@@ -57,6 +57,25 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(matrix["css.box.min-max"], "partial")
         self.assertEqual(matrix["css.visibility"], "partial")
         self.assertTrue(self.renderer.supports("css.visibility"))
+        self.assertEqual(matrix["css.display.inline-block"], "partial")
+        self.assertEqual(matrix["css.hyphens.manual"], "full")
+        self.assertEqual(matrix["html.table.border-model"], "partial")
+
+    def test_inline_block_and_manual_soft_hyphen_export(self):
+        from pypdf import PdfReader
+        html = ("<p style='margin:0;width:70pt'>A"
+                "<span style='display:inline-block;width:28pt;padding:2pt;"
+                "background:red'>one two</span>Z</p>"
+                "<p style='margin:0;width:55pt;overflow-wrap:normal;hyphens:manual'>"
+                "encyclo&shy;pedia</p>")
+        document = self.renderer.layout(html)
+        pdf = bytes(document.to_pdf())
+        page = PdfReader(io.BytesIO(pdf)).pages[0]
+        extracted = page.extract_text()
+        self.assertIn("one", extracted)
+        self.assertIn("two", extracted)
+        self.assertIn("encyclo-pedia", extracted.replace("\n", ""))
+        self.assertIn(b" re", page.get_contents().get_data())
 
     def test_visibility_hidden_keeps_content_out_of_pdf_text(self):
         from pypdf import PdfReader

@@ -2,12 +2,12 @@
 
 This is the canonical progress tracker for the final 0.2.0 release. A checkbox is closed only when the implementation, mandatory Rust and installed-wheel Python tests, capability entry, and relevant documentation are present. Broad capability groups may remain `partial` while their individual checkboxes close.
 
-Current snapshot after `0d45eea`: **29 closed, 42 open**.
+Current snapshot after the inline/text/table slice: **32 closed, 40 open**.
 
 ## Text and fonts
 
 - [x] Preserve styles for the supported inline HTML elements and mixed font sizes in one line.
-- [ ] Give `inline-block` an independent inline formatting box.
+- [x] Give `inline-block` an independent inline formatting box for internally wrapped inline text.
 - [x] Shape kerning, ligatures, combining sequences, Arabic, Hebrew and mixed bidi text through RustyBuzz when experimental shaping is enabled.
 - [ ] Remove the experimental shaping gate after meeting extraction and performance requirements.
 - [x] Select fallback fonts per Unicode grapheme cluster and cover Cyrillic, extended Latin and monochrome emoji.
@@ -15,7 +15,7 @@ Current snapshot after `0d45eea`: **29 closed, 42 open**.
 - [x] Return structured missing-glyph data and a typed Python exception.
 - [ ] Add source filenames and character-reference positions to missing-glyph diagnostics.
 - [x] Support normal/nowrap/pre/pre-wrap, Unicode whitespace and nonbreaking spaces.
-- [ ] Implement soft-hyphen rendering and `hyphens: manual`.
+- [x] Implement soft-hyphen rendering and `hyphens: manual` in default and shaped text.
 
 ## CSS text, units, colors and box model
 
@@ -35,7 +35,8 @@ Current snapshot after `0d45eea`: **29 closed, 42 open**.
 
 - [x] Support auto/fixed tables, colspan, body rowspan, cell vertical alignment and repeated headers/optional footers.
 - [x] Keep connected rowspan groups together or return a controlled error without losing content.
-- [ ] Implement `border-collapse`, collapsed-border conflict resolution, `border-spacing` and separate borders.
+- [x] Apply one/two-value `border-spacing` to separate table geometry and suppress it for collapsed tables.
+- [ ] Implement collapsed-border conflict resolution.
 - [ ] Fragment oversized rowspan groups across pages with continued backgrounds and borders.
 - [ ] Support rowspan in repeating header/footer groups.
 - [ ] Lay out nested tables without flattening or losing content.
@@ -102,3 +103,4 @@ Current snapshot after `0d45eea`: **29 closed, 42 open**.
 ## Completed after `0.2.0-alpha.1`
 
 - `0d45eea`: `visibility`, paragraph `box-sizing`, paragraph and raster-image min/max dimensions, bidi-aware hidden inline text, Rust regression tests, installed-wheel Python coverage, capability documentation and benchmark verification.
+- Current slice: atomic painted inline-blocks, manual soft-hyphen breaks in both text paths, and separate/collapsed table spacing geometry.
