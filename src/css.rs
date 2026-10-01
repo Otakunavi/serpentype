@@ -234,10 +234,10 @@ fn finite_f32(raw: &str) -> Option<f32> {
     raw.parse::<f32>().ok().filter(|value| value.is_finite())
 }
 
-pub fn color(value: &str) -> Option<Color> {
+pub fn color_with_alpha(value: &str) -> Option<(Color, f32)> {
     let v = value.trim().to_ascii_lowercase();
     if v == "transparent" {
-        return None;
+        return Some((Color(0.0, 0.0, 0.0), 0.0));
     }
     if let Some(body) = v
         .strip_prefix("rgb(")
@@ -251,9 +251,15 @@ pub fn color(value: &str) -> Option<Color> {
         if parts.len() != 3 && parts.len() != 4 {
             return None;
         }
-        if parts.len() == 4 && parts[3] != "1" && parts[3] != "100%" {
-            return None;
-        }
+        let alpha = if parts.len() == 4 {
+            if let Some(percent) = parts[3].strip_suffix('%') {
+                finite_f32(percent)?.clamp(0.0, 100.0) / 100.0
+            } else {
+                finite_f32(parts[3])?.clamp(0.0, 1.0)
+            }
+        } else {
+            1.0
+        };
         let channel = |raw: &str| -> Option<f32> {
             if let Some(p) = raw.strip_suffix('%') {
                 Some(finite_f32(p)?.clamp(0.0, 100.0) / 100.0)
@@ -261,10 +267,9 @@ pub fn color(value: &str) -> Option<Color> {
                 Some(finite_f32(raw)?.clamp(0.0, 255.0) / 255.0)
             }
         };
-        return Some(Color(
-            channel(parts[0])?,
-            channel(parts[1])?,
-            channel(parts[2])?,
+        return Some((
+            Color(channel(parts[0])?, channel(parts[1])?, channel(parts[2])?),
+            alpha,
         ));
     }
     if let Some(body) = v
@@ -279,9 +284,15 @@ pub fn color(value: &str) -> Option<Color> {
         if parts.len() != 3 && parts.len() != 4 {
             return None;
         }
-        if parts.len() == 4 && parts[3] != "1" && parts[3] != "100%" {
-            return None;
-        }
+        let alpha = if parts.len() == 4 {
+            if let Some(percent) = parts[3].strip_suffix('%') {
+                finite_f32(percent)?.clamp(0.0, 100.0) / 100.0
+            } else {
+                finite_f32(parts[3])?.clamp(0.0, 1.0)
+            }
+        } else {
+            1.0
+        };
         let hue = finite_f32(parts[0].trim_end_matches("deg"))?.rem_euclid(360.0);
         let saturation = finite_f32(parts[1].strip_suffix('%')?)?.clamp(0.0, 100.0) / 100.0;
         let lightness = finite_f32(parts[2].strip_suffix('%')?)?.clamp(0.0, 100.0) / 100.0;
@@ -297,7 +308,7 @@ pub fn color(value: &str) -> Option<Color> {
             _ => (chroma, 0.0, secondary),
         };
         let m = lightness - chroma / 2.0;
-        return Some(Color(r + m, g + m, b + m));
+        return Some((Color(r + m, g + m, b + m), alpha));
     }
     let hex = named_color(&v).unwrap_or(&v);
     let raw = hex.strip_prefix('#')?;
@@ -310,11 +321,18 @@ pub fn color(value: &str) -> Option<Color> {
         return None;
     }
     let n = u32::from_str_radix(&full, 16).ok()?;
-    Some(Color(
-        ((n >> 16) & 255) as f32 / 255.0,
-        ((n >> 8) & 255) as f32 / 255.0,
-        (n & 255) as f32 / 255.0,
+    Some((
+        Color(
+            ((n >> 16) & 255) as f32 / 255.0,
+            ((n >> 8) & 255) as f32 / 255.0,
+            (n & 255) as f32 / 255.0,
+        ),
+        1.0,
     ))
+}
+pub fn color(value: &str) -> Option<Color> {
+    let (color, alpha) = color_with_alpha(value)?;
+    (alpha >= 1.0 - f32::EPSILON).then_some(color)
 }
 
 /// Physical page size and margins, all expressed in PDF points.
@@ -381,11 +399,25 @@ pub struct Style {
     pub letter_spacing: f32,
     pub word_spacing: f32,
     pub color: Color,
+    pub color_alpha: f32,
     pub background: Option<Color>,
+    pub background_alpha: f32,
+    pub opacity: f32,
+    pub parent_opacity: f32,
     pub margin: [f32; 4],
+    pub margin_percent: [Option<f32>; 4],
+    pub margin_top_consumed: bool,
+    pub margin_bottom_consumed: bool,
     pub padding: [f32; 4],
+    pub padding_percent: [Option<f32>; 4],
     pub border_width: f32,
     pub border_color: Color,
+    pub border_widths: [f32; 4],
+    pub border_colors: [Color; 4],
+    pub border_alphas: [f32; 4],
+    pub border_styles: [String; 4],
+    pub border_radius: [f32; 4],
+    pub overflow: String,
     pub box_sizing: String,
     pub width: Option<f32>,
     pub width_percent: Option<f32>,
@@ -442,11 +474,25 @@ impl Default for Style {
             letter_spacing: 0.0,
             word_spacing: 0.0,
             color: Color(0.0, 0.0, 0.0),
+            color_alpha: 1.0,
             background: None,
+            background_alpha: 1.0,
+            opacity: 1.0,
+            parent_opacity: 1.0,
             margin: [0.0; 4],
+            margin_percent: [None; 4],
+            margin_top_consumed: false,
+            margin_bottom_consumed: false,
             padding: [0.0; 4],
+            padding_percent: [None; 4],
             border_width: 0.0,
             border_color: Color(0.0, 0.0, 0.0),
+            border_widths: [0.0; 4],
+            border_colors: [Color(0.0, 0.0, 0.0); 4],
+            border_alphas: [1.0; 4],
+            border_styles: std::array::from_fn(|_| "none".into()),
+            border_radius: [0.0; 4],
+            overflow: "visible".into(),
             box_sizing: "content-box".into(),
             width: None,
             width_percent: None,
@@ -500,6 +546,11 @@ impl Style {
             letter_spacing: parent.letter_spacing,
             word_spacing: parent.word_spacing,
             color: parent.color,
+            color_alpha: parent.color_alpha,
+            // Opacity is represented cumulatively so descendants paint with the
+            // same group alpha without changing the public display-list model.
+            opacity: parent.opacity,
+            parent_opacity: parent.opacity,
             page_name: parent.page_name.clone(),
             orphans: parent.orphans,
             widows: parent.widows,
@@ -705,6 +756,50 @@ fn box_values_ctx(value: &str, font_size: f32) -> Option<[f32; 4]> {
         [a, b, c, d] => Some([*a, *b, *c, *d]),
         _ => None,
     }
+}
+fn edge_values_ctx(value: &str, font_size: f32) -> Option<([f32; 4], [Option<f32>; 4])> {
+    let values: Vec<(f32, Option<f32>)> = value
+        .split_whitespace()
+        .map(|raw| {
+            if let Some(percent) = raw.strip_suffix('%').and_then(finite_f32) {
+                Some((0.0, Some(percent / 100.0)))
+            } else {
+                Some((computed_length(raw, font_size)?, None))
+            }
+        })
+        .collect::<Option<_>>()?;
+    let expanded = match values.as_slice() {
+        [a] => [*a; 4],
+        [a, b] => [*a, *b, *a, *b],
+        [a, b, c] => [*a, *b, *c, *b],
+        [a, b, c, d] => [*a, *b, *c, *d],
+        _ => return None,
+    };
+    Some((expanded.map(|value| value.0), expanded.map(|value| value.1)))
+}
+fn border_parts(value: &str, font_size: f32) -> Option<(f32, String, Color, f32)> {
+    let mut width = None;
+    let mut style = None;
+    let mut paint = None;
+    for part in value.split_whitespace() {
+        if width.is_none() {
+            width = border_length(part, font_size).filter(|value| *value >= 0.0);
+            if width.is_some() {
+                continue;
+            }
+        }
+        if matches!(part, "none" | "solid" | "dashed" | "dotted") {
+            style = Some(part.to_string());
+            continue;
+        }
+        if paint.is_none() {
+            paint = color_with_alpha(part);
+        }
+    }
+    let style = style?;
+    let width = width.unwrap_or(if style == "none" { 0.0 } else { 1.0 });
+    let (color, alpha) = paint.unwrap_or((Color(0.0, 0.0, 0.0), 1.0));
+    Some((width, style, color, alpha))
 }
 fn unsupported(warnings: &mut Vec<Diagnostic>, code: &'static str, msg: String) {
     warnings.push(Diagnostic::new(code, msg));
@@ -1162,6 +1257,7 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             style.display = v.into()
         }
         "visibility" if matches!(v, "visible" | "hidden") => style.visibility = v.into(),
+        "overflow" if matches!(v, "visible" | "hidden") => style.overflow = v.into(),
         "box-sizing" if matches!(v, "content-box" | "border-box") => style.box_sizing = v.into(),
         "position" if matches!(v, "static" | "relative") => style.position = v.into(),
         "top" | "right" | "bottom" | "left" => {
@@ -1334,42 +1430,59 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             }
         }
         "color" => {
-            if let Some(c) = color(v) {
-                style.color = c
+            if let Some((c, alpha)) = color_with_alpha(v) {
+                style.color = c;
+                style.color_alpha = alpha;
             } else {
                 bad = true
             }
         }
         "background" | "background-color" => {
-            if v == "transparent" {
-                style.background = None
-            } else if let Some(c) = color(v) {
-                style.background = Some(c)
+            if let Some((c, alpha)) = color_with_alpha(v) {
+                style.background = Some(c);
+                style.background_alpha = alpha;
             } else {
                 bad = true
             }
         }
+        "opacity" => {
+            if let Some(alpha) = finite_f32(v).filter(|value| (0.0..=1.0).contains(value)) {
+                style.opacity = style.parent_opacity * alpha;
+            } else {
+                bad = true;
+            }
+        }
         "margin" => {
-            if let Some(n) = box_values_ctx(v, style.font_size) {
-                style.margin = n
+            if let Some((fixed, percent)) = edge_values_ctx(v, style.font_size) {
+                style.margin = fixed;
+                style.margin_percent = percent;
             } else {
                 bad = true
             }
         }
         "padding" => {
-            if let Some(n) =
-                box_values_ctx(v, style.font_size).filter(|values| values.iter().all(|n| *n >= 0.0))
+            if let Some((fixed, percent)) =
+                edge_values_ctx(v, style.font_size).filter(|(values, percentages)| {
+                    values.iter().all(|n| *n >= 0.0)
+                        && percentages.iter().flatten().all(|n| *n >= 0.0)
+                })
             {
-                style.padding = n
+                style.padding = fixed;
+                style.padding_percent = percent;
             } else {
                 bad = true
             }
         }
         "margin-top" | "margin-right" | "margin-bottom" | "margin-left" | "padding-top"
         | "padding-right" | "padding-bottom" | "padding-left" => {
-            if let Some(n) = computed_length(v, style.font_size)
-                .filter(|n| key.starts_with("margin") || *n >= 0.0)
-            {
+            let parsed = v
+                .strip_suffix('%')
+                .and_then(finite_f32)
+                .map(|value| (0.0, Some(value / 100.0)))
+                .or_else(|| computed_length(v, style.font_size).map(|value| (value, None)));
+            if let Some((n, percent)) = parsed.filter(|(n, percent)| {
+                key.starts_with("margin") || (*n >= 0.0 && percent.is_none_or(|p| p >= 0.0))
+            }) {
                 let idx = if key.ends_with("top") {
                     0
                 } else if key.ends_with("right") {
@@ -1380,46 +1493,167 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
                     3
                 };
                 if key.starts_with("margin") {
-                    style.margin[idx] = n
+                    style.margin[idx] = n;
+                    style.margin_percent[idx] = percent;
                 } else {
-                    style.padding[idx] = n
+                    style.padding[idx] = n;
+                    style.padding_percent[idx] = percent;
                 }
             } else {
                 bad = true
             }
         }
         "border" => {
-            let parts: Vec<&str> = v.split_whitespace().collect();
-            if parts.len() >= 2
-                && parts.len() <= 3
-                && parts[1] == "solid"
-                && parts.get(2).is_none_or(|c| color(c).is_some())
-                && parts
-                    .first()
-                    .and_then(|s| border_length(s, style.font_size))
-                    .is_some_and(|n| n >= 0.0)
-            {
-                let n = border_length(parts[0], style.font_size).unwrap_or(0.0);
-                style.border_width = n;
-                if let Some(c) = parts.get(2).and_then(|s| color(s)) {
-                    style.border_color = c;
-                }
+            if let Some((width, border_style, color, alpha)) = border_parts(v, style.font_size) {
+                style.border_width = width;
+                style.border_color = color;
+                style.border_widths = [width; 4];
+                style.border_colors = [color; 4];
+                style.border_alphas = [alpha; 4];
+                style.border_styles = std::array::from_fn(|_| border_style.clone());
             } else {
                 bad = true
             }
         }
         "border-width" => {
-            if let Some(n) = border_length(v, style.font_size).filter(|n| *n >= 0.0) {
-                style.border_width = n
+            let values: Vec<_> = v.split_whitespace().collect();
+            let parsed = values
+                .iter()
+                .map(|raw| border_length(raw, style.font_size))
+                .collect::<Option<Vec<_>>>();
+            if let Some(values) = parsed.filter(|values| values.iter().all(|n| *n >= 0.0)) {
+                let edges = match values.as_slice() {
+                    [a] => Some([*a; 4]),
+                    [a, b] => Some([*a, *b, *a, *b]),
+                    [a, b, c] => Some([*a, *b, *c, *b]),
+                    [a, b, c, d] => Some([*a, *b, *c, *d]),
+                    _ => None,
+                };
+                if let Some(edges) = edges {
+                    style.border_widths = edges;
+                    style.border_width = edges.into_iter().fold(0.0, f32::max);
+                } else {
+                    bad = true;
+                }
             } else {
                 bad = true
             }
         }
         "border-color" => {
-            if let Some(c) = color(v) {
-                style.border_color = c
+            let values: Vec<_> = v
+                .split_whitespace()
+                .map(color_with_alpha)
+                .collect::<Option<_>>()
+                .unwrap_or_default();
+            let edges = match values.as_slice() {
+                [a] => Some([*a; 4]),
+                [a, b] => Some([*a, *b, *a, *b]),
+                [a, b, c] => Some([*a, *b, *c, *b]),
+                [a, b, c, d] => Some([*a, *b, *c, *d]),
+                _ => None,
+            };
+            if let Some(edges) = edges {
+                style.border_colors = edges.map(|v| v.0);
+                style.border_alphas = edges.map(|v| v.1);
+                style.border_color = edges[0].0;
             } else {
                 bad = true
+            }
+        }
+        "border-style" => {
+            let values: Vec<_> = v.split_whitespace().collect();
+            if values
+                .iter()
+                .all(|value| matches!(*value, "none" | "solid" | "dashed" | "dotted"))
+            {
+                style.border_styles = match values.as_slice() {
+                    [a] => std::array::from_fn(|_| (*a).into()),
+                    [a, b] => [(*a).into(), (*b).into(), (*a).into(), (*b).into()],
+                    [a, b, c] => [(*a).into(), (*b).into(), (*c).into(), (*b).into()],
+                    [a, b, c, d] => [(*a).into(), (*b).into(), (*c).into(), (*d).into()],
+                    _ => {
+                        bad = true;
+                        std::array::from_fn(|_| "none".into())
+                    }
+                };
+            } else {
+                bad = true;
+            }
+        }
+        "border-top" | "border-right" | "border-bottom" | "border-left" => {
+            let index = match key {
+                "border-top" => 0,
+                "border-right" => 1,
+                "border-bottom" => 2,
+                _ => 3,
+            };
+            if let Some((width, border_style, color, alpha)) = border_parts(v, style.font_size) {
+                style.border_widths[index] = width;
+                style.border_styles[index] = border_style;
+                style.border_colors[index] = color;
+                style.border_alphas[index] = alpha;
+                style.border_width = style.border_widths.into_iter().fold(0.0, f32::max);
+            } else {
+                bad = true;
+            }
+        }
+        "border-top-width" | "border-right-width" | "border-bottom-width" | "border-left-width" => {
+            let index = if key.contains("top") {
+                0
+            } else if key.contains("right") {
+                1
+            } else if key.contains("bottom") {
+                2
+            } else {
+                3
+            };
+            if let Some(width) = border_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                style.border_widths[index] = width;
+                style.border_width = style.border_widths.into_iter().fold(0.0, f32::max);
+            } else {
+                bad = true;
+            }
+        }
+        "border-top-color" | "border-right-color" | "border-bottom-color" | "border-left-color" => {
+            let index = if key.contains("top") {
+                0
+            } else if key.contains("right") {
+                1
+            } else if key.contains("bottom") {
+                2
+            } else {
+                3
+            };
+            if let Some((paint, alpha)) = color_with_alpha(v) {
+                style.border_colors[index] = paint;
+                style.border_alphas[index] = alpha;
+            } else {
+                bad = true;
+            }
+        }
+        "border-top-style" | "border-right-style" | "border-bottom-style" | "border-left-style" => {
+            let index = if key.contains("top") {
+                0
+            } else if key.contains("right") {
+                1
+            } else if key.contains("bottom") {
+                2
+            } else {
+                3
+            };
+            if matches!(v, "none" | "solid" | "dashed" | "dotted") {
+                style.border_styles[index] = v.into();
+            } else {
+                bad = true;
+            }
+        }
+        "border-radius" => {
+            if let Some(values) =
+                box_values_ctx(v, style.font_size).filter(|v| v.iter().all(|n| *n >= 0.0))
+            {
+                style.border_radius = values;
+            } else {
+                bad = true;
             }
         }
         "width" => {

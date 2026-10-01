@@ -26,17 +26,26 @@ class Release020Tests(unittest.TestCase):
         self.assertTrue(self.renderer.supports("pdf.deterministic"))
         self.assertEqual(matrix["image.data-uri"], "partial")
         self.assertEqual(matrix["resource.local-base-dir-confinement"], "full")
-        self.assertEqual(matrix["font.shaping"], "experimental")
-        self.assertFalse(self.renderer.supports("font.shaping"))
+        self.assertEqual(matrix["font.shaping"], "full")
+        self.assertTrue(self.renderer.supports("font.shaping"))
         self.assertTrue(serpentype.Renderer(experimental_shaping=True).supports("font.shaping"))
         self.assertEqual(matrix["image.svg"], "partial")
         self.assertTrue(self.renderer.supports("image.svg"))
-        self.assertEqual(matrix["font.bidi.mixed"], "experimental")
-        self.assertEqual(matrix["font.bidi.controls"], "experimental")
-        self.assertFalse(self.renderer.supports("font.bidi.controls"))
+        self.assertEqual(matrix["font.bidi.mixed"], "full")
+        self.assertEqual(matrix["font.bidi.controls"], "full")
+        self.assertTrue(self.renderer.supports("font.bidi.controls"))
         self.assertTrue(
             serpentype.Renderer(experimental_shaping=True).supports("font.bidi.controls")
         )
+        for capability in (
+            "css.length.percent-edges", "css.color.alpha",
+            "css.overflow-clipping", "css.margin-collapse", "css.border.per-side",
+            "css.border.radius", "font.missing-glyph-source",
+        ):
+            self.assertEqual(matrix[capability], "full")
+            self.assertTrue(self.renderer.supports(capability))
+        self.assertEqual(matrix["css.opacity"], "partial")
+        self.assertTrue(self.renderer.supports("css.opacity"))
         for capability in ("font.cff", "font.woff", "font.woff2",
                            "font.variable-weight", "font.synthetic-bold",
                            "font.synthetic-italic", "font.fallback.emoji-mono",
@@ -280,13 +289,14 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(doc.page_count, 1)
         self.assertEqual(doc.to_pdf(), doc.to_pdf())
 
-    def test_experimental_shaping_uses_ligatures(self):
+    def test_production_shaping_uses_ligatures(self):
         from pypdf import PdfReader
 
         fonts = self.renderer_fonts()
-        plain = serpentype.Renderer(fonts=fonts).layout("<p>office</p>")
-        shaped = serpentype.Renderer(fonts=fonts, experimental_shaping=True).layout("<p>office</p>")
-        self.assertLess(shaped.render_stats.glyph_count, plain.render_stats.glyph_count)
+        shaped = serpentype.Renderer(fonts=fonts).layout("<p>office</p>")
+        compatibility = serpentype.Renderer(fonts=fonts, experimental_shaping=False).layout("<p>office</p>")
+        self.assertEqual(shaped.render_stats.glyph_count, compatibility.render_stats.glyph_count)
+        self.assertLess(shaped.render_stats.glyph_count, len("office"))
         self.assertGreater(shaped.render_stats.shaping_ms, 0)
         self.assertEqual(shaped.to_pdf(), shaped.to_pdf())
         self.assertEqual(PdfReader(io.BytesIO(bytes(shaped.to_pdf()))).pages[0].extract_text(), "office")
@@ -360,6 +370,25 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(error.source, "<html>")
         self.assertEqual(error.line, 2)
         self.assertGreater(error.column, 1)
+
+    def test_missing_glyph_character_reference_reports_named_source(self):
+        fonts = self.renderer_fonts()
+        with self.assertRaises(serpentype.MissingGlyphError) as caught:
+            serpentype.Renderer(fonts=fonts, source_name="templates/invoice sample.html").layout(
+                "<div>ok</div>\n<p>&#x10fff;</p>")
+        error = caught.exception
+        self.assertEqual(error.source, "templates/invoice sample.html")
+        self.assertEqual(error.line, 2)
+        self.assertEqual(error.column, 4)
+
+    def test_compat_html_filename_is_used_for_missing_glyph_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "invoice source.html"
+            source.write_text("<p>&#x10fff;</p>", encoding="utf-8")
+            with self.assertRaises(serpentype.MissingGlyphError) as caught:
+                serpentype.HTML(filename=source).render()
+            self.assertEqual(caught.exception.source, str(source))
+            self.assertEqual((caught.exception.line, caught.exception.column), (1, 4))
 
     def test_compat_css_woff2_font_face(self):
         font = Path(__file__).parent / "fixtures" / "SourceSans3-Regular.otf.woff2"

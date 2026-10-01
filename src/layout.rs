@@ -58,7 +58,39 @@ fn cancelled(token: Option<&AtomicBool>) -> Result<()> {
     }
 }
 
-fn add_html_location(error: Error, html: &str) -> Error {
+fn decoded_reference(raw: &str) -> Option<char> {
+    match raw {
+        "nbsp" => Some('\u{00a0}'),
+        "amp" => Some('&'),
+        "lt" => Some('<'),
+        "gt" => Some('>'),
+        "quot" => Some('"'),
+        "apos" => Some('\''),
+        _ => raw
+            .strip_prefix("#x")
+            .or_else(|| raw.strip_prefix("#X"))
+            .and_then(|value| u32::from_str_radix(value, 16).ok())
+            .or_else(|| raw.strip_prefix('#').and_then(|value| value.parse().ok()))
+            .and_then(char::from_u32),
+    }
+}
+fn source_character_offset(html: &str, wanted: char) -> Option<usize> {
+    let literal = html.find(wanted);
+    let mut reference = None;
+    for (start, _) in html.match_indices('&') {
+        let tail = &html[start + 1..];
+        let Some(end) = tail.find(';') else { continue };
+        if end <= 32 && decoded_reference(&tail[..end]) == Some(wanted) {
+            reference = Some(start);
+            break;
+        }
+    }
+    match (literal, reference) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+fn add_html_location(error: Error, html: &str, source_name: Option<&str>) -> Error {
     let Some(hex) = error
         .0
         .strip_prefix("no registered font for U+")
@@ -69,7 +101,7 @@ fn add_html_location(error: Error, html: &str) -> Error {
     let Some(ch) = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) else {
         return error;
     };
-    let Some(offset) = html.find(ch) else {
+    let Some(offset) = source_character_offset(html, ch) else {
         return error;
     };
     let before = &html[..offset];
@@ -80,7 +112,11 @@ fn add_html_location(error: Error, html: &str) -> Error {
         .chars()
         .count()
         + 1;
-    Error(format!("{}; location <html> {line} {column}", error.0))
+    Error(format!(
+        "{}; location {} {line} {column}",
+        error.0,
+        source_name.unwrap_or("<html>")
+    ))
 }
 fn local_resource_path(base_dir: &Path, src: &str, restrict: bool) -> Result<PathBuf> {
     let candidate = base_dir.join(src);
@@ -373,6 +409,26 @@ pub enum Item {
         fill: Option<Color>,
         stroke: Option<(f32, Color)>,
     },
+    RoundedRect {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        fill: Color,
+        radius: [f32; 4],
+        alpha: f32,
+    },
+    Border {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        widths: [f32; 4],
+        colors: [Color; 4],
+        alphas: [f32; 4],
+        styles: [String; 4],
+        radius: [f32; 4],
+    },
     Image {
         data: Arc<ImageData>,
         x: f32,
@@ -380,6 +436,16 @@ pub enum Item {
         w: f32,
         h: f32,
     },
+    BeginOpacity(f32),
+    EndOpacity,
+    BeginClip {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        radius: [f32; 4],
+    },
+    EndClip,
     Link {
         x: f32,
         y: f32,
@@ -402,13 +468,20 @@ fn translate_item(item: &mut Item, dx: f32, dy: f32) {
     match item {
         Item::Text { x, y, .. }
         | Item::Rect { x, y, .. }
+        | Item::RoundedRect { x, y, .. }
+        | Item::Border { x, y, .. }
         | Item::Image { x, y, .. }
+        | Item::BeginClip { x, y, .. }
         | Item::Link { x, y, .. }
         | Item::Destination { x, y, .. } => {
             *x += dx;
             *y += dy;
         }
-        Item::BeginActualText(_) | Item::EndActualText => {}
+        Item::BeginActualText(_)
+        | Item::EndActualText
+        | Item::BeginOpacity(_)
+        | Item::EndOpacity
+        | Item::EndClip => {}
     }
 }
 #[derive(Clone, Debug, Default)]
@@ -451,6 +524,8 @@ pub struct Renderer {
     pub strict: bool,
     pub limits: RenderLimits,
     pub experimental_shaping: bool,
+    /// Optional source label reported by structured diagnostics.
+    pub source_name: Option<String>,
     pub synthetic_bold: bool,
     pub synthetic_italic: bool,
     pub svg_dpi: f32,
@@ -465,7 +540,9 @@ impl Renderer {
             base_dir,
             strict,
             limits: RenderLimits::default(),
-            experimental_shaping: false,
+            // Retained for source compatibility. Shaping is unconditional in 0.2.0.
+            experimental_shaping: true,
+            source_name: None,
             synthetic_bold: false,
             synthetic_italic: false,
             svg_dpi: 144.0,
@@ -587,12 +664,12 @@ impl Renderer {
             self.limits.clone(),
             token,
         );
-        flow.experimental_shaping = self.experimental_shaping;
+        flow.experimental_shaping = true;
         flow.svg_dpi = self.svg_dpi;
         flow.resource_bytes = font_resource_bytes;
         for child in &root.children {
             flow.node(child)
-                .map_err(|error| add_html_location(error, html))?;
+                .map_err(|error| add_html_location(error, html, self.source_name.as_deref()))?;
         }
         flow.render_margin_boxes()?;
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
@@ -651,6 +728,7 @@ struct Glyph {
     unicode: Option<Arc<str>>,
     size: f32,
     color: Color,
+    alpha: f32,
     shift: f32,
     decoration: TextDecoration,
     href: Option<Arc<str>>,
@@ -775,6 +853,7 @@ fn soft_hyphen_glyph(
         unicode: Some(Arc::<str>::from("")),
         size: style.font_size,
         color: style.color,
+        alpha: style.color_alpha * style.opacity,
         shift: 0.0,
         decoration: TextDecoration::None,
         href,
@@ -954,6 +1033,7 @@ fn inline_box_glyph(
         unicode: Some(Arc::<str>::from(node.plain_text())),
         size: style.font_size,
         color: style.color,
+        alpha: style.color_alpha * style.opacity,
         shift,
         decoration: TextDecoration::None,
         href: None,
@@ -973,207 +1053,19 @@ fn inline_box_glyph(
     })
 }
 
-fn place_atomic_glyph(
-    glyph: Glyph,
-    lines: &mut Vec<Line>,
-    current: &mut Vec<Glyph>,
-    current_width: &mut f32,
-    width: f32,
-    first_indent: f32,
-    default_height: f32,
-) -> Result<()> {
-    let available = if lines.is_empty() {
-        width - first_indent
-    } else {
-        width
-    };
-    if *current_width + glyph.advance > available + EPS && !current.is_empty() {
-        push_line(lines, std::mem::take(current), default_height);
-        *current_width = 0.0;
-    }
-    let available = if lines.is_empty() {
-        width - first_indent
-    } else {
-        width
-    };
-    if glyph.advance > available + EPS {
-        return Err(Error(format!(
-            "inline-block width {:.3} exceeds available line width {:.3}",
-            glyph.advance, available
-        )));
-    }
-    *current_width += glyph.advance;
-    current.push(glyph);
-    Ok(())
-}
 fn lines_for(
     node: &Node,
     width: f32,
     first_indent: f32,
     fonts: &FontRegistry,
     token: Option<&AtomicBool>,
-    experimental_shaping: bool,
+    _experimental_shaping: bool,
     shaping_ns: &AtomicU64,
 ) -> Result<Vec<Line>> {
-    if experimental_shaping {
-        let start = Instant::now();
-        let result = lines_for_shaped(node, width, first_indent, fonts, token);
-        shaping_ns.fetch_add(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
-        return result;
-    }
-    if width - first_indent <= 0.0 {
-        return Err(Error("text-indent leaves no usable first line".into()));
-    }
-    let mut runs = Vec::new();
-    inline_runs(node, None, &mut runs, true);
-    let mut lines = Vec::new();
-    let mut current = Vec::<Glyph>::new();
-    let mut current_width = 0.0;
-    let default_height = node.style.line_height.max(node.style.font_size);
-    let mut previous_space = false;
-    let mut character_index = 0usize;
-    for run in runs {
-        let style = &run.style;
-        if let Some(inline) = &run.inline_box {
-            let glyph = inline_box_glyph(
-                inline,
-                run.href.clone(),
-                width,
-                fonts,
-                token,
-                experimental_shaping,
-                shaping_ns,
-            )?;
-            place_atomic_glyph(
-                glyph,
-                &mut lines,
-                &mut current,
-                &mut current_width,
-                width,
-                first_indent,
-                default_height,
-            )?;
-            previous_space = false;
-            continue;
-        }
-        for raw in run.text.chars() {
-            if character_index.is_multiple_of(1024) {
-                cancelled(token)?;
-            }
-            character_index += 1;
-            let preserve = matches!(style.white_space.as_str(), "pre" | "pre-wrap");
-            if raw == '\u{00ad}' {
-                previous_space = false;
-                if style.hyphens == "manual" {
-                    current.push(soft_hyphen_glyph(style, fonts, run.href.clone(), preserve)?);
-                }
-                continue;
-            }
-            if raw == '\u{000b}' || (raw == '\n' && preserve) {
-                push_line(&mut lines, std::mem::take(&mut current), default_height);
-                current_width = 0.0;
-                previous_space = false;
-                continue;
-            }
-            let ch = if raw.is_whitespace() && raw != '\u{00a0}' {
-                ' '
-            } else {
-                raw
-            };
-            if ch == ' ' && !preserve && (previous_space || current.is_empty()) {
-                continue;
-            }
-            previous_space = ch == ' ' && !preserve;
-            let font = fonts.resolve_with_stretch(
-                &style.family,
-                style.weight,
-                &style.font_style,
-                style.font_stretch,
-                ch,
-            )?;
-            let (id, units) = font.glyph(ch)?;
-            let natural_advance = units as f32 * style.font_size / font.units_per_em as f32;
-            let advance = natural_advance
-                + style.letter_spacing
-                + if ch == ' ' { style.word_spacing } else { 0.0 };
-            let shift = match style.vertical_align.as_str() {
-                "super" | "top" => style.font_size * 0.35,
-                "sub" | "bottom" => -style.font_size * 0.2,
-                "middle" => style.font_size * 0.1,
-                _ => 0.0,
-            };
-            let glyph = Glyph {
-                ch,
-                id,
-                font,
-                advance,
-                natural_advance,
-                x_offset: 0.0,
-                y_offset: 0.0,
-                unicode: None,
-                size: style.font_size,
-                color: style.color,
-                shift,
-                decoration: match style.text_decoration.as_str() {
-                    "underline" => TextDecoration::Underline,
-                    "line-through" => TextDecoration::LineThrough,
-                    _ => TextDecoration::None,
-                },
-                href: run.href.clone(),
-                preserve_space: preserve,
-                visible: style.visibility == "visible",
-                soft_hyphen: false,
-                soft_hyphen_advance: 0.0,
-                inline_box: None,
-            };
-            let available = if lines.is_empty() {
-                width - first_indent
-            } else {
-                width
-            };
-            if current_width + advance > available + EPS
-                && !current.is_empty()
-                && !matches!(style.white_space.as_str(), "nowrap" | "pre")
-            {
-                // Prefer the last word boundary; an overwide word falls back to glyph breaks.
-                match last_break_opportunity(&current) {
-                    Some((_, true)) => {
-                        current_width =
-                            break_at_soft_hyphen(&mut current, &mut lines, default_height)
-                                .unwrap_or(0.0);
-                    }
-                    Some((last_space, false)) => {
-                        let trailing = current.split_off(last_space + 1);
-                        current.pop();
-                        push_line(&mut lines, std::mem::take(&mut current), default_height);
-                        current = trailing;
-                        current_width = current.iter().map(|g| g.advance).sum();
-                    }
-                    None => {
-                        if style.overflow_wrap != "normal" || style.word_break == "break-all" {
-                            push_line(&mut lines, std::mem::take(&mut current), default_height);
-                            current_width = 0.0;
-                        }
-                    }
-                }
-            }
-            if ch != ' ' || !current.is_empty() || preserve {
-                current_width += advance;
-                current.push(glyph);
-            }
-        }
-    }
-    if !current.is_empty() || lines.is_empty() {
-        push_line(&mut lines, current, default_height);
-    }
-    if lines
-        .iter()
-        .enumerate()
-        .any(|(index, line)| line.width > width - if index == 0 { first_indent } else { 0.0 } + EPS)
-    {
-        return Err(Error("text line exceeds available width".into()));
-    }
-    Ok(lines)
+    let start = Instant::now();
+    let result = lines_for_shaped(node, width, first_indent, fonts, token);
+    shaping_ns.fetch_add(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
+    result
 }
 
 enum ShapedUnit {
@@ -1233,6 +1125,7 @@ fn shape_segment(
                 unicode,
                 size: style.font_size,
                 color: style.color,
+                alpha: style.color_alpha * style.opacity,
                 shift,
                 decoration,
                 href: href.clone(),
@@ -1339,6 +1232,7 @@ fn lines_for_shaped(
         let mut segment = String::new();
         let mut segment_font: Option<Arc<FontData>> = None;
         let mut segment_rtl: Option<bool> = None;
+        let mut cluster_fonts: HashMap<String, Arc<FontData>> = HashMap::new();
         let clusters = if run.text.is_ascii() {
             (0..run.text.len())
                 .map(|index| &run.text[index..index + 1])
@@ -1414,6 +1308,7 @@ fn lines_for_shaped(
                         unicode: None,
                         size: style.font_size,
                         color: style.color,
+                        alpha: style.color_alpha * style.opacity,
                         shift: 0.0,
                         decoration: TextDecoration::None,
                         href: None,
@@ -1496,6 +1391,7 @@ fn lines_for_shaped(
                         unicode: None,
                         size: style.font_size,
                         color: style.color,
+                        alpha: style.color_alpha * style.opacity,
                         shift: 0.0,
                         decoration: TextDecoration::None,
                         href: run.href.clone(),
@@ -1529,22 +1425,28 @@ fn lines_for_shaped(
                 }
                 segment_rtl = Some(rtl);
             }
-            let font = if cluster.len() == ch.len_utf8() {
-                fonts.resolve_with_stretch(
-                    &style.family,
-                    style.weight,
-                    &style.font_style,
-                    style.font_stretch,
-                    ch,
-                )?
+            let font = if let Some(font) = cluster_fonts.get(cluster) {
+                font.clone()
             } else {
-                fonts.resolve_cluster_with_stretch(
-                    &style.family,
-                    style.weight,
-                    &style.font_style,
-                    style.font_stretch,
-                    cluster,
-                )?
+                let resolved = if cluster.len() == ch.len_utf8() {
+                    fonts.resolve_with_stretch(
+                        &style.family,
+                        style.weight,
+                        &style.font_style,
+                        style.font_stretch,
+                        ch,
+                    )?
+                } else {
+                    fonts.resolve_cluster_with_stretch(
+                        &style.family,
+                        style.weight,
+                        &style.font_style,
+                        style.font_stretch,
+                        cluster,
+                    )?
+                };
+                cluster_fonts.insert(cluster.to_owned(), resolved.clone());
+                resolved
             };
             if segment_font
                 .as_ref()
@@ -1646,6 +1548,69 @@ struct Flow {
 
 fn resolved_dimension(fixed: Option<f32>, percent: Option<f32>, reference: f32) -> Option<f32> {
     fixed.or_else(|| percent.map(|value| reference * value))
+}
+fn resolved_edges(fixed: [f32; 4], percentages: [Option<f32>; 4], reference: f32) -> [f32; 4] {
+    std::array::from_fn(|index| fixed[index] + percentages[index].unwrap_or(0.0) * reference)
+}
+fn collapse_margin(a: f32, b: f32) -> f32 {
+    if a >= 0.0 && b >= 0.0 {
+        a.max(b)
+    } else if a <= 0.0 && b <= 0.0 {
+        a.min(b)
+    } else {
+        a + b
+    }
+}
+fn painted_rect(x: f32, y: f32, w: f32, h: f32, fill: Color, alpha: f32, radius: [f32; 4]) -> Item {
+    if alpha >= 1.0 - EPS && radius.iter().all(|value| *value <= EPS) {
+        Item::Rect {
+            x,
+            y,
+            w,
+            h,
+            fill: Some(fill),
+            stroke: None,
+        }
+    } else {
+        Item::RoundedRect {
+            x,
+            y,
+            w,
+            h,
+            fill,
+            radius,
+            alpha,
+        }
+    }
+}
+fn inline_flow_child(node: &Node) -> bool {
+    matches!(
+        node.tag.as_str(),
+        "#text" | "span" | "strong" | "b" | "em" | "i" | "u" | "a" | "sup" | "sub" | "br"
+    )
+}
+fn collapsible_node_margin(node: &Node, width: f32, top: bool) -> f32 {
+    let edges = resolved_edges(node.style.margin, node.style.margin_percent, width);
+    let side = if top { 0 } else { 2 };
+    let mut value = edges[side];
+    let padding = resolved_edges(node.style.padding, node.style.padding_percent, width);
+    if padding[side] > EPS || node.style.border_widths[side] > EPS {
+        return value;
+    }
+    let candidate = if top {
+        node.children
+            .iter()
+            .find(|child| child.tag != "#text" || !child.text.trim().is_empty())
+    } else {
+        node.children
+            .iter()
+            .rev()
+            .find(|child| child.tag != "#text" || !child.text.trim().is_empty())
+    };
+    if let Some(child) = candidate.filter(|child| !inline_flow_child(child)) {
+        value = collapse_margin(value, collapsible_node_margin(child, width, top));
+    }
+    value
 }
 
 fn constrained_dimension(value: f32, minimum: Option<f32>, maximum: Option<f32>) -> f32 {
@@ -1770,9 +1735,26 @@ impl Flow {
         };
         let mut cursor = y;
         for line in lines {
+            // Margin boxes are bounded regions. Use conservative glyph extents
+            // for alignment because kerning may make the shaped pen advance
+            // smaller than the final outline's nominal advance.
+            let visual_width = line
+                .glyphs
+                .iter()
+                .map(|glyph| {
+                    glyph
+                        .font
+                        .glyph(glyph.ch)
+                        .map(|(_, advance)| {
+                            advance as f32 * glyph.size / glyph.font.units_per_em as f32
+                        })
+                        .unwrap_or(glyph.advance)
+                })
+                .sum::<f32>()
+                .max(line.width);
             let offset = match align {
-                "right" => (w - line.width).max(0.0),
-                "center" => ((w - line.width) / 2.0).max(0.0),
+                "right" => (w - visual_width).max(0.0),
+                "center" => ((w - visual_width) / 2.0).max(0.0),
                 _ => 0.0,
             };
             let mut pen = x + offset;
@@ -2075,9 +2057,82 @@ impl Flow {
         ) {
             return self.paragraph(node);
         }
-        // Container text before/after child blocks is kept in source order.
+        self.block_container(node)
+    }
+    fn block_container(&mut self, node: &Node) -> Result<()> {
         self.begin(&node.style)?;
+        let style = &node.style;
+        let containing_width = self.content_width();
+        let margins = resolved_edges(style.margin, style.margin_percent, containing_width);
+        let padding = resolved_edges(style.padding, style.padding_percent, containing_width);
+        let borders = style.border_widths;
+        let horizontal_edges = padding[1] + padding[3] + borders[1] + borders[3];
+        let available = containing_width - margins[1] - margins[3];
+        let sizing = constrained_dimension(
+            resolved_dimension(style.width, style.width_percent, containing_width).unwrap_or(
+                if style.box_sizing == "border-box" {
+                    available
+                } else {
+                    available - horizontal_edges
+                },
+            ),
+            resolved_dimension(style.min_width, style.min_width_percent, containing_width),
+            resolved_dimension(style.max_width, style.max_width_percent, containing_width),
+        );
+        let outer_width = if style.box_sizing == "border-box" {
+            sizing
+        } else {
+            sizing + horizontal_edges
+        };
+        let inner_width = outer_width - horizontal_edges;
+        if inner_width <= EPS {
+            return Err(Error("block container has no usable width".into()));
+        }
+        let first_block = node
+            .children
+            .iter()
+            .find(|child| child.tag != "#text" || !child.text.trim().is_empty())
+            .filter(|child| {
+                !matches!(
+                    child.tag.as_str(),
+                    "#text"
+                        | "span"
+                        | "strong"
+                        | "b"
+                        | "em"
+                        | "i"
+                        | "u"
+                        | "a"
+                        | "sup"
+                        | "sub"
+                        | "br"
+                )
+            });
+        let collapse_first = !style.margin_top_consumed
+            && padding[0] <= EPS
+            && borders[0] <= EPS
+            && first_block.is_some();
+        let first_top = first_block
+            .map(|child| collapsible_node_margin(child, inner_width, true))
+            .unwrap_or(0.0);
+        self.y += if collapse_first {
+            collapse_margin(margins[0], first_top)
+        } else {
+            margins[0]
+        };
+        let box_y = self.y;
+        let page_index = self.pages.len() - 1;
+        let insert_at = self.pages[page_index].items.len();
+        self.y += borders[0] + padding[0];
+        let content_start = self.y;
+        let old_frame = self.frame;
+        self.frame = Some((
+            self.content_x() + margins[3] + borders[3] + padding[3],
+            inner_width,
+        ));
         let mut group = Vec::new();
+        let mut pending_margin = 0.0;
+        let mut first_block_pending = style.margin_top_consumed || collapse_first;
         for child in &node.children {
             if matches!(
                 child.tag.as_str(),
@@ -2088,20 +2143,153 @@ impl Flow {
                 if group.iter().any(|c| !c.plain_text().trim().is_empty()) {
                     let mut inline = node.clone();
                     inline.children = std::mem::take(&mut group);
+                    inline.style.margin = [0.0; 4];
+                    inline.style.margin_percent = [None; 4];
+                    inline.style.padding = [0.0; 4];
+                    inline.style.padding_percent = [None; 4];
+                    inline.style.border_width = 0.0;
+                    inline.style.border_widths = [0.0; 4];
+                    inline.style.background = None;
+                    inline.style.width = None;
+                    inline.style.width_percent = None;
                     inline.style.break_before = false;
                     inline.style.break_after = false;
                     self.paragraph(&inline)?;
                 }
                 group.clear();
-                self.node(child)?;
+                let raw_child_margins =
+                    resolved_edges(child.style.margin, child.style.margin_percent, inner_width);
+                let child_margins = [
+                    collapsible_node_margin(child, inner_width, true),
+                    raw_child_margins[1],
+                    collapsible_node_margin(child, inner_width, false),
+                    raw_child_margins[3],
+                ];
+                let child_top = if first_block_pending {
+                    first_block_pending = false;
+                    0.0
+                } else {
+                    child_margins[0]
+                };
+                self.y += collapse_margin(pending_margin, child_top);
+                let mut child = child.clone();
+                child.style.margin[0] = 0.0;
+                child.style.margin[2] = 0.0;
+                child.style.margin_percent[0] = None;
+                child.style.margin_percent[2] = None;
+                child.style.margin_top_consumed = true;
+                child.style.margin_bottom_consumed = true;
+                self.node(&child)?;
+                pending_margin = child_margins[2];
             }
         }
         if group.iter().any(|c| !c.plain_text().trim().is_empty()) {
             let mut inline = node.clone();
             inline.children = group;
+            inline.style.margin = [0.0; 4];
+            inline.style.margin_percent = [None; 4];
+            inline.style.padding = [0.0; 4];
+            inline.style.padding_percent = [None; 4];
+            inline.style.border_width = 0.0;
+            inline.style.border_widths = [0.0; 4];
+            inline.style.background = None;
+            inline.style.width = None;
+            inline.style.width_percent = None;
             inline.style.break_before = false;
             inline.style.break_after = false;
             self.paragraph(&inline)?;
+        }
+        let collapse_last = !style.margin_bottom_consumed
+            && padding[2] <= EPS
+            && borders[2] <= EPS
+            && style.height.is_none()
+            && style.height_percent.is_none()
+            && style.min_height.is_none()
+            && style.min_height_percent.is_none();
+        let outer_bottom = if style.margin_bottom_consumed {
+            0.0
+        } else if collapse_last {
+            collapse_margin(pending_margin, margins[2])
+        } else {
+            self.y += pending_margin;
+            margins[2]
+        };
+        self.frame = old_frame;
+        let natural_content = (self.y - content_start).max(0.0);
+        let vertical_edges = borders[0] + borders[2] + padding[0] + padding[2];
+        let natural_height = natural_content + vertical_edges;
+        let reference = self.full_height();
+        let requested = constrained_dimension(
+            resolved_dimension(style.height, style.height_percent, reference).unwrap_or(
+                if style.box_sizing == "border-box" {
+                    natural_height
+                } else {
+                    natural_content
+                },
+            ),
+            resolved_dimension(style.min_height, style.min_height_percent, reference),
+            resolved_dimension(style.max_height, style.max_height_percent, reference),
+        );
+        let requested_outer = if style.box_sizing == "border-box" {
+            requested
+        } else {
+            requested + vertical_edges
+        };
+        let box_height = if style.overflow == "hidden" {
+            requested_outer
+        } else {
+            natural_height.max(requested_outer)
+        };
+        self.y = box_y + box_height + outer_bottom;
+        if self.pages.len() - 1 != page_index {
+            if style.overflow == "hidden" {
+                return Err(Error(
+                    "overflow:hidden block cannot fragment across pages".into(),
+                ));
+            }
+        } else if style.visibility == "visible" {
+            let page = &mut self.pages[page_index];
+            let x = self.frame.map_or(self.page.margin[3], |frame| frame.0) + margins[3];
+            let mut prefix = Vec::new();
+            if let Some(fill) = style.background {
+                prefix.push(painted_rect(
+                    x,
+                    box_y,
+                    outer_width,
+                    box_height,
+                    fill,
+                    style.background_alpha * style.opacity,
+                    style.border_radius,
+                ));
+            }
+            if style.border_widths.iter().any(|v| *v > 0.0) {
+                prefix.push(Item::Border {
+                    x,
+                    y: box_y,
+                    w: outer_width,
+                    h: box_height,
+                    widths: style.border_widths,
+                    colors: style.border_colors,
+                    alphas: style.border_alphas.map(|a| a * style.opacity),
+                    styles: style.border_styles.clone(),
+                    radius: style.border_radius,
+                });
+            }
+            if style.overflow == "hidden" {
+                prefix.push(Item::BeginClip {
+                    x,
+                    y: box_y,
+                    w: outer_width,
+                    h: box_height,
+                    radius: style.border_radius,
+                });
+            }
+            for (offset, item) in prefix.into_iter().enumerate() {
+                page.items.insert(insert_at + offset, item);
+            }
+            if style.overflow == "hidden" {
+                page.items.push(Item::EndClip);
+            }
         }
         self.finish(&node.style);
         Ok(())
@@ -2113,16 +2301,42 @@ impl Flow {
         self.begin(&node.style)?;
         let old_frame = self.frame;
         let old_center = self.center_children;
-        let x = self.content_x() + node.style.margin[3] + node.style.padding[3];
-        let width = self.content_width()
-            - node.style.margin[1]
-            - node.style.margin[3]
-            - node.style.padding[1]
-            - node.style.padding[3];
+        let reference = self.content_width();
+        let margins = resolved_edges(node.style.margin, node.style.margin_percent, reference);
+        let padding = resolved_edges(node.style.padding, node.style.padding_percent, reference);
+        let edges =
+            padding[1] + padding[3] + node.style.border_widths[1] + node.style.border_widths[3];
+        let available = reference - margins[1] - margins[3];
+        let sizing = constrained_dimension(
+            resolved_dimension(node.style.width, node.style.width_percent, reference).unwrap_or(
+                if node.style.box_sizing == "border-box" {
+                    available
+                } else {
+                    available - edges
+                },
+            ),
+            resolved_dimension(
+                node.style.min_width,
+                node.style.min_width_percent,
+                reference,
+            ),
+            resolved_dimension(
+                node.style.max_width,
+                node.style.max_width_percent,
+                reference,
+            ),
+        );
+        let outer = if node.style.box_sizing == "border-box" {
+            sizing
+        } else {
+            sizing + edges
+        };
+        let width = outer - edges;
+        let x = self.content_x() + margins[3] + node.style.border_widths[3] + padding[3];
         if width <= 0.0 {
             return Err(Error("flex container has no usable width".into()));
         }
-        self.y += node.style.margin[0] + node.style.padding[0];
+        self.y += margins[0] + node.style.border_widths[0] + padding[0];
         let start_y = self.y;
         let start_page = self.pages.len();
         let start_item = self.pages.last().map_or(0, |p| p.items.len());
@@ -2136,16 +2350,37 @@ impl Flow {
         }
         self.frame = old_frame;
         self.center_children = old_center;
-        if let Some(height) = node
-            .style
-            .height
-            .or_else(|| node.style.height_percent.map(|p| self.full_height() * p))
-        {
-            if start_page != self.pages.len() {
+        let height = constrained_dimension(
+            resolved_dimension(
+                node.style.height,
+                node.style.height_percent,
+                self.full_height(),
+            )
+            .unwrap_or(self.y - start_y),
+            resolved_dimension(
+                node.style.min_height,
+                node.style.min_height_percent,
+                self.full_height(),
+            ),
+            resolved_dimension(
+                node.style.max_height,
+                node.style.max_height_percent,
+                self.full_height(),
+            ),
+        );
+        let constrained_height = node.style.height.is_some()
+            || node.style.height_percent.is_some()
+            || node.style.min_height.is_some()
+            || node.style.min_height_percent.is_some()
+            || node.style.max_height.is_some()
+            || node.style.max_height_percent.is_some();
+        if start_page != self.pages.len() {
+            if constrained_height {
                 return Err(Error(
-                    "fixed-height flex container cannot split across pages".into(),
+                    "height-constrained flex container cannot split across pages".into(),
                 ));
             }
+        } else {
             let used = self.y - start_y;
             if height > used && node.style.justify_content == "center" {
                 let shift = (height - used) / 2.0;
@@ -2155,7 +2390,7 @@ impl Flow {
             }
             self.y = start_y + height.max(used);
         }
-        self.y += node.style.padding[2] + node.style.margin[2];
+        self.y += padding[2] + node.style.border_widths[2] + margins[2];
         self.finish(&node.style);
         Ok(())
     }
@@ -2172,16 +2407,43 @@ impl Flow {
         let old_frame = self.frame;
         let outer_x = self.content_x();
         let outer_width = self.content_width();
-        let x = outer_x + node.style.margin[3] + node.style.padding[3];
-        let width = outer_width
-            - node.style.margin[1]
-            - node.style.margin[3]
-            - node.style.padding[1]
-            - node.style.padding[3];
+        let margins = resolved_edges(node.style.margin, node.style.margin_percent, outer_width);
+        let padding = resolved_edges(node.style.padding, node.style.padding_percent, outer_width);
+        let edges =
+            padding[1] + padding[3] + node.style.border_widths[1] + node.style.border_widths[3];
+        let available = outer_width - margins[1] - margins[3];
+        let sizing = constrained_dimension(
+            resolved_dimension(node.style.width, node.style.width_percent, outer_width).unwrap_or(
+                if node.style.box_sizing == "border-box" {
+                    available
+                } else {
+                    available - edges
+                },
+            ),
+            resolved_dimension(
+                node.style.min_width,
+                node.style.min_width_percent,
+                outer_width,
+            ),
+            resolved_dimension(
+                node.style.max_width,
+                node.style.max_width_percent,
+                outer_width,
+            ),
+        );
+        let outer = if node.style.box_sizing == "border-box" {
+            sizing
+        } else {
+            sizing + edges
+        };
+        let width = outer - edges;
+        let x = outer_x + margins[3] + node.style.border_widths[3] + padding[3];
         if width <= 0.0 {
             return Err(Error("grid container has no usable width".into()));
         }
-        self.y += node.style.margin[0] + node.style.padding[0];
+        self.y += margins[0] + node.style.border_widths[0] + padding[0];
+        let start_y = self.y;
+        let start_page = self.pages.len();
         let track_width =
             (width - node.style.column_gap * columns.saturating_sub(1) as f32) / columns as f32;
         if track_width <= 0.0 {
@@ -2224,12 +2486,71 @@ impl Flow {
             }
         }
         self.frame = old_frame;
-        self.y += node.style.padding[2] + node.style.margin[2];
+        let used = self.y - start_y;
+        let constrained_height = node.style.height.is_some()
+            || node.style.height_percent.is_some()
+            || node.style.min_height.is_some()
+            || node.style.min_height_percent.is_some()
+            || node.style.max_height.is_some()
+            || node.style.max_height_percent.is_some();
+        if start_page != self.pages.len() && constrained_height {
+            return Err(Error(
+                "height-constrained grid container cannot split across pages".into(),
+            ));
+        }
+        let height = constrained_dimension(
+            resolved_dimension(
+                node.style.height,
+                node.style.height_percent,
+                self.full_height(),
+            )
+            .unwrap_or(used),
+            resolved_dimension(
+                node.style.min_height,
+                node.style.min_height_percent,
+                self.full_height(),
+            ),
+            resolved_dimension(
+                node.style.max_height,
+                node.style.max_height_percent,
+                self.full_height(),
+            ),
+        );
+        if start_page == self.pages.len() {
+            self.y = start_y
+                + if node.style.overflow == "hidden" {
+                    height
+                } else {
+                    used.max(height)
+                };
+        }
+        self.y += padding[2] + node.style.border_widths[2] + margins[2];
         self.finish(&node.style);
         Ok(())
     }
     fn paint_box(&mut self, x: f32, y: f32, w: f32, h: f32, style: &Style) {
-        if style.visibility == "visible" && (style.background.is_some() || style.border_width > 0.0)
+        let uniform_border = style
+            .border_widths
+            .iter()
+            .all(|value| (*value - style.border_widths[0]).abs() <= EPS)
+            && style
+                .border_colors
+                .iter()
+                .all(|value| *value == style.border_colors[0])
+            && style
+                .border_alphas
+                .iter()
+                .all(|value| (*value - 1.0).abs() <= EPS)
+            && style.border_styles.iter().all(|value| {
+                value == "solid" || (style.border_widths[0] <= EPS && value == "none")
+            });
+        let legacy = uniform_border
+            && style.border_radius.iter().all(|value| *value <= EPS)
+            && style.opacity >= 1.0 - EPS
+            && style.background_alpha >= 1.0 - EPS;
+        if style.visibility == "visible"
+            && legacy
+            && (style.background.is_some() || style.border_widths[0] > EPS)
         {
             self.item(Item::Rect {
                 x,
@@ -2237,8 +2558,33 @@ impl Flow {
                 w,
                 h,
                 fill: style.background,
-                stroke: (style.border_width > 0.0)
-                    .then_some((style.border_width, style.border_color)),
+                stroke: (style.border_widths[0] > EPS)
+                    .then_some((style.border_widths[0], style.border_colors[0])),
+            });
+            return;
+        }
+        if let ("visible", Some(background)) = (style.visibility.as_str(), style.background) {
+            self.item(painted_rect(
+                x,
+                y,
+                w,
+                h,
+                background,
+                style.background_alpha * style.opacity,
+                style.border_radius,
+            ));
+        }
+        if style.visibility == "visible" && style.border_widths.iter().any(|value| *value > 0.0) {
+            self.item(Item::Border {
+                x,
+                y,
+                w,
+                h,
+                widths: style.border_widths,
+                colors: style.border_colors,
+                alphas: style.border_alphas.map(|alpha| alpha * style.opacity),
+                styles: style.border_styles.clone(),
+                radius: style.border_radius,
             });
         }
     }
@@ -2273,19 +2619,7 @@ impl Flow {
                         y: box_y,
                     });
                 }
-                if inline.style.visibility == "visible"
-                    && (inline.style.background.is_some() || inline.style.border_width > 0.0)
-                {
-                    self.visible_item(Item::Rect {
-                        x: box_x,
-                        y: box_y,
-                        w: inline.width,
-                        h: inline.height,
-                        fill: inline.style.background,
-                        stroke: (inline.style.border_width > 0.0)
-                            .then_some((inline.style.border_width, inline.style.border_color)),
-                    });
-                }
+                self.paint_box(box_x, box_y, inline.width, inline.height, &inline.style);
                 let content_x = box_x + inline.style.border_width + inline.style.padding[3];
                 let mut content_y = box_y + inline.style.border_width + inline.style.padding[0];
                 for (line_index, nested) in inline.lines.iter().enumerate() {
@@ -2314,6 +2648,9 @@ impl Flow {
                 continue;
             }
             if glyph.visible && (!glyph.soft_hyphen || glyph.advance > 0.0) {
+                if glyph.alpha < 1.0 - EPS {
+                    self.visible_item(Item::BeginOpacity(glyph.alpha));
+                }
                 self.visible_item(Item::Text {
                     ch: glyph.ch,
                     glyph: glyph.id,
@@ -2325,6 +2662,9 @@ impl Flow {
                     size: glyph.size,
                     color: glyph.color,
                 });
+                if glyph.alpha < 1.0 - EPS {
+                    self.visible_item(Item::EndOpacity);
+                }
             }
             if glyph.visible
                 && (!glyph.soft_hyphen || glyph.advance > 0.0)
@@ -2335,6 +2675,9 @@ impl Flow {
                 } else {
                     baseline - glyph.size * 0.3
                 };
+                if glyph.alpha < 1.0 - EPS {
+                    self.visible_item(Item::BeginOpacity(glyph.alpha));
+                }
                 self.visible_item(Item::Rect {
                     x: pen,
                     y: decoration_y,
@@ -2343,6 +2686,9 @@ impl Flow {
                     fill: Some(glyph.color),
                     stroke: None,
                 });
+                if glyph.alpha < 1.0 - EPS {
+                    self.visible_item(Item::EndOpacity);
+                }
             }
             if glyph.visible && (!glyph.soft_hyphen || glyph.advance > 0.0) {
                 if let Some(target) = &glyph.href {
@@ -2368,9 +2714,12 @@ impl Flow {
         self.begin(&node.style)?;
         let s = &node.style;
         let containing_width = self.content_width();
-        let x = self.content_x() + s.margin[3];
-        let horizontal_edges = s.padding[1] + s.padding[3] + 2.0 * s.border_width;
-        let available_outer = containing_width - s.margin[1] - s.margin[3];
+        let margins = resolved_edges(s.margin, s.margin_percent, containing_width);
+        let padding = resolved_edges(s.padding, s.padding_percent, containing_width);
+        let borders = s.border_widths;
+        let x = self.content_x() + margins[3];
+        let horizontal_edges = padding[1] + padding[3] + borders[1] + borders[3];
+        let available_outer = containing_width - margins[1] - margins[3];
         let declared = resolved_dimension(s.width, s.width_percent, containing_width);
         let minimum = resolved_dimension(s.min_width, s.min_width_percent, containing_width);
         let maximum = resolved_dimension(s.max_width, s.max_width_percent, containing_width);
@@ -2401,7 +2750,7 @@ impl Flow {
             &self.shaping_ns,
         )?;
         let body_height: f32 = lines.iter().map(|l| l.height).sum();
-        let vertical_edges = s.padding[0] + s.padding[2] + 2.0 * s.border_width;
+        let vertical_edges = padding[0] + padding[2] + borders[0] + borders[2];
         let natural_height = body_height + vertical_edges;
         let height_reference = self.full_height();
         let declared_height = resolved_dimension(s.height, s.height_percent, height_reference);
@@ -2423,14 +2772,17 @@ impl Flow {
         } else {
             requested_sizing_height + vertical_edges
         };
-        // Overflow remains visible, so a max-height never discards or overlaps text.
-        let box_height = natural_height.max(requested_outer_height);
+        let box_height = if s.overflow == "hidden" {
+            requested_outer_height
+        } else {
+            natural_height.max(requested_outer_height)
+        };
         if (declared_height.is_some() || minimum_height.is_some())
             && requested_outer_height > self.full_height() + EPS
         {
             return Err(Error("paragraph box exceeds page content height".into()));
         }
-        let full_needed = s.margin[0] + box_height + s.margin[2];
+        let full_needed = margins[0] + box_height + margins[2];
         if (s.break_inside_avoid || lines.len() == 1)
             && full_needed <= self.full_height() + EPS
             && self.y + full_needed > self.limit() + EPS
@@ -2438,11 +2790,12 @@ impl Flow {
         {
             self.new_page()?;
         }
-        self.y += s.margin[0];
+        self.y += margins[0];
+        let first_box_y = self.y;
         let mut offset = 0;
         while offset < lines.len() {
             let start = self.y;
-            let overhead = s.padding[0] + s.padding[2] + 2.0 * s.border_width;
+            let overhead = padding[0] + padding[2] + borders[0] + borders[2];
             let mut used = overhead;
             let mut end = offset;
             while end < lines.len() && self.y + used + lines[end].height <= self.limit() + EPS {
@@ -2492,7 +2845,16 @@ impl Flow {
                 self.destination(node, x, start);
             }
             self.paint_box(x, start, w, used, s);
-            let mut line_y = start + s.border_width + s.padding[0];
+            if s.overflow == "hidden" {
+                self.visible_item(Item::BeginClip {
+                    x,
+                    y: start,
+                    w,
+                    h: box_height,
+                    radius: s.border_radius,
+                });
+            }
+            let mut line_y = start + borders[0] + padding[0];
             for (line_index, line) in lines[offset..end].iter().enumerate() {
                 let absolute_index = offset + line_index;
                 let first_indent = if absolute_index == 0 {
@@ -2502,7 +2864,7 @@ impl Flow {
                 };
                 self.draw_line(
                     line,
-                    x + s.border_width + s.padding[3] + first_indent,
+                    x + borders[3] + padding[3] + first_indent,
                     line_y,
                     inner - first_indent,
                     &s.text_align,
@@ -2510,13 +2872,19 @@ impl Flow {
                 );
                 line_y += line.height;
             }
+            if s.overflow == "hidden" {
+                self.visible_item(Item::EndClip);
+            }
             self.y += used;
             offset = end;
             if offset < lines.len() {
                 self.new_page()?;
             }
         }
-        self.y += s.margin[2];
+        if s.overflow == "hidden" {
+            self.y = first_box_y + box_height;
+        }
+        self.y += margins[2];
         self.finish(s);
         Ok(())
     }
@@ -2728,6 +3096,9 @@ impl Flow {
             self.new_page()?;
         }
         self.destination(node, self.content_x(), self.y);
+        if node.style.opacity < 1.0 - EPS {
+            self.item(Item::BeginOpacity(node.style.opacity));
+        }
         self.item(Item::Image {
             data,
             x: self.content_x()
@@ -2740,6 +3111,9 @@ impl Flow {
             w: width,
             h: height,
         });
+        if node.style.opacity < 1.0 - EPS {
+            self.item(Item::EndOpacity);
+        }
         self.y += height;
         self.finish(&node.style);
         Ok(())
@@ -3612,18 +3986,22 @@ impl Flow {
             return;
         }
         if let Some(fill) = cell.style.background {
-            self.item(Item::Rect {
+            self.item(painted_rect(
                 x,
                 y,
-                w: width,
-                h: height,
-                fill: Some(fill),
-                stroke: None,
-            });
+                width,
+                height,
+                fill,
+                cell.style.background_alpha * cell.style.opacity,
+                cell.style.border_radius,
+            ));
         }
         let mut edge = |side: usize, ex: f32, ey: f32, ew: f32, eh: f32| {
             let border = cell.borders[side];
             if cell.draw_borders[side] && border.width > 0.0 {
+                if cell.style.opacity < 1.0 - EPS {
+                    self.item(Item::BeginOpacity(cell.style.opacity));
+                }
                 self.item(Item::Rect {
                     x: ex,
                     y: ey,
@@ -3632,6 +4010,9 @@ impl Flow {
                     fill: Some(border.color),
                     stroke: None,
                 });
+                if cell.style.opacity < 1.0 - EPS {
+                    self.item(Item::EndOpacity);
+                }
             }
         };
         if first_fragment {

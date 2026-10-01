@@ -143,6 +143,8 @@ fn apply_presentational_hints(
         }
         if let Some(border) = inherited.cell_border {
             style.border_width = border;
+            style.border_widths = [border; 4];
+            style.border_styles = std::array::from_fn(|_| "solid".into());
         }
         if let Some(align) = attrs.get("align").map(|value| value.to_ascii_lowercase()) {
             css::apply(style, "text-align", &align, warnings);
@@ -166,6 +168,8 @@ fn apply_presentational_hints(
     let cell_border = numeric_hint(attrs.get("border").map(String::as_str));
     if let Some(border) = cell_border {
         style.border_width = border;
+        style.border_widths = [border; 4];
+        style.border_styles = std::array::from_fn(|_| "solid".into());
     }
     TableHints {
         cell_padding: numeric_hint(attrs.get("cellpadding").map(String::as_str)),
@@ -250,21 +254,6 @@ fn convert(
         .sort_by_key(|(important, specificity, order, _, _)| (*important, *specificity, *order));
     for (_, _, _, key, value) in declarations {
         css::apply(&mut style, key, value, warnings);
-    }
-    if (style.height.is_some() || style.height_percent.is_some())
-        && tag != "img"
-        && style.display != "flex"
-        && style.display != "inline-block"
-        && !matches!(tag.as_str(), "table" | "tr" | "td" | "th")
-        && !matches!(tag.as_str(), "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
-    {
-        warnings.push(Diagnostic::new(
-            "css-property",
-            format!(
-                "height is unsupported on <{tag}> with display:{}",
-                style.display
-            ),
-        ));
     }
     if tag == "img" && (style.border_width > 0.0 || style.background.is_some()) {
         warnings.push(Diagnostic::new(

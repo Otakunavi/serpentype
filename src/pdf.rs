@@ -5,7 +5,7 @@ use crate::{Error, Result};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -210,6 +210,71 @@ fn set_color(out: &mut String, c: crate::css::Color, stroke: bool) {
         if stroke { "RG" } else { "rg" }
     );
 }
+fn alpha_key(alpha: f32) -> u16 {
+    (alpha.clamp(0.0, 1.0) * 10_000.0).round() as u16
+}
+fn set_alpha(out: &mut String, alpha: f32) {
+    if alpha < 1.0 - EPS {
+        let _ = writeln!(out, "/GS{} gs", alpha_key(alpha));
+    }
+}
+fn rounded_rect(out: &mut String, x: f32, y: f32, w: f32, h: f32, radius: [f32; 4]) {
+    let mut r = radius.map(|value| value.max(0.0));
+    let scale = 1.0_f32
+        .min(w / (r[0] + r[1]).max(EPS))
+        .min(w / (r[3] + r[2]).max(EPS))
+        .min(h / (r[0] + r[3]).max(EPS))
+        .min(h / (r[1] + r[2]).max(EPS));
+    r.iter_mut().for_each(|value| *value *= scale);
+    if r.iter().all(|value| *value <= EPS) {
+        let _ = write!(out, "{x:.3} {y:.3} {w:.3} {h:.3} re ");
+        return;
+    }
+    let [tl, tr, br, bl] = r;
+    const K: f32 = 0.552_284_8;
+    let _ = write!(out, "{:.3} {y:.3} m {:.3} {y:.3} l ", x + bl, x + w - br);
+    let _ = write!(
+        out,
+        "{:.3} {y:.3} {:.3} {:.3} {:.3} {:.3} c ",
+        x + w - br + br * K,
+        x + w,
+        y + br - br * K,
+        x + w,
+        y + br
+    );
+    let _ = write!(
+        out,
+        "{:.3} {:.3} l {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} c ",
+        x + w,
+        y + h - tr,
+        x + w,
+        y + h - tr + tr * K,
+        x + w - tr + tr * K,
+        y + h,
+        x + w - tr,
+        y + h
+    );
+    let _ = write!(
+        out,
+        "{:.3} {:.3} l {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} c ",
+        x + tl,
+        y + h,
+        x + tl - tl * K,
+        y + h,
+        x,
+        y + h - tl + tl * K,
+        x,
+        y + h - tl
+    );
+    let _ = write!(
+        out,
+        "{x:.3} {:.3} l {x:.3} {:.3} {:.3} {y:.3} {:.3} {y:.3} c h ",
+        y + bl,
+        y + bl - bl * K,
+        x + bl - bl * K,
+        x + bl
+    );
+}
 
 /// Export exactly the existing pages, positions, fonts and images.
 pub fn export(doc: &PreparedDocument) -> Result<Vec<u8>> {
@@ -226,10 +291,23 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
     check_cancel()?;
     let mut fonts: FontUsage = HashMap::new();
     let mut images: HashMap<[u8; 32], Arc<ImageData>> = HashMap::new();
+    let mut alphas = BTreeSet::new();
     for page in &doc.pages {
         check_cancel()?;
         for item in &page.items {
             match item {
+                Item::BeginOpacity(alpha) | Item::RoundedRect { alpha, .. } => {
+                    if *alpha < 1.0 - EPS {
+                        alphas.insert(alpha_key(*alpha));
+                    }
+                }
+                Item::Border { alphas: values, .. } => {
+                    for alpha in values {
+                        if *alpha < 1.0 - EPS {
+                            alphas.insert(alpha_key(*alpha));
+                        }
+                    }
+                }
                 Item::Text {
                     ch,
                     glyph,
@@ -278,6 +356,13 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
         let id = image_object(&mut pdf, &images[key])?;
         image_ids.insert(*key, (index + 1, id));
     }
+    let mut alpha_ids = BTreeMap::new();
+    for key in &alphas {
+        let value = *key as f32 / 10_000.0;
+        let id =
+            pdf.add(format!("<< /Type /ExtGState /ca {value:.4} /CA {value:.4} >>").into_bytes());
+        alpha_ids.insert(*key, id);
+    }
     let page_ids: Vec<_> = doc.pages.iter().map(|_| pdf.reserve()).collect();
     let mut destinations = BTreeMap::new();
     for (page_index, page) in doc.pages.iter().enumerate() {
@@ -305,6 +390,11 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
                     let _ = writeln!(ops, "/Span << /ActualText {} >> BDC", pdf_text(value));
                 }
                 Item::EndActualText => ops.push_str("EMC\n"),
+                Item::BeginOpacity(alpha) => {
+                    ops.push_str("q\n");
+                    set_alpha(&mut ops, *alpha);
+                }
+                Item::EndOpacity => ops.push_str("Q\n"),
                 Item::Text {
                     font,
                     x,
@@ -345,9 +435,6 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
                         expected_x += *natural_advance;
                         end += 1;
                     }
-                    if font.synthetic_bold || font.synthetic_italic {
-                        ops.push_str("q\n");
-                    }
                     set_color(&mut ops, *color, false);
                     if font.synthetic_bold {
                         set_color(&mut ops, *color, true);
@@ -362,9 +449,6 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
                         x,
                         page.style.height - y
                     );
-                    if font.synthetic_bold || font.synthetic_italic {
-                        ops.push_str("Q\n");
-                    }
                     position = end;
                     continue;
                 }
@@ -397,6 +481,62 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
                     );
                     ops.push_str("Q\n");
                 }
+                Item::RoundedRect {
+                    x,
+                    y,
+                    w,
+                    h,
+                    fill,
+                    radius,
+                    alpha,
+                } => {
+                    ops.push_str("q\n");
+                    set_color(&mut ops, *fill, false);
+                    set_alpha(&mut ops, *alpha);
+                    rounded_rect(&mut ops, *x, page.style.height - y - h, *w, *h, *radius);
+                    ops.push_str("f\nQ\n");
+                }
+                Item::Border {
+                    x,
+                    y,
+                    w,
+                    h,
+                    widths,
+                    colors,
+                    alphas,
+                    styles,
+                    radius,
+                } => {
+                    let bottom = page.style.height - y - h;
+                    let edges = [
+                        (*x, bottom + *h, *x + *w, bottom + *h),
+                        (*x + *w, bottom + *h, *x + *w, bottom),
+                        (*x, bottom, *x + *w, bottom),
+                        (*x, bottom + *h, *x, bottom),
+                    ];
+                    for side in 0..4 {
+                        if widths[side] <= 0.0 || styles[side] == "none" {
+                            continue;
+                        }
+                        ops.push_str("q\n");
+                        set_color(&mut ops, colors[side], true);
+                        set_alpha(&mut ops, alphas[side]);
+                        let dash = if styles[side] == "dashed" {
+                            format!("[{:.3} {:.3}] 0 d", widths[side] * 3.0, widths[side] * 2.0)
+                        } else if styles[side] == "dotted" {
+                            format!("[0 {:.3}] 0 d 1 J", widths[side] * 2.0)
+                        } else {
+                            "[] 0 d".into()
+                        };
+                        let _ = writeln!(ops, "{:.3} w {dash}", widths[side]);
+                        if radius.iter().any(|r| *r > EPS) {
+                            rounded_rect(&mut ops, *x, bottom, *w, *h, *radius);
+                            ops.push_str("W n\n");
+                        }
+                        let (x1, y1, x2, y2) = edges[side];
+                        let _ = writeln!(ops, "{x1:.3} {y1:.3} m {x2:.3} {y2:.3} l S\nQ");
+                    }
+                }
                 Item::Image { data, x, y, w, h } => {
                     let (index, _) = image_ids
                         .get(&data.digest)
@@ -407,6 +547,12 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
                         page.style.height - y - h
                     );
                 }
+                Item::BeginClip { x, y, w, h, radius } => {
+                    ops.push_str("q\n");
+                    rounded_rect(&mut ops, *x, page.style.height - y - h, *w, *h, *radius);
+                    ops.push_str("W n\n");
+                }
+                Item::EndClip => ops.push_str("Q\n"),
                 Item::Link { x, y, w, h, target } => {
                     let action = if let Some(name) = target.strip_prefix('#') {
                         destinations.get(name).map(|(page_id, dx, dy)| {
@@ -449,6 +595,11 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
             })
             .collect::<Vec<_>>()
             .join(" ");
+        let alpha_resource = alpha_ids
+            .iter()
+            .map(|(key, id)| format!("/GS{key} {id} 0 R"))
+            .collect::<Vec<_>>()
+            .join(" ");
         let rotate = if page.style.rotation == 0 {
             String::new()
         } else {
@@ -466,7 +617,7 @@ pub fn export_with_cancel(doc: &PreparedDocument, token: Option<&AtomicBool>) ->
                     .join(" ")
             )
         };
-        pdf.set(page_ids[page_index], format!("<< /Type /Page /Parent {pages_ref} 0 R /MediaBox [0 0 {:.3} {:.3}]{rotate} /Resources << /Font << {font_resource} >> /XObject << {image_resource} >> >> /Contents {content} 0 R{annots} >>",page.style.width,page.style.height).into_bytes());
+        pdf.set(page_ids[page_index], format!("<< /Type /Page /Parent {pages_ref} 0 R /MediaBox [0 0 {:.3} {:.3}]{rotate} /Resources << /Font << {font_resource} >> /XObject << {image_resource} >> /ExtGState << {alpha_resource} >> >> /Contents {content} 0 R{annots} >>",page.style.width,page.style.height).into_bytes());
     }
     let kids = page_ids
         .iter()

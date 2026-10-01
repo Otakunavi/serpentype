@@ -2,18 +2,18 @@
 
 This is the canonical progress tracker for the final 0.2.0 release. A checkbox is closed only when the implementation, mandatory Rust and installed-wheel Python tests, capability entry, and relevant documentation are present. Broad capability groups may remain `partial` while their individual checkboxes close.
 
-Current snapshot after completing the table slice: **38 closed, 34 open**.
+Current snapshot after completing the text, font and CSS box-model slice: **46 closed, 26 open**.
 
 ## Text and fonts
 
 - [x] Preserve styles for the supported inline HTML elements and mixed font sizes in one line.
 - [x] Give `inline-block` an independent inline formatting box for internally wrapped inline text.
-- [x] Shape kerning, ligatures, combining sequences, Arabic, Hebrew and mixed bidi text through RustyBuzz when experimental shaping is enabled.
-- [ ] Remove the experimental shaping gate after meeting extraction and performance requirements.
+- [x] Shape kerning, ligatures, combining sequences, Arabic, Hebrew and mixed bidi text through RustyBuzz.
+- [x] Remove the experimental shaping gate after meeting extraction and performance requirements.
 - [x] Select fallback fonts per Unicode grapheme cluster and cover Cyrillic, extended Latin and monochrome emoji.
 - [x] Support static TTF, CFF OTF, WOFF/WOFF2 and tested variable `wght`/`wdth` faces.
 - [x] Return structured missing-glyph data and a typed Python exception.
-- [ ] Add source filenames and character-reference positions to missing-glyph diagnostics.
+- [x] Add source filenames and character-reference positions to missing-glyph diagnostics.
 - [x] Support normal/nowrap/pre/pre-wrap, Unicode whitespace and nonbreaking spaces.
 - [x] Implement soft-hyphen rendering and `hyphens: manual` in default and shaped text.
 
@@ -21,15 +21,15 @@ Current snapshot after completing the table slice: **38 closed, 34 open**.
 
 - [x] Apply justify, text indent, overflow-wrap and word-break before pagination.
 - [x] Resolve `em`, `rem`, unitless zero and simple compatible `calc()` expressions.
-- [ ] Resolve percentages for margins, padding and general containing-block heights.
+- [x] Resolve percentages for margins, padding and general containing-block heights.
 - [x] Parse the complete named-color table and opaque RGB/HSL forms deterministically.
-- [ ] Export `rgba()`/`hsla()`, slash alpha and `opacity` through PDF graphics state.
+- [x] Export `rgba()`/`hsla()`, slash alpha and `opacity` through PDF graphics state.
 - [x] Keep `visibility:hidden` content in layout while suppressing its paint and links.
 - [x] Apply `content-box`/`border-box` and fixed/percentage min/max dimensions to paragraph boxes, plus min/max image dimensions.
-- [ ] Apply min/max sizing consistently to general block, table, Flex and Grid containers.
-- [ ] Implement `overflow:visible|hidden` with predictable clipping.
-- [ ] Implement normal-flow margin collapsing, including negative margins.
-- [ ] Implement per-side border widths/colors/styles, dashed/dotted borders and `border-radius`.
+- [x] Apply min/max sizing consistently to general block, table, Flex and Grid containers.
+- [x] Implement `overflow:visible|hidden` with predictable clipping.
+- [x] Implement normal-flow margin collapsing, including negative margins.
+- [x] Implement per-side border widths/colors/styles, dashed/dotted borders and `border-radius`.
 
 ## Tables and pagination
 

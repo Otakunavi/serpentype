@@ -1,5 +1,20 @@
 # Historical benchmark: Serpentype 0.1 vs WeasyPrint 70.0
 
+## 0.2 text and box-model gate
+
+Measured on 2026-10-01 on macOS arm64 with CPython 3.13.3. The baseline is commit `de2a270` with its RustyBuzz path enabled; the candidate makes that same shaping path unconditional and adds the CSS box features. Both measurements use release ABI3 wheels. Five warm runs and five independent cold processes were compared with the same `simple`, forced-break, 60-row table and SVG corpus.
+
+| Document | Warm layout change | Warm export change | Cold layout change | Cold export change |
+| --- | ---: | ---: | ---: | ---: |
+| Simple | +2.8% | +4.2% | -0.1% | +1.8% |
+| Forced break | +4.7% | +1.9% | +4.2% | +0.5% |
+| Table | +4.1% | -1.1% | +5.2% | +1.6% |
+| SVG | +4.0% | 0.0% | +0.3% | +0.7% |
+
+Peak RSS changed from 63.1 MiB to 67.4 MiB (+6.9%). All measured changes remain below the release limits of +15% layout, +10% export and +20% peak RSS. The current run retained the same page counts and uses the installed wheel. Raw measurements are retained in [`benchmark-results.jsonl`](../benchmark-results.jsonl) under the `de2a270-production-shaping` and `text-css-box-candidate` labels.
+
+## Earlier comparison
+
 Run on 2026-09-28 on macOS 15.6 arm64, CPython 3.13.3. Command:
 
 ```sh

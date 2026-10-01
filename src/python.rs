@@ -35,10 +35,10 @@ fn missing_glyph_error(message: &str) -> Option<PyErr> {
         let _ = value.setattr("style", style);
         let _ = value.setattr("selected_fallback", py.None());
         if let Some(location) = location {
-            let mut parts = location.split_whitespace();
-            let source = parts.next();
-            let line = parts.next().and_then(|value| value.parse::<usize>().ok());
+            let mut parts = location.rsplitn(3, ' ');
             let column = parts.next().and_then(|value| value.parse::<usize>().ok());
+            let line = parts.next().and_then(|value| value.parse::<usize>().ok());
+            let source = parts.next();
             let _ = value.setattr("source", source);
             let _ = value.setattr("line", line);
             let _ = value.setattr("column", column);
@@ -278,6 +278,7 @@ const CAPABILITIES: &[(&str, &str)] = &[
     ("css.length.em", "partial"),
     ("css.length.rem", "partial"),
     ("css.length.calc", "partial"),
+    ("css.length.percent-edges", "full"),
     ("css.box-sizing", "partial"),
     ("css.box.min-max", "partial"),
     ("css.visibility", "partial"),
@@ -287,10 +288,15 @@ const CAPABILITIES: &[(&str, &str)] = &[
     ("css.color.named", "full"),
     ("css.color.rgb", "partial"),
     ("css.color.hsl", "partial"),
-    ("css.color.alpha", "unsupported"),
-    ("font.shaping", "experimental"),
-    ("font.bidi.mixed", "experimental"),
-    ("font.bidi.controls", "experimental"),
+    ("css.color.alpha", "full"),
+    ("css.opacity", "partial"),
+    ("css.overflow-clipping", "full"),
+    ("css.margin-collapse", "full"),
+    ("css.border.per-side", "full"),
+    ("css.border.radius", "full"),
+    ("font.shaping", "full"),
+    ("font.bidi.mixed", "full"),
+    ("font.bidi.controls", "full"),
     ("font.fallback", "partial"),
     ("font.fallback.cluster", "partial"),
     ("font.fallback.emoji-mono", "partial"),
@@ -302,6 +308,7 @@ const CAPABILITIES: &[(&str, &str)] = &[
     ("font.synthetic-bold", "partial"),
     ("font.synthetic-italic", "partial"),
     ("font.missing-glyph-diagnostic", "partial"),
+    ("font.missing-glyph-source", "full"),
     ("html.table.rowspan", "full"),
     ("html.table.colspan", "full"),
     ("html.table.repeat-tfoot", "full"),
@@ -393,19 +400,13 @@ pub struct PyRenderer {
 #[pymethods]
 impl PyRenderer {
     fn supports(&self, feature: &str) -> bool {
-        if matches!(
-            feature,
-            "font.shaping" | "font.bidi.mixed" | "font.bidi.controls"
-        ) {
-            return self.inner.experimental_shaping;
-        }
         CAPABILITIES
             .iter()
             .any(|(name, level)| *name == feature && matches!(*level, "full" | "partial"))
     }
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(fonts=None, base_dir=".", strict=false, limits=None, experimental_shaping=false, svg_dpi=144.0, synthetic_bold=false, synthetic_italic=false, presentational_hints=false))]
+    #[pyo3(signature=(fonts=None, base_dir=".", strict=false, limits=None, experimental_shaping=true, svg_dpi=144.0, synthetic_bold=false, synthetic_italic=false, presentational_hints=false, source_name=None))]
     fn new(
         fonts: Option<PyRef<'_, PyFontRegistry>>,
         base_dir: &str,
@@ -416,6 +417,7 @@ impl PyRenderer {
         synthetic_bold: bool,
         synthetic_italic: bool,
         presentational_hints: bool,
+        source_name: Option<String>,
     ) -> PyResult<Self> {
         if !svg_dpi.is_finite() || svg_dpi <= 0.0 {
             return Err(PyValueError::new_err(
@@ -434,6 +436,7 @@ impl PyRenderer {
         inner.synthetic_bold = synthetic_bold;
         inner.synthetic_italic = synthetic_italic;
         inner.presentational_hints = presentational_hints;
+        inner.source_name = source_name;
         Ok(Self { inner })
     }
     #[pyo3(signature=(html, css="", cancel_token=None))]

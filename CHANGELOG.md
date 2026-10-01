@@ -2,8 +2,10 @@
 
 ## Unreleased
 
+- Promote RustyBuzz shaping and Unicode bidi to the default production path while retaining the `experimental_shaping` argument as a compatibility no-op. Missing-glyph errors now locate numeric/common named character references and accept a source filename.
+- Complete the planned CSS box slice: percentage margins/padding and block heights, alpha colors and opacity in PDF graphics states, general block/Flex/Grid min/max sizing, overflow clipping, positive/negative margin collapsing, per-side dashed/dotted borders and rounded corners.
 - Add atomic `inline-block` boxes with independent sizing, padding, borders, backgrounds, margins and internally wrapped inline text.
-- Implement `hyphens: none | manual`; soft hyphens remain invisible unless selected as a line break in both default and experimental shaping paths.
+- Implement `hyphens: none | manual`; soft hyphens remain invisible unless selected as a line break by the production shaping path.
 - Parse `border-collapse` and one/two-value `border-spacing`; apply spacing to separate table tracks and rows while collapsed tables ignore it.
 - Complete the 0.2 table scope: deterministic collapsed-border conflicts, line-safe pagination of oversized rowspan groups, rowspan in repeated headers/footers, nested table layout, constrained table/column/cell sizing and opt-in HTML presentational hints.
 - Allow footer repetition to be disabled with `tfoot { display: table-row-group }`.

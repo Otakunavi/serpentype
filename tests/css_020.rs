@@ -1,4 +1,5 @@
 use serpentype::css::{self, Color, Style};
+use serpentype::layout::Item;
 
 fn renderer() -> serpentype::layout::Renderer {
     let fonts = serpentype::font::FontRegistry::new(1_000_000);
@@ -305,7 +306,12 @@ fn manual_soft_hyphen_only_paints_when_used_for_a_break() {
             .items
             .iter()
             .filter_map(|item| match item {
-                serpentype::layout::Item::Text { ch, .. } => Some(*ch),
+                serpentype::layout::Item::Text { ch, unicode, .. } => Some(
+                    unicode
+                        .as_deref()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| ch.to_string()),
+                ),
                 _ => None,
             })
             .collect::<String>()
@@ -668,6 +674,139 @@ fn page_pseudo_selectors_style_right_and_blank_pages() {
         })
         .collect();
     assert_eq!(blank_text, "BLANK");
+}
+
+#[test]
+fn percentage_edges_and_general_block_constraints_use_containing_block() {
+    let doc = renderer().layout(
+        "<div class='box'><p>X</p></div>",
+        "@page { size:200pt 200pt; margin:10pt } .box { width:80%; min-width:100pt; max-width:120pt; margin-left:10%; padding-left:10%; background:red } p { margin:0 }",
+    ).unwrap();
+    let (x, w) = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::Rect {
+                x,
+                w,
+                fill: Some(color),
+                ..
+            } if *color == Color(1.0, 0.0, 0.0) => Some((*x, *w)),
+            _ => None,
+        })
+        .unwrap();
+    assert!((x - 28.0).abs() < 0.2);
+    assert!(
+        (w - 138.0).abs() < 0.2,
+        "content-box max-width plus percentage padding"
+    );
+    assert!(text_position(&doc, 'X').unwrap().0 > x + 17.0);
+}
+
+#[test]
+fn flex_and_grid_container_min_max_widths_constrain_tracks() {
+    let grid=renderer().layout("<div class='grid'><p>A</p><p>B</p></div>",".grid { display:grid; grid-template-columns:repeat(2, 1fr); width:160pt; max-width:100pt } p { margin:0 }").unwrap();
+    let ax = text_position(&grid, 'A').unwrap().0;
+    let bx = text_position(&grid, 'B').unwrap().0;
+    assert!(
+        (bx - ax - 50.0).abs() < 0.6,
+        "grid tracks must use constrained width"
+    );
+    let flex = renderer()
+        .layout(
+            "<div class='flex'><p>A</p><p>B</p></div>",
+            ".flex { display:flex; width:160pt; max-width:120pt } p { margin:0 }",
+        )
+        .unwrap();
+    let ax = text_position(&flex, 'A').unwrap().0;
+    let bx = text_position(&flex, 'B').unwrap().0;
+    assert!(
+        (bx - ax - 60.0).abs() < 0.6,
+        "flex tracks must use constrained width"
+    );
+}
+
+#[test]
+fn alpha_opacity_and_modern_color_syntax_reach_pdf_graphics_state() {
+    let (paint, alpha) = css::color_with_alpha("rgb(255 0 0 / 50%)").unwrap();
+    assert_eq!(paint, Color(1.0, 0.0, 0.0));
+    assert!((alpha - 0.5).abs() < 0.001);
+    assert!((css::color_with_alpha("hsla(120,100%,50%,0.25)").unwrap().1 - 0.25).abs() < 0.001);
+    let doc=renderer().layout("<div><p>Alpha</p></div>","div { background:rgba(255,0,0,.5); opacity:.5 } p { color:rgb(0 0 0 / 50%); margin:0 }").unwrap();
+    let pdf = doc.to_pdf().unwrap();
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(text.contains("/ExtGState"));
+    assert!(doc.pages[0]
+        .items
+        .iter()
+        .any(|item| matches!(item,Item::BeginOpacity(alpha) if (*alpha-0.25).abs()<0.01)));
+}
+
+#[test]
+fn overflow_hidden_clips_without_changing_following_flow() {
+    let doc=renderer().layout("<div class='clip'><p>A<br>B<br>C</p></div><p>Z</p>",".clip { height:20pt; overflow:hidden; border-radius:4pt } p { margin:0; line-height:14pt }").unwrap();
+    assert!(doc.pages[0]
+        .items
+        .iter()
+        .any(|item| matches!(item, Item::BeginClip { .. })));
+    let z_y = text_position(&doc, 'Z').unwrap().1;
+    let a_y = text_position(&doc, 'A').unwrap().1;
+    assert!(
+        z_y - a_y < 30.0,
+        "following content advanced by hidden content: {a_y} {z_y}"
+    );
+    assert!(doc.to_pdf().unwrap().starts_with(b"%PDF-1.7"));
+}
+
+#[test]
+fn sibling_margins_collapse_with_negative_values() {
+    let doc=renderer().layout("<div><p style='margin:0 0 20pt'>A</p><p style='margin:10pt 0 0'>B</p><p style='margin:-5pt 0 0'>C</p></div>","p { line-height:10pt }").unwrap();
+    let ay = text_position(&doc, 'A').unwrap().1;
+    let by = text_position(&doc, 'B').unwrap().1;
+    let cy = text_position(&doc, 'C').unwrap().1;
+    let line_step = cy - by + 5.0;
+    assert!(
+        (by - ay - line_step - 20.0).abs() < 0.5,
+        "positive margins collapse to the maximum: {ay} {by} {cy}"
+    );
+    assert!(
+        (cy - by - (line_step - 5.0)).abs() < 0.5,
+        "negative margin moves the following block upward"
+    );
+}
+
+#[test]
+fn parent_and_child_margins_collapse_through_empty_edges() {
+    let doc=renderer().layout("<p style='margin:0'>A</p><div style='margin-top:10pt'><p style='margin:20pt 0 0'>B</p></div>","p { line-height:12pt }").unwrap();
+    let ay = text_position(&doc, 'A').unwrap().1;
+    let by = text_position(&doc, 'B').unwrap().1;
+    assert!(
+        (by - ay - 34.4).abs() < 0.6,
+        "parent and first-child top margins must collapse: {ay} {by}"
+    );
+}
+
+#[test]
+fn per_side_dashed_dotted_and_rounded_borders_are_preserved() {
+    let doc=renderer().layout("<div class='box'><p>X</p></div>",".box { border-top:2pt dashed red; border-right:3pt dotted blue; border-bottom:4pt solid green; border-left:1pt solid black; border-radius:2pt 4pt 6pt 8pt } p { margin:0 }").unwrap();
+    let border = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::Border {
+                widths,
+                styles,
+                radius,
+                ..
+            } => Some((widths, styles, radius)),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(*border.0, [2.0, 3.0, 4.0, 1.0]);
+    assert_eq!(border.1[0], "dashed");
+    assert_eq!(border.1[1], "dotted");
+    assert_eq!(*border.2, [2.0, 4.0, 6.0, 8.0]);
+    assert!(doc.to_pdf().unwrap().starts_with(b"%PDF-1.7"));
 }
 
 #[test]
