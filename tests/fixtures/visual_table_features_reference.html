@@ -1,0 +1,17 @@
+<div>
+  <h1>Connected and nested table cells</h1>
+  <table class="outer">
+    <thead><tr><th>Region</th><th>Transaction</th><th>Total</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="2" class="group">North</td><td>Invoice 104</td><td>42</td></tr>
+      <tr><td>Invoice 105</td><td>18</td></tr>
+      <tr><td colspan="3">
+        <table class="inner"><tbody>
+          <tr><td>Nested detail</td><td>Included</td></tr>
+          <tr><td>Tax line</td><td>7.50</td></tr>
+        </tbody></table>
+      </td></tr>
+      <tr><td>West</td><td>Invoice 106</td><td>23</td></tr>
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,16 @@
+<div>
+  <h1>Layout regression</h1>
+  <section class="relative">
+    <p>Normal flow remains here.</p>
+    <div class="badge">Layer</div>
+  </section>
+  <h2>Flex</h2>
+  <section class="flex"><div>One</div><div>Two</div><div>Three</div></section>
+  <h2>Grid</h2>
+  <section class="grid"><div>A</div><div>B</div><div>C</div><div>D</div></section>
+  <p class="clip">Clipped content stays inside its rounded box.</p>
+  <p class="rotated">Rotated painting stays out of normal flow.</p>
+  <p class="sized">Border-box sizing</p>
+  <h2>Inline atomic box</h2>
+  <p>Text before <span class="inline-box">compact inline content wraps</span> and after the box.</p>
+</div>

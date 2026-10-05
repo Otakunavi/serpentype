@@ -1,0 +1,12 @@
+@page { size: 280pt 190pt; margin: 22pt; @top-center { content: element(report-header); font-size: 8pt } @bottom-center { content: "Base • " counter(page); font-size: 7pt } }
+@page :first { @top-center { content: string(chapter); font-size: 8pt } }
+@page :left { @top-left { content: "LEFT"; font-size: 8pt } }
+@page :right { @top-right { content: "RIGHT"; font-size: 8pt } }
+@page :blank { @top-center { content: "BLANK SIDE"; font-size: 8pt } }
+body { margin: 0; font-family: "Noto Sans"; color: #203248 }
+h1 { margin: 0 0 8pt; font-size: 14pt; color: #173b63; string-set: chapter content() }
+p { margin: 0; font-size: 9pt }
+.running { position: running(report-header) }
+.fixed { position: fixed; right: 0; bottom: 0; color: #8a473e; font-size: 6pt; padding: 2pt }
+.next-page { break-before: page }
+.verso { break-before: verso }

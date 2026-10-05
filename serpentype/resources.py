@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import io
 import math
+import mimetypes
+import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from enum import Enum
@@ -12,6 +14,15 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import unquote, unquote_to_bytes, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+_IMG = re.compile(r"<img\b[^>]*>", re.IGNORECASE | re.DOTALL)
+_SRC = re.compile(
+    r"\bsrc\s*=\s*(?:\"(?P<double>[^\"]*)\"|'(?P<single>[^']*)'|(?P<bare>[^\s>]+))",
+    re.IGNORECASE | re.DOTALL,
+)
+_FONT_FACE = re.compile(r"@font-face\s*\{([^{}]*)\}", re.IGNORECASE | re.DOTALL)
+_URL = re.compile(r"url\(\s*(['\"]?)(.*?)\1\s*\)", re.IGNORECASE | re.DOTALL)
 
 
 class ResourceKind(str, Enum):
@@ -87,6 +98,16 @@ class ResourceLoader:
         self._cache_size = 0
         self._total_bytes = 0
         self._count = 0
+
+    @property
+    def cache_size(self) -> int:
+        """Number of resource payload bytes currently retained by the LRU cache."""
+        return self._cache_size
+
+    @property
+    def cached_resources(self) -> int:
+        """Number of resource entries currently retained by the LRU cache."""
+        return len(self._cache)
 
     def _check_cancelled(self):
         token = self.cancel_token
@@ -195,3 +216,81 @@ class ResourceLoader:
             self._cache[key] = resource
             self._cache_size += size
         return resource
+
+
+def _resource_media_type(resource, source, kind):
+    if resource.media_type:
+        return resource.media_type
+    guessed = mimetypes.guess_type(urlsplit(source).path)[0]
+    if guessed:
+        return guessed
+    data = resource.data.lstrip()
+    if kind == ResourceKind.IMAGE:
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if data.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if data.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif"
+        if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+            return "image/webp"
+        if data.startswith(b"<svg") or b"<svg" in data[:512]:
+            return "image/svg+xml"
+    return "application/octet-stream"
+
+
+def _prepare_renderer_sources(html, css, loader, base_dir, cancel_token=None):
+    """Resolve direct Renderer resources through one bounded public loader."""
+    def resource_url(source):
+        if urlsplit(source).scheme or loader.base_dir is not None:
+            return source
+        return str((Path(base_dir) / unquote(source)).resolve())
+
+    def as_data_uri(source, kind):
+        if source.startswith("data:"):
+            return source
+        try:
+            resource = loader.load(resource_url(source), kind)
+        except Exception as error:
+            # Keep the original source token even when the loader's error
+            # only reports a byte/count limit and omits the requested URL.
+            error.resource_source = source
+            raise
+        media_type = _resource_media_type(resource, source, kind)
+        encoded = base64.b64encode(resource.data).decode("ascii")
+        return f"data:{media_type};base64,{encoded}"
+
+    def rewrite_image(match):
+        tag = match.group()
+        source_match = _SRC.search(tag)
+        if source_match is None:
+            return tag
+        group = next(
+            name for name in ("double", "single", "bare")
+            if source_match.group(name) is not None
+        )
+        source = unquote(source_match.group(group))
+        replacement = as_data_uri(source, ResourceKind.IMAGE)
+        start, end = source_match.span(group)
+        return tag[:start] + replacement + tag[end:]
+
+    def rewrite_font_face(match):
+        block = match.group()
+
+        def rewrite_url(url_match):
+            source = url_match.group(2)
+            replacement = as_data_uri(source, ResourceKind.FONT)
+            return f'url("{replacement}")'
+
+        return _URL.sub(rewrite_url, block)
+
+    previous_token = loader.cancel_token
+    if cancel_token is not None:
+        loader.cancel_token = cancel_token
+    try:
+        html = _IMG.sub(rewrite_image, html)
+        html = _FONT_FACE.sub(rewrite_font_face, html)
+        css = _FONT_FACE.sub(rewrite_font_face, css)
+        return html, css
+    finally:
+        loader.cancel_token = previous_token

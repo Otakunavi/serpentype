@@ -1,0 +1,9 @@
+@page { size: 280pt 190pt; margin: 18pt }
+body { margin: 0; font-family: "Noto Sans"; color: #203248 }
+h1 { margin: 0 0 8pt; font-size: 15pt; color: #173b63 }
+p { margin: 0 0 10pt; font-size: 8pt }
+section { display: flex; gap: 12pt; align-items: center; height: 78pt; padding: 8pt; background: #f0f4f7; border: 1pt solid #9aafc0 }
+img { width: 68pt; height: 62pt; object-fit: contain }
+.raster { object-fit: cover; object-position: center }
+.vector { width: 78pt; height: 62pt }
+.caption { margin-top: 10pt; color: #536b7e }

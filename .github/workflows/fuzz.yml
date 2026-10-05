@@ -1,0 +1,26 @@
+name: parser and serializer fuzz smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Run bounded fuzz smoke tests
+        env:
+          CARGO_BUILD_JOBS: 2
+        run: |
+          cargo fuzz run html_css -- -max_total_time=60 -timeout=10
+          cargo fuzz run font_bytes -- -max_total_time=60 -timeout=10
+          cargo fuzz run raster_image fuzz/corpus/raster_image -- -max_total_time=60 -timeout=10
+          cargo fuzz run raster_svg_pdf -- -max_total_time=60 -timeout=10

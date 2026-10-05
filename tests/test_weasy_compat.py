@@ -51,6 +51,20 @@ class WeasyCompatTests(unittest.TestCase):
             self.assertIsNone(document.write_pdf(path))
             self.assertEqual(path.read_bytes(), pdf_bytes)
 
+    def test_table_presentational_hints_are_applied_only_when_requested(self):
+        from pypdf import PdfReader
+
+        source = HTML(string=(
+            "<table width='160' height='80' cellpadding='6' cellspacing='4' border='2'>"
+            "<tr><td align='right' valign='bottom'>A</td><td>B</td></tr></table>"
+        ))
+        without_hints = source.write_pdf(presentational_hints=False)
+        with_hints = source.write_pdf(presentational_hints=True)
+        self.assertNotEqual(without_hints, with_hints)
+        plain_stream = PdfReader(BytesIO(without_hints)).pages[0].get_contents().get_data()
+        hinted_stream = PdfReader(BytesIO(with_hints)).pages[0].get_contents().get_data()
+        self.assertGreater(hinted_stream.count(b" re"), plain_stream.count(b" re"))
+
     def test_file_base_url_and_data_png_image(self):
         image = (ROOT / "tests" / "fixtures" / "blue.png").read_bytes()
         encoded = base64.b64encode(image).decode("ascii")
@@ -77,12 +91,12 @@ class WeasyCompatTests(unittest.TestCase):
         )
         encoded = base64.b64encode(svg).decode()
         pdf = HTML(string=f'<img src="data:image/svg+xml;base64,{encoded}">').write_pdf()
-        self.assertIn(b"/Subtype /Image", pdf)
+        self.assertIn(b"/Subtype /Form", pdf)
         path_svg = base64.b64encode(
             b'<svg width="20" height="20"><path d="M0 0L20 20"/></svg>'
         ).decode()
         path_pdf = HTML(string=f'<img src="data:image/svg+xml;base64,{path_svg}">').write_pdf()
-        self.assertIn(b"/Subtype /Image", path_pdf)
+        self.assertIn(b"/Subtype /Form", path_pdf)
         malformed = base64.b64encode(b'<svg><path').decode()
         with self.assertRaisesRegex(ValueError, "SVG"):
             HTML(string=f'<img src="data:image/svg+xml;base64,{malformed}">').write_pdf()

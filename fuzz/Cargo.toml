@@ -1,0 +1,41 @@
+[package]
+name = "serpentype-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+base64 = "0.22"
+libfuzzer-sys = "0.4"
+serpentype = { path = "..", default-features = false }
+
+[[bin]]
+name = "html_css"
+path = "fuzz_targets/html_css.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "font_bytes"
+path = "fuzz_targets/font_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "raster_svg_pdf"
+path = "fuzz_targets/raster_svg_pdf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "raster_image"
+path = "fuzz_targets/raster_image.rs"
+test = false
+doc = false
+bench = false

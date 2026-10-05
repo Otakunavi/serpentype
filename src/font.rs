@@ -365,6 +365,14 @@ impl FontRegistry {
             .map(|font| font.data.bytes.as_ref().clone())
             .collect())
     }
+    /// Return unique source digests without cloning font bytes.
+    pub fn source_digests(&self) -> Result<Vec<[u8; 32]>> {
+        let registry = self.inner.lock().map_err(|e| Error(e.to_string()))?;
+        let mut digests: Vec<_> = registry.fonts.iter().map(|font| font.data.digest).collect();
+        digests.sort_unstable();
+        digests.dedup();
+        Ok(digests)
+    }
     /// Find the nearest registered face in family order, then a glyph fallback.
     pub fn resolve(
         &self,

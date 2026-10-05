@@ -33,13 +33,16 @@ def _read_source(*, string=None, filename=None, file_obj=None, encoding=None):
     supplied = sum(value is not None for value in (string, filename, file_obj))
     if supplied != 1:
         raise TypeError("provide exactly one of string, filename, or file_obj")
+    source_name = None
     if filename is not None:
         data = Path(filename).read_bytes()
         inferred_base = Path(filename).resolve().parent
+        source_name = os.fspath(filename)
     elif file_obj is not None:
         data = file_obj.read()
         name = getattr(file_obj, "name", None)
         inferred_base = Path(name).resolve().parent if name and Path(name).is_file() else None
+        source_name = os.fspath(name) if name else None
     else:
         data = string
         inferred_base = None
@@ -47,7 +50,7 @@ def _read_source(*, string=None, filename=None, file_obj=None, encoding=None):
         data = data.decode(encoding or "utf-8")
     if not isinstance(data, str):
         raise TypeError("HTML/CSS source must be str or bytes")
-    return data, inferred_base
+    return data, inferred_base, source_name
 
 
 def _local_path(url: str, base_url, inferred_base=None) -> Path:
@@ -153,7 +156,7 @@ class CSS:
 
     def __init__(self, *, string=None, filename=None, file_obj=None, base_url=None,
                  font_config=None, encoding=None, resource_loader=None, url_fetcher=None):
-        source, inferred_base = _read_source(
+        source, inferred_base, _ = _read_source(
             string=string, filename=filename, file_obj=file_obj, encoding=encoding
         )
         if resource_loader is not None and url_fetcher is not None:
@@ -231,7 +234,7 @@ class HTML:
 
     def __init__(self, *, string=None, filename=None, file_obj=None, base_url=None,
                  encoding=None, resource_loader=None, url_fetcher=None):
-        self._source, self._inferred_base = _read_source(
+        self._source, self._inferred_base, self._source_name = _read_source(
             string=string, filename=filename, file_obj=file_obj, encoding=encoding
         )
         self.base_url = base_url
@@ -259,16 +262,15 @@ class HTML:
                     config.registry.register_file(
                         str(face.source), family=face.family, weight=face.weight, style=face.style
                     )
-        # The argument is accepted for source compatibility. Presentational
-        # attributes beyond Serpentype's controlled HTML/CSS subset are not emulated.
-        _ = presentational_hints
         css_text = "\n".join(sheet.text for sheet in sheets)
         base_dir = (Path.cwd() if self.resource_loader is not None and self.base_url
                     and urlsplit(os.fspath(self.base_url)).scheme in ("http", "https")
                     else _local_path(".", self.base_url, self._inferred_base))
         html = _rewrite_file_images(self._source, self.base_url, self._inferred_base,
                                     self.resource_loader)
-        prepared = Renderer(fonts=config.registry, base_dir=str(base_dir)).layout(
+        prepared = Renderer(fonts=config.registry, base_dir=str(base_dir),
+                            presentational_hints=presentational_hints,
+                            source_name=self._source_name).layout(
             html, css_text
         )
         return Document(prepared)

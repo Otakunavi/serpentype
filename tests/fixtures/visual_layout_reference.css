@@ -1,0 +1,16 @@
+@page { size: 280pt 330pt; margin: 16pt }
+body { margin: 0; font-family: "Noto Sans"; color: #203248 }
+h1 { margin: 0 0 8pt; font-size: 16pt; color: #173b63 }
+h2 { margin: 8pt 0 4pt; font-size: 10pt; color: #375a7e }
+p { margin: 0; font-size: 8pt }
+.relative { position: relative; height: 26pt; border: 1pt solid #7591a7; padding: 4pt; background: #eef3f7 }
+.badge { position: absolute; top: 4pt; right: 4pt; width: 34pt; background: #e1a640; padding: 3pt; font-size: 7pt }
+.badge { transform: rotate(-4deg) }
+.flex { display: flex; gap: 5pt; height: 24pt }
+.flex div { flex: 1; padding: 5pt; background: #dce9f4; border: 0.5pt solid #7391ad; font-size: 8pt }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4pt; height: 32pt }
+.grid div { padding: 3pt; background: #e6eee4; border: 0.5pt solid #82977d; font-size: 7pt }
+.clip { margin-top: 6pt; height: 10pt; overflow: hidden; border: 1pt solid #bb7066; border-radius: 4pt; padding: 2pt; white-space: nowrap }
+.rotated { display: inline-block; margin-top: 8pt; padding: 4pt; background: #e6eaf3; transform: rotate(2deg); font-size: 7pt }
+.sized { width: 132pt; height: 18pt; box-sizing: border-box; border: 1pt solid #9b7952; background: #f3ead9; padding: 3pt; font-size: 6pt }
+.inline-box { display: inline-block; width: 48pt; padding: 3pt; border: 0.7pt solid #678a76; background: #e7f0e7; font-size: 6pt; line-height: 7pt }

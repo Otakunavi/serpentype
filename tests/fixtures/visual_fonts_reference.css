@@ -1,0 +1,7 @@
+@page { size: 290pt 180pt; margin: 20pt }
+body { margin: 0; font-family: "Noto Sans"; color: #24364a }
+h1 { margin: 0 0 10pt; font-size: 15pt; color: #17466d }
+p { margin: 0 0 9pt; font-size: 9pt }
+.cyrillic { font-size: 11pt; color: #375d7e }
+.emoji { padding: 5pt; background: #edf3f6 }
+.small { font-size: 8pt; color: #697e8e }

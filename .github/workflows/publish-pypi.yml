@@ -6,7 +6,7 @@ on:
       tag:
         description: GitHub release tag to publish
         required: true
-        default: v0.1.0
+        default: v0.2.0
 
 permissions: {}
 
@@ -39,8 +39,21 @@ jobs:
           assert tag.startswith('v')
           version = tag[1:]
           files = list(Path('dist').iterdir())
-          assert len(files) == 5, files
-          assert sum(path.suffix == '.whl' for path in files) == 4, files
+          # wheels.yml currently produces 7 native/manylinux/musllinux wheels.
+          assert len(files) == 8, files
+          wheels = [path.name for path in files if path.suffix == '.whl']
+          assert len(wheels) == 7, wheels
+          platforms = [
+              ('manylinux', 'x86_64'),
+              ('manylinux', 'aarch64'),
+              ('musllinux', 'x86_64'),
+              ('musllinux', 'aarch64'),
+              ('macosx', 'x86_64'),
+              ('macosx', 'arm64'),
+              ('win_amd64',),
+          ]
+          assert all(any(all(part in wheel for part in platform) for wheel in wheels)
+                     for platform in platforms), wheels
           assert any(path.name == f'serpentype-{version}.tar.gz' for path in files)
           assert all(path.name.startswith(f'serpentype-{version}') for path in files)
           PY
@@ -59,12 +72,34 @@ jobs:
       name: pypi
       url: https://pypi.org/project/serpentype/
     permissions:
+      contents: write
       id-token: write
+      attestations: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
       - uses: actions/download-artifact@v4
         with:
           name: pypi-distributions
           path: dist
+
+      - name: Generate SBOM, provenance metadata and checksums
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python scripts/release_artifacts.py --artifacts dist --output release-artifacts --tag "$RELEASE_TAG"
+
+      - name: Attest release distributions
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+
+      - name: Upload release manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release upload "$RELEASE_TAG" release-artifacts/* --repo "$GH_REPO" --clobber
 
       - name: Publish distributions
         uses: pypa/gh-action-pypi-publish@release/v1

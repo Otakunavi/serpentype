@@ -1,0 +1,9 @@
+@page { size: 300pt 220pt; margin: 18pt }
+body { margin: 0; font-family: "Noto Sans"; color: #24364a }
+h1 { margin: 0 0 10pt; font-size: 13pt; color: #17466d }
+table { border-collapse: collapse; width: 264pt }
+th { background: #315d7e; color: #ffffff; border: 0.7pt solid #274a64; padding: 5pt; text-align: left; font-size: 8pt }
+td { border: 0.7pt solid #8ba0af; padding: 6pt; font-size: 8pt }
+.group { background: #edf3f6; vertical-align: middle }
+.inner { width: 230pt; margin: 2pt }
+.inner td { background: #f5f7f3; padding: 4pt; font-size: 7pt }
