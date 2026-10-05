@@ -1,4 +1,4 @@
-# Migration notes for the future 0.2.0 release
+# Migration notes for 0.2.0
 
 Existing Python call forms continue to work. `PreparedDocument.warnings` remains available; `diagnostics` exposes the same entries with severity, optional context and occurrence counts. Duplicate warnings are now combined. `cursor`, `caret-color` and `user-select` are ignored without a warning.
 
