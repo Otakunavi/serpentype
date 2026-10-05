@@ -1,6 +1,6 @@
-# Serpentype 0.2.0 alpha 1
+# Serpentype 0.2.0
 
-This is the 0.2.0 release candidate. The [capability matrix](docs/capabilities.md) identifies the supported, partial and experimental features; cross-platform CI has passed, while signed tagging and publication remain tracked in the [release checklist](docs/release-checklist-0.2.0.md).
+This is the stable 0.2.0 release. The [capability matrix](docs/capabilities.md) identifies supported, partial and experimental features. The signed release tag, cross-platform artifacts, SBOM, provenance and checksums are available from the [GitHub release](https://github.com/Otakunavi/serpentype/releases/tag/v0.2.0); the [release checklist](docs/release-checklist-0.2.0.md) records verification details.
 
 Serpentype is a Rust document layout engine with a Python API. It accepts a **controlled** HTML/CSS subset, calculates page breaks, then exports the prepared pages as a vector/text PDF. No browser, system renderer, or system font is used by Serpentype. A prebuilt platform wheel needs only Python ≥3.10.
 

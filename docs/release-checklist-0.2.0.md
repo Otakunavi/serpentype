@@ -2,7 +2,7 @@
 
 This is the canonical progress tracker for the final 0.2.0 release. A checkbox is closed only when the implementation, mandatory Rust and installed-wheel Python tests, capability entry, and relevant documentation are present. Broad capability groups may remain `partial` while their individual checkboxes close.
 
-Current snapshot: **71 closed, 2 open**.
+Current snapshot: **73 closed, 0 open**. Version 0.2.0 was released on 2026-10-05; its signed tag and published artifacts have been verified.
 
 ## Text and fonts
 
@@ -97,9 +97,9 @@ Current snapshot: **71 closed, 2 open**.
 - [x] Add property tests and fuzz targets for HTML, CSS, fonts, SVG, raster formats, table fragmentation and PDF serialization.
 - [x] Add multi-process throughput and bounded-cache stress measurements to the benchmark gate.
 - [x] Run the full wheel matrix against the final candidate commit with no mandatory skips (all seven wheels built; the deterministic PDF fingerprint passed on each; installed-wheel ABI3 tests passed on CPython 3.10–3.14; CI run [37344178988](https://github.com/Otakunavi/serpentype/actions/runs/37344178988), candidate `53c5696`).
-- [ ] Generate and publish SBOM, build provenance and SHA256 manifests for the final artifacts.
+- [x] Generate and publish SBOM, build provenance and SHA256 manifests for the final artifacts (release workflow [37355694879](https://github.com/Otakunavi/serpentype/actions/runs/37355694879); assets are attached to the [GitHub release](https://github.com/Otakunavi/serpentype/releases/tag/v0.2.0), and PyPI reports Trusted Publishing provenance).
 - [x] Finish changelog, migration notes, capability matrix and final release notes.
-- [ ] Create and verify the signed final `v0.2.0` tag.
+- [x] Create and verify the signed final `v0.2.0` tag (GitHub reports a valid signature by `otakunavi@gmail.com`; tag points to `446ea2a5eacf0523c70261408238b2eda30ef741`).
 
 ## Completed after `0.2.0-alpha.1`
 
@@ -108,6 +108,6 @@ Current snapshot: **71 closed, 2 open**.
 - Current table slice: collapsed-border conflict resolution, fragmented rowspan groups, rowspan in repeated sections, nested tables, constrained column sizing and opt-in presentational hints.
 - Current resource slice: image fitting/positioning, opt-in raster downsampling, vector SVG Form XObjects, direct `Renderer` loader integration and aggregate/cancellation loader coverage.
 - Current positioning/layout slice: block absolute/fixed layers and transforms, extended Flex/Grid sizing and alignment, explicit Grid placement/spans, and tested fragmentation boundaries.
-- Current paged-media/PDF slice: combined page selectors and break precedence, nested counters/text running content/named strings, bleed/crop marks, general and inline destinations with hierarchical heading outlines, PDF attachments/UTC timestamps, and a native-platform deterministic-PDF SHA256 gate. Full wheel-matrix verification remains open until CI passes.
-- Current release-hardening slice: typed strict-mode errors and diagnostic policies; mapped HTML/CSS source positions; bounded resource-cache statistics; property/fuzz harnesses; fourteen rendered-page snapshots across trim/crop geometry, page sides/blank pages, counters/running/fixed content, table continuation/rowspans/nested tables, font fallback/shaping/WOFF2, typography/paint/links, paragraph pagination, layout modes and image resources; measured independent-process/cache stress; SPDX/provenance/checksum generation and release attestation workflow. Publishing and signing require the final tagged candidate and valid GitHub credentials.
+- Current paged-media/PDF slice: combined page selectors and break precedence, nested counters/text running content/named strings, bleed/crop marks, general and inline destinations with hierarchical heading outlines, PDF attachments/UTC timestamps, and deterministic-PDF SHA256 equality across the full release wheel matrix.
+- Current release-hardening slice: typed strict-mode errors and diagnostic policies; mapped HTML/CSS source positions; bounded resource-cache statistics; property/fuzz harnesses; fourteen rendered-page snapshots across trim/crop geometry, page sides/blank pages, counters/running/fixed content, table continuation/rowspans/nested tables, font fallback/shaping/WOFF2, typography/paint/links, paragraph pagination, layout modes and image resources; measured independent-process/cache stress; SPDX/provenance/checksum generation and release attestations. The final signed tag and PyPI publication are complete.
 - Current diagnostic-location slice: source offsets flow through parsed HTML nodes into layout errors; CSS diagnostics distinguish external, embedded and inline declarations; resource-loader exceptions, local @font-face failures, strict-mode errors and margin-box missing glyphs include source/line/column metadata. Regression coverage also guards against false offsets from HTML comments and raw-text elements.
