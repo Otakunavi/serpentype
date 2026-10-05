@@ -77,6 +77,17 @@ fn border_length(value: &str, font_size: f32) -> Option<f32> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color(pub f32, pub f32, pub f32);
 
+/// One resolved CSS Grid track function. Lengths are PDF points and
+/// percentages are stored as fractions.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GridTrack {
+    Fixed(f32),
+    Percent(f32),
+    Fr(f32),
+    Auto,
+    MinMax(Box<GridTrack>, Box<GridTrack>),
+}
+
 fn named_color(value: &str) -> Option<&'static str> {
     Some(match value {
         "aliceblue" => "#f0f8ff",
@@ -343,6 +354,8 @@ pub struct PageStyle {
     pub margin: [f32; 4],
     pub rotation: i16,
     pub landscape_size_keyword: bool,
+    pub bleed: f32,
+    pub crop_marks: bool,
     pub boxes: HashMap<String, MarginBox>,
 }
 #[derive(Clone, Debug)]
@@ -370,6 +383,8 @@ impl Default for PageStyle {
             margin: [56.7; 4],
             rotation: 0,
             landscape_size_keyword: false,
+            bleed: 0.0,
+            crop_marks: false,
             boxes: HashMap::new(),
         }
     }
@@ -381,7 +396,15 @@ pub struct Style {
     pub display: String,
     pub visibility: String,
     pub position: String,
+    pub running_name: Option<String>,
+    pub counter_reset: Vec<(String, i32)>,
+    pub counter_increment: Vec<(String, i32)>,
+    pub string_set: Option<String>,
     pub inset: [Option<f32>; 4],
+    pub inset_percent: [Option<f32>; 4],
+    pub z_index: i32,
+    /// CSS affine matrix in top-left coordinates: `[a, b, c, d, e, f]`.
+    pub transform: [f32; 6],
     pub family: Vec<String>,
     pub weight: u16,
     pub font_style: String,
@@ -432,11 +455,29 @@ pub struct Style {
     pub max_width_percent: Option<f32>,
     pub max_height_percent: Option<f32>,
     pub aspect_ratio: Option<f32>,
+    pub object_fit: String,
+    pub object_position: [f32; 2],
+    pub object_position_offset: [f32; 2],
     pub page_name: Option<String>,
     pub flex_direction: String,
+    pub flex_wrap: String,
+    pub flex_grow: f32,
+    pub flex_shrink: f32,
+    pub flex_basis: Option<f32>,
+    pub flex_basis_percent: Option<f32>,
     pub align_items: String,
+    pub align_self: String,
+    pub align_content: String,
     pub justify_content: String,
+    pub justify_items: String,
+    pub justify_self: String,
     pub grid_columns: Option<usize>,
+    pub grid_template_columns: Vec<GridTrack>,
+    pub grid_template_rows: Vec<GridTrack>,
+    pub grid_column_start: Option<usize>,
+    pub grid_column_span: usize,
+    pub grid_row_start: Option<usize>,
+    pub grid_row_span: usize,
     pub row_gap: f32,
     pub column_gap: f32,
     pub table_layout: String,
@@ -456,7 +497,14 @@ impl Default for Style {
             display: "block".into(),
             visibility: "visible".into(),
             position: "static".into(),
+            running_name: None,
+            counter_reset: Vec::new(),
+            counter_increment: Vec::new(),
+            string_set: None,
             inset: [None; 4],
+            inset_percent: [None; 4],
+            z_index: 0,
+            transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
             family: vec!["Noto Sans".into()],
             weight: 400,
             font_style: "normal".into(),
@@ -507,11 +555,29 @@ impl Default for Style {
             max_width_percent: None,
             max_height_percent: None,
             aspect_ratio: None,
+            object_fit: "fill".into(),
+            object_position: [0.5, 0.5],
+            object_position_offset: [0.0, 0.0],
             page_name: None,
             flex_direction: "row".into(),
+            flex_wrap: "nowrap".into(),
+            flex_grow: 0.0,
+            flex_shrink: 1.0,
+            flex_basis: None,
+            flex_basis_percent: None,
             align_items: "stretch".into(),
+            align_self: "auto".into(),
+            align_content: "stretch".into(),
             justify_content: "start".into(),
+            justify_items: "stretch".into(),
+            justify_self: "auto".into(),
             grid_columns: None,
+            grid_template_columns: vec![],
+            grid_template_rows: vec![],
+            grid_column_start: None,
+            grid_column_span: 1,
+            grid_row_start: None,
+            grid_row_span: 1,
             row_gap: 0.0,
             column_gap: 0.0,
             table_layout: "auto".into(),
@@ -582,6 +648,7 @@ pub struct Sheet {
     pub named_pages: HashMap<String, PageStyle>,
     pub pseudo_pages: HashMap<String, PageStyle>,
     pub first_boxes: HashMap<String, MarginBox>,
+    page_rules: Vec<PageRule>,
     margin_rules: Vec<MarginRule>,
     pub rules: Vec<Rule>,
     pub faces: Vec<FontFace>,
@@ -589,15 +656,94 @@ pub struct Sheet {
 }
 
 #[derive(Clone, Debug)]
+struct PageRule {
+    page_name: Option<String>,
+    pseudos: Vec<String>,
+    declarations: Vec<(String, String)>,
+}
+
+#[derive(Clone, Debug)]
 struct MarginRule {
     page_name: Option<String>,
-    first: bool,
-    pseudo: Option<String>,
+    pseudos: Vec<String>,
     box_name: String,
     declarations: Vec<(String, String)>,
 }
 
 impl Sheet {
+    pub fn page_style_for(&self, name: Option<&str>, index: usize, blank: bool) -> PageStyle {
+        type Priority = (bool, bool, usize, usize, usize);
+        let mut winners: HashMap<String, (Priority, String)> = HashMap::new();
+        for (rule_index, rule) in self.page_rules.iter().enumerate() {
+            if rule
+                .page_name
+                .as_deref()
+                .is_some_and(|page_name| Some(page_name) != name)
+            {
+                continue;
+            }
+            if !rule.pseudos.iter().all(|pseudo| match pseudo.as_str() {
+                ":first" => index == 0,
+                ":left" => (index + 1).is_multiple_of(2),
+                ":right" => !(index + 1).is_multiple_of(2),
+                ":blank" => blank,
+                _ => false,
+            }) {
+                continue;
+            }
+            for (declaration_index, (property, raw)) in rule.declarations.iter().enumerate() {
+                let priority = (
+                    raw.trim().ends_with("!important"),
+                    rule.page_name.is_some(),
+                    rule.pseudos.len(),
+                    rule_index,
+                    declaration_index,
+                );
+                if winners
+                    .get(property)
+                    .is_none_or(|(old, _)| priority >= *old)
+                {
+                    winners.insert(property.clone(), (priority, raw.clone()));
+                }
+            }
+        }
+        let mut declarations = winners.into_iter().collect::<Vec<_>>();
+        declarations.sort_by_key(|(_, (priority, _))| (priority.3, priority.4));
+        let mut page = PageStyle::default();
+        let mut ignored_warnings = Vec::new();
+        parse_page_declarations(
+            &mut page,
+            declarations
+                .into_iter()
+                .map(|(property, (_, value))| (property, value))
+                .collect(),
+            &mut ignored_warnings,
+        );
+        page
+    }
+
+    pub fn resolved_page_styles(&self) -> Vec<PageStyle> {
+        let mut names = vec![None];
+        names.extend(
+            self.page_rules
+                .iter()
+                .filter_map(|rule| rule.page_name.as_deref())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .map(Some),
+        );
+        names
+            .into_iter()
+            .flat_map(|name| {
+                (0..2).flat_map(move |index| {
+                    [false, true]
+                        .into_iter()
+                        .map(move |blank| self.page_style_for(name, index, blank))
+                })
+            })
+            .collect()
+    }
+
     /// Resolve page-margin declarations by importance, page-selector specificity,
     /// and source order. A named page outranks `:first` at equal importance.
     pub fn margin_boxes_for(
@@ -606,22 +752,17 @@ impl Sheet {
         index: usize,
         blank: bool,
     ) -> HashMap<String, MarginBox> {
-        type Priority = (bool, u8, u8, usize, usize);
+        type Priority = (bool, bool, usize, usize, usize);
         let mut winners: HashMap<(String, String), (Priority, &str)> = HashMap::new();
         for (rule_index, rule) in self.margin_rules.iter().enumerate() {
-            if rule.first && index != 0 {
+            if !rule.pseudos.iter().all(|pseudo| match pseudo.as_str() {
+                ":first" => index == 0,
+                ":left" => (index + 1).is_multiple_of(2),
+                ":right" => !(index + 1).is_multiple_of(2),
+                ":blank" => blank,
+                _ => false,
+            }) {
                 continue;
-            }
-            if let Some(pseudo) = rule.pseudo.as_deref() {
-                let applies = match pseudo {
-                    ":left" => (index + 1).is_multiple_of(2),
-                    ":right" => !(index + 1).is_multiple_of(2),
-                    ":blank" => blank,
-                    _ => false,
-                };
-                if !applies {
-                    continue;
-                }
             }
             if let Some(page_name) = &rule.page_name {
                 if Some(page_name.as_str()) != name {
@@ -641,14 +782,8 @@ impl Sheet {
                 }
                 let priority = (
                     raw.trim().ends_with("!important"),
-                    u8::from(rule.page_name.is_some()),
-                    if rule.first {
-                        2
-                    } else if rule.pseudo.as_deref() == Some(":blank") {
-                        3
-                    } else {
-                        u8::from(rule.pseudo.is_some())
-                    },
+                    rule.page_name.is_some(),
+                    rule.pseudos.len(),
                     rule_index,
                     declaration_index,
                 );
@@ -819,6 +954,37 @@ fn specificity(s: &str) -> u32 {
         + ((s.matches('.').count() + s.matches('[').count()) as u32) * 10
         + u32::from(s.chars().next().is_some_and(|c| c.is_ascii_alphabetic()))
 }
+fn valid_ident(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_' || ch == '-')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+fn parse_counter_list(value: &str, default: i32) -> Option<Vec<(String, i32)>> {
+    if value.trim() == "none" {
+        return Some(Vec::new());
+    }
+    let parts: Vec<_> = value.split_whitespace().collect();
+    let mut result = Vec::new();
+    let mut index = 0;
+    while index < parts.len() {
+        let name = parts[index];
+        if !valid_ident(name) {
+            return None;
+        }
+        index += 1;
+        let amount = match parts.get(index).and_then(|part| part.parse::<i32>().ok()) {
+            Some(amount) => {
+                index += 1;
+                amount
+            }
+            None => default,
+        };
+        result.push((name.to_owned(), amount));
+    }
+    Some(result)
+}
 
 fn blocks(input: &str) -> Result<(Vec<(&str, &str)>, String)> {
     let mut found = Vec::new();
@@ -947,6 +1113,19 @@ fn parse_page_declarations(
             "page-orientation" if value == "rotate-right" => page.rotation = 90,
             "page-orientation" if value == "rotate-left" => page.rotation = 270,
             "page-orientation" if value == "upright" => page.rotation = 0,
+            "bleed" => {
+                if let Some(value) = length(value).filter(|value| *value >= 0.0) {
+                    page.bleed = value;
+                } else {
+                    unsupported(
+                        warnings,
+                        "css-value",
+                        format!("invalid @page bleed: {value}"),
+                    );
+                }
+            }
+            "marks" if value == "crop" => page.crop_marks = true,
+            "marks" if value == "none" => page.crop_marks = false,
             _ => unsupported(
                 warnings,
                 "css-property",
@@ -1011,32 +1190,57 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
         if selector == "@media print" {
             parse_rules(body, sheet)?;
         } else if selector.starts_with("@page") {
-            let name = selector.trim_start_matches("@page").trim();
-            if name.starts_with(':') && !matches!(name, ":first" | ":left" | ":right" | ":blank") {
+            let selector = selector.trim_start_matches("@page").trim();
+            let parts: Vec<_> = selector.split(':').collect();
+            let (page_name, pseudo_parts) = if selector.starts_with(':') {
+                ("", &parts[1..])
+            } else {
+                (parts.first().copied().unwrap_or("").trim(), &parts[1..])
+            };
+            let pseudos = pseudo_parts
+                .iter()
+                .map(|pseudo| format!(":{}", pseudo.trim()))
+                .collect::<Vec<_>>();
+            let mut unique_pseudos = pseudos.clone();
+            unique_pseudos.sort();
+            unique_pseudos.dedup();
+            let supported_pseudos = pseudos
+                .iter()
+                .all(|pseudo| matches!(pseudo.as_str(), ":first" | ":left" | ":right" | ":blank"))
+                && unique_pseudos.len() == pseudos.len()
+                && !(pseudos.contains(&":left".into()) && pseudos.contains(&":right".into()));
+            if !supported_pseudos || page_name.contains(char::is_whitespace) || selector == ":" {
                 unsupported(
                     &mut sheet.warnings,
                     "at-rule",
-                    format!("unsupported @page selector: {name}"),
+                    format!("unsupported @page selector: {selector}"),
                 );
                 continue;
             }
-            let mut page = if name.is_empty() {
-                sheet.page.clone()
-            } else if name.starts_with(':') {
+            let pseudo = (pseudos.len() == 1).then(|| pseudos[0].clone());
+            let mut page = if !page_name.is_empty() {
+                sheet
+                    .named_pages
+                    .get(page_name)
+                    .cloned()
+                    .unwrap_or_else(|| sheet.page.clone())
+            } else if let Some(pseudo) = pseudo.as_deref() {
                 sheet
                     .pseudo_pages
-                    .get(name)
+                    .get(pseudo)
                     .cloned()
                     .unwrap_or_else(|| sheet.page.clone())
             } else {
-                sheet
-                    .named_pages
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| sheet.page.clone())
+                sheet.page.clone()
             };
             let (nested, plain) = blocks(body)?;
-            parse_page_declarations(&mut page, declarations(&plain), &mut sheet.warnings);
+            let page_declarations = declarations(&plain);
+            parse_page_declarations(&mut page, page_declarations.clone(), &mut sheet.warnings);
+            sheet.page_rules.push(PageRule {
+                page_name: (!page_name.is_empty()).then(|| page_name.to_owned()),
+                pseudos: pseudos.clone(),
+                declarations: page_declarations,
+            });
             for (box_name, box_body) in nested {
                 if matches!(
                     box_name,
@@ -1049,17 +1253,12 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
                 ) {
                     let box_style = parse_margin_box(box_body, &mut sheet.warnings);
                     sheet.margin_rules.push(MarginRule {
-                        page_name: if name.is_empty() || name.starts_with(':') {
-                            None
-                        } else {
-                            Some(name.into())
-                        },
-                        first: name == ":first",
-                        pseudo: matches!(name, ":left" | ":right" | ":blank").then(|| name.into()),
+                        page_name: (!page_name.is_empty()).then(|| page_name.to_owned()),
+                        pseudos: pseudos.clone(),
                         box_name: box_name.into(),
                         declarations: declarations(box_body),
                     });
-                    if name == ":first" {
+                    if page_name.is_empty() && pseudos == [":first"] {
                         sheet.first_boxes.insert(box_name.into(), box_style);
                     } else {
                         page.boxes.insert(box_name.into(), box_style);
@@ -1072,12 +1271,12 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
                     );
                 }
             }
-            if name.is_empty() {
+            if page_name.is_empty() && pseudos.is_empty() {
                 sheet.page = page;
-            } else if name.starts_with(':') {
-                sheet.pseudo_pages.insert(name.into(), page);
-            } else {
-                sheet.named_pages.insert(name.into(), page);
+            } else if page_name.is_empty() && pseudos.len() == 1 {
+                sheet.pseudo_pages.insert(pseudo.unwrap(), page);
+            } else if !page_name.is_empty() && pseudos.is_empty() {
+                sheet.named_pages.insert(page_name.into(), page);
             }
         } else if selector == "@font-face" {
             let map: HashMap<_, _> = declarations(body).into_iter().collect();
@@ -1149,6 +1348,7 @@ pub fn parse(css: &str, strict: bool) -> Result<Sheet> {
         named_pages: HashMap::new(),
         pseudo_pages: HashMap::new(),
         first_boxes: HashMap::new(),
+        page_rules: Vec::new(),
         margin_rules: vec![],
         rules: vec![],
         faces: vec![],
@@ -1156,7 +1356,11 @@ pub fn parse(css: &str, strict: bool) -> Result<Sheet> {
     };
     parse_rules(&clean, &mut sheet)?;
     if strict && !sheet.warnings.is_empty() {
-        return Err(Error(sheet.warnings[0].message.clone()));
+        let warning = &sheet.warnings[0];
+        return Err(Error(format!(
+            "strict mode: {}: {}",
+            warning.code, warning.message
+        )));
     }
     Ok(sheet)
 }
@@ -1236,6 +1440,236 @@ pub fn selector_matches_dom(selector: &str, dom: &kuchiki::NodeRef) -> bool {
     simple_matches(selector, dom)
 }
 
+fn split_top_level(value: &str, separator: char) -> Vec<&str> {
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    let mut out = Vec::new();
+    for (index, ch) in value.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            _ if ch == separator && depth == 0 => {
+                out.push(value[start..index].trim());
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    out.push(value[start..].trim());
+    out
+}
+
+fn grid_track(value: &str, font_size: f32) -> Option<GridTrack> {
+    let value = value.trim();
+    if value == "auto" {
+        return Some(GridTrack::Auto);
+    }
+    if let Some(number) = value.strip_suffix("fr") {
+        return finite_f32(number.trim())
+            .filter(|number| *number > 0.0)
+            .map(GridTrack::Fr);
+    }
+    if let Some(number) = value.strip_suffix('%') {
+        return finite_f32(number.trim())
+            .filter(|number| *number >= 0.0)
+            .map(|number| GridTrack::Percent(number / 100.0));
+    }
+    if let Some(body) = value
+        .strip_prefix("minmax(")
+        .and_then(|value| value.strip_suffix(')'))
+    {
+        let values = split_top_level(body, ',');
+        if values.len() == 2 {
+            return Some(GridTrack::MinMax(
+                Box::new(grid_track(values[0], font_size)?),
+                Box::new(grid_track(values[1], font_size)?),
+            ));
+        }
+        return None;
+    }
+    computed_length(value, font_size)
+        .filter(|number| *number >= 0.0)
+        .map(GridTrack::Fixed)
+}
+
+fn grid_tracks(value: &str, font_size: f32) -> Option<Vec<GridTrack>> {
+    let mut tokens = Vec::new();
+    let mut depth = 0usize;
+    let mut start = None;
+    for (index, ch) in value.char_indices() {
+        match ch {
+            '(' => {
+                depth += 1;
+                start.get_or_insert(index);
+            }
+            ')' => depth = depth.checked_sub(1)?,
+            _ if ch.is_whitespace() && depth == 0 => {
+                if let Some(begin) = start.take() {
+                    tokens.push(value[begin..index].trim());
+                }
+            }
+            _ => {
+                start.get_or_insert(index);
+            }
+        }
+    }
+    if depth != 0 {
+        return None;
+    }
+    if let Some(begin) = start {
+        tokens.push(value[begin..].trim());
+    }
+    let mut out = Vec::new();
+    for token in tokens {
+        if let Some(body) = token
+            .strip_prefix("repeat(")
+            .and_then(|value| value.strip_suffix(')'))
+        {
+            let values = split_top_level(body, ',');
+            if values.len() != 2 {
+                return None;
+            }
+            let count = values[0].parse::<usize>().ok().filter(|count| *count > 0)?;
+            let repeated = grid_tracks(values[1], font_size)?;
+            if repeated.is_empty() || count.saturating_mul(repeated.len()) > 256 {
+                return None;
+            }
+            for _ in 0..count {
+                out.extend(repeated.iter().cloned());
+            }
+        } else {
+            out.push(grid_track(token, font_size)?);
+        }
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+fn affine_multiply(left: [f32; 6], right: [f32; 6]) -> [f32; 6] {
+    [
+        left[0] * right[0] + left[2] * right[1],
+        left[1] * right[0] + left[3] * right[1],
+        left[0] * right[2] + left[2] * right[3],
+        left[1] * right[2] + left[3] * right[3],
+        left[0] * right[4] + left[2] * right[5] + left[4],
+        left[1] * right[4] + left[3] * right[5] + left[5],
+    ]
+}
+
+fn transform_matrix(value: &str, font_size: f32) -> Option<[f32; 6]> {
+    if value == "none" {
+        return Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    }
+    let mut rest = value.trim();
+    let mut matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    while !rest.is_empty() {
+        let open = rest.find('(')?;
+        let name = rest[..open].trim();
+        let mut depth = 1usize;
+        let mut close = None;
+        for (offset, ch) in rest[open + 1..].char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(open + 1 + offset);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let close = close?;
+        let args: Vec<_> = rest[open + 1..close]
+            .split(|ch: char| ch == ',' || ch.is_whitespace())
+            .filter(|value| !value.is_empty())
+            .collect();
+        let number = |index: usize| args.get(index).and_then(|raw| finite_f32(raw));
+        let distance = |index: usize| {
+            args.get(index)
+                .and_then(|raw| computed_length(raw, font_size))
+        };
+        let operation = match name {
+            "translate" if (1..=2).contains(&args.len()) => [
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                distance(0)?,
+                if args.len() == 2 { distance(1)? } else { 0.0 },
+            ],
+            "translateX" if args.len() == 1 => [1.0, 0.0, 0.0, 1.0, distance(0)?, 0.0],
+            "translateY" if args.len() == 1 => [1.0, 0.0, 0.0, 1.0, 0.0, distance(0)?],
+            "scale" if (1..=2).contains(&args.len()) => {
+                let x = number(0)?;
+                [
+                    x,
+                    0.0,
+                    0.0,
+                    if args.len() == 2 { number(1)? } else { x },
+                    0.0,
+                    0.0,
+                ]
+            }
+            "scaleX" if args.len() == 1 => [number(0)?, 0.0, 0.0, 1.0, 0.0, 0.0],
+            "scaleY" if args.len() == 1 => [1.0, 0.0, 0.0, number(0)?, 0.0, 0.0],
+            "rotate" if args.len() == 1 => {
+                let angle = if let Some(degrees) = args[0].strip_suffix("deg") {
+                    finite_f32(degrees)?.to_radians()
+                } else if let Some(turns) = args[0].strip_suffix("turn") {
+                    finite_f32(turns)? * std::f32::consts::TAU
+                } else {
+                    let radians = args[0].strip_suffix("rad")?;
+                    finite_f32(radians)?
+                };
+                let (sin, cos) = angle.sin_cos();
+                [cos, sin, -sin, cos, 0.0, 0.0]
+            }
+            _ => return None,
+        };
+        matrix = affine_multiply(matrix, operation);
+        rest = rest[close + 1..].trim_start();
+    }
+    Some(matrix)
+}
+
+fn grid_placement(value: &str) -> Option<(Option<usize>, usize)> {
+    let parts = split_top_level(value, '/');
+    let first = parts.first()?.trim();
+    if let Some(raw) = first.strip_prefix("span ") {
+        if parts.len() != 1 {
+            return None;
+        }
+        return Some((
+            None,
+            raw.trim()
+                .parse::<usize>()
+                .ok()
+                .filter(|value| *value > 0)?,
+        ));
+    }
+    let start = match first {
+        "auto" => None,
+        raw => Some(raw.parse::<usize>().ok().filter(|value| *value > 0)?),
+    };
+    let span = if let Some(end) = parts.get(1) {
+        let raw = end.trim();
+        if let Some(raw) = raw.strip_prefix("span ") {
+            raw.trim()
+                .parse::<usize>()
+                .ok()
+                .filter(|value| *value > 0)?
+        } else if let (Some(start), Ok(end)) = (start, raw.parse::<usize>()) {
+            end.checked_sub(start).filter(|value| *value > 0)?
+        } else {
+            return None;
+        }
+    } else {
+        1
+    };
+    Some((start, span))
+}
+
 pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagnostic>) {
     let v = value_without_important(value);
     let mut bad = false;
@@ -1259,7 +1693,57 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         "visibility" if matches!(v, "visible" | "hidden") => style.visibility = v.into(),
         "overflow" if matches!(v, "visible" | "hidden") => style.overflow = v.into(),
         "box-sizing" if matches!(v, "content-box" | "border-box") => style.box_sizing = v.into(),
-        "position" if matches!(v, "static" | "relative") => style.position = v.into(),
+        "position" if matches!(v, "static" | "relative" | "absolute" | "fixed") => {
+            style.position = v.into();
+            style.running_name = None;
+        }
+        "position" if v.starts_with("running(") && v.ends_with(')') => {
+            let name = v[8..v.len() - 1].trim();
+            if valid_ident(name) {
+                style.position = "running".into();
+                style.running_name = Some(name.into());
+            } else {
+                bad = true;
+            }
+        }
+        "counter-reset" | "counter-increment" => {
+            if let Some(parsed) = parse_counter_list(v, if key == "counter-reset" { 0 } else { 1 })
+            {
+                if key == "counter-reset" {
+                    style.counter_reset = parsed;
+                } else {
+                    style.counter_increment = parsed;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "string-set" => {
+            if let Some((name, expression)) = v.split_once(char::is_whitespace) {
+                if valid_ident(name) && expression.trim().starts_with("content(") {
+                    style.string_set = Some(name.into());
+                } else {
+                    bad = true;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "z-index" if v == "auto" => style.z_index = 0,
+        "z-index" => {
+            if let Ok(value) = v.parse::<i32>() {
+                style.z_index = value;
+            } else {
+                bad = true;
+            }
+        }
+        "transform" => {
+            if let Some(matrix) = transform_matrix(v, style.font_size) {
+                style.transform = matrix;
+            } else {
+                bad = true;
+            }
+        }
         "top" | "right" | "bottom" | "left" => {
             let idx = match key {
                 "top" => 0,
@@ -1269,8 +1753,13 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             };
             if v == "auto" {
                 style.inset[idx] = None;
+                style.inset_percent[idx] = None;
+            } else if let Some(percent) = v.strip_suffix('%').and_then(finite_f32) {
+                style.inset[idx] = None;
+                style.inset_percent[idx] = Some(percent / 100.0);
             } else if let Some(n) = computed_length(v, style.font_size) {
                 style.inset[idx] = Some(n);
+                style.inset_percent[idx] = None;
             } else {
                 bad = true;
             }
@@ -1279,15 +1768,154 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         "page" if !v.is_empty() && v.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => {
             style.page_name = Some(v.into())
         }
-        "flex-direction" if matches!(v, "column" | "row") => style.flex_direction = v.into(),
-        "align-items" if matches!(v, "center" | "start" | "stretch") => {
+        "flex-direction" if matches!(v, "column" | "column-reverse" | "row" | "row-reverse") => {
+            style.flex_direction = v.into()
+        }
+        "flex-wrap" if matches!(v, "nowrap" | "wrap" | "wrap-reverse") => {
+            style.flex_wrap = v.into()
+        }
+        "flex-grow" | "flex-shrink" => {
+            if let Some(number) = finite_f32(v).filter(|number| *number >= 0.0) {
+                if key == "flex-grow" {
+                    style.flex_grow = number;
+                } else {
+                    style.flex_shrink = number;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "flex-basis" => {
+            if v == "auto" {
+                style.flex_basis = None;
+                style.flex_basis_percent = None;
+            } else if let Some(percent) = v.strip_suffix('%').and_then(finite_f32) {
+                if percent >= 0.0 {
+                    style.flex_basis = None;
+                    style.flex_basis_percent = Some(percent / 100.0);
+                } else {
+                    bad = true;
+                }
+            } else if let Some(length) = computed_length(v, style.font_size).filter(|n| *n >= 0.0) {
+                style.flex_basis = Some(length);
+                style.flex_basis_percent = None;
+            } else {
+                bad = true;
+            }
+        }
+        "flex" => {
+            let values: Vec<_> = v.split_whitespace().collect();
+            if values.len() == 1 && v == "none" {
+                style.flex_grow = 0.0;
+                style.flex_shrink = 0.0;
+                style.flex_basis = None;
+                style.flex_basis_percent = None;
+            } else if (1..=3).contains(&values.len()) {
+                let grow = finite_f32(values[0]).filter(|n| *n >= 0.0);
+                let shrink = values
+                    .get(1)
+                    .and_then(|raw| finite_f32(raw))
+                    .filter(|n| *n >= 0.0);
+                if let Some(grow) = grow {
+                    style.flex_grow = grow;
+                    style.flex_shrink = shrink.unwrap_or(1.0);
+                    if let Some(basis) = values.get(2) {
+                        if let Some(percent) = basis.strip_suffix('%').and_then(finite_f32) {
+                            style.flex_basis_percent = Some(percent / 100.0);
+                            style.flex_basis = None;
+                        } else if let Some(length) = computed_length(basis, style.font_size) {
+                            style.flex_basis = Some(length);
+                            style.flex_basis_percent = None;
+                        } else {
+                            bad = true;
+                        }
+                    }
+                } else {
+                    bad = true;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "align-items" if matches!(v, "center" | "start" | "end" | "stretch") => {
             style.align_items = v.into()
         }
-        "justify-content" if matches!(v, "center" | "start") => style.justify_content = v.into(),
-        "grid-template-columns" if v.starts_with("repeat(") && v.ends_with(", 1fr)") => {
-            if let Ok(n) = v[7..v.len() - 6].trim().parse::<usize>() {
-                if n > 0 {
-                    style.grid_columns = Some(n);
+        "align-self" if matches!(v, "auto" | "center" | "start" | "end" | "stretch") => {
+            style.align_self = v.into()
+        }
+        "align-content"
+            if matches!(
+                v,
+                "start" | "end" | "center" | "stretch" | "space-between" | "space-around"
+            ) =>
+        {
+            style.align_content = v.into()
+        }
+        "justify-content"
+            if matches!(
+                v,
+                "center" | "start" | "end" | "space-between" | "space-around"
+            ) =>
+        {
+            style.justify_content = v.into()
+        }
+        "justify-items" if matches!(v, "center" | "start" | "end" | "stretch") => {
+            style.justify_items = v.into()
+        }
+        "justify-self" if matches!(v, "auto" | "center" | "start" | "end" | "stretch") => {
+            style.justify_self = v.into()
+        }
+        "grid-template-columns" | "grid-template-rows" => {
+            if let Some(tracks) = grid_tracks(v, style.font_size) {
+                if key == "grid-template-columns" {
+                    style.grid_columns = Some(tracks.len());
+                    style.grid_template_columns = tracks;
+                } else {
+                    style.grid_template_rows = tracks;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "grid-column" | "grid-row" => {
+            if let Some((start, span)) = grid_placement(v) {
+                if key == "grid-column" {
+                    style.grid_column_start = start;
+                    style.grid_column_span = span;
+                } else {
+                    style.grid_row_start = start;
+                    style.grid_row_span = span;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "grid-column-start" | "grid-row-start" => {
+            let parsed = if v == "auto" {
+                Some(None)
+            } else {
+                v.parse::<usize>().ok().filter(|value| *value > 0).map(Some)
+            };
+            if let Some(start) = parsed {
+                if key == "grid-column-start" {
+                    style.grid_column_start = start;
+                } else {
+                    style.grid_row_start = start;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "grid-column-end" | "grid-row-end" => {
+            if let Some(raw) = v.strip_prefix("span ") {
+                if let Ok(span) = raw.trim().parse::<usize>() {
+                    if span == 0 {
+                        bad = true;
+                    } else if key == "grid-column-end" {
+                        style.grid_column_span = span;
+                    } else {
+                        style.grid_row_span = span;
+                    }
                 } else {
                     bad = true;
                 }
@@ -1761,6 +2389,48 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         "aspect-ratio" => {
             style.aspect_ratio = v.parse::<f32>().ok().filter(|n| n.is_finite() && *n > 0.0);
             bad = style.aspect_ratio.is_none();
+        }
+        "object-fit" if matches!(v, "fill" | "contain" | "cover" | "none" | "scale-down") => {
+            style.object_fit = v.into();
+        }
+        "object-position" => {
+            let position_component = |value: &str, horizontal: bool| -> Option<(f32, f32)> {
+                match value {
+                    "left" if horizontal => Some((0.0, 0.0)),
+                    "right" if horizontal => Some((1.0, 0.0)),
+                    "top" if !horizontal => Some((0.0, 0.0)),
+                    "bottom" if !horizontal => Some((1.0, 0.0)),
+                    "center" => Some((0.5, 0.0)),
+                    _ => value
+                        .strip_suffix('%')
+                        .and_then(finite_f32)
+                        .map(|value| (value / 100.0, 0.0))
+                        .or_else(|| {
+                            computed_length(value, style.font_size).map(|offset| (0.0, offset))
+                        }),
+                }
+            };
+            let values: Vec<_> = v.split_whitespace().collect();
+            let parsed = match values.as_slice() {
+                [one] => position_component(one, true)
+                    .map(|x| [x, (0.5, 0.0)])
+                    .or_else(|| position_component(one, false).map(|y| [(0.5, 0.0), y])),
+                [first, second] => position_component(first, true)
+                    .zip(position_component(second, false))
+                    .map(|(x, y)| [x, y])
+                    .or_else(|| {
+                        position_component(first, false)
+                            .zip(position_component(second, true))
+                            .map(|(y, x)| [x, y])
+                    }),
+                _ => None,
+            };
+            if let Some(position) = parsed {
+                style.object_position = position.map(|component| component.0);
+                style.object_position_offset = position.map(|component| component.1);
+            } else {
+                bad = true;
+            }
         }
         "break-before" | "page-break-before" if v == "page" || v == "always" => {
             style.break_before = true;

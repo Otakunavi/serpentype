@@ -91,6 +91,98 @@ fn source_character_offset(html: &str, wanted: char) -> Option<usize> {
     }
 }
 fn add_html_location(error: Error, html: &str, source_name: Option<&str>) -> Error {
+    if error.0.contains("; location ") {
+        return error;
+    }
+    let offset = if let Some(hex) = error
+        .0
+        .strip_prefix("no registered font for U+")
+        .and_then(|details| details.split_once(' ').map(|(hex, _)| hex))
+    {
+        let Some(ch) = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) else {
+            return error;
+        };
+        source_character_offset(html, ch)
+    } else if error.0.contains("HTML body not found") {
+        html.find('<')
+    } else if let Some(target) = error
+        .0
+        .strip_prefix("strict mode: pdf-link: unsupported PDF link target: ")
+    {
+        let encoded = target
+            .replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#39;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        html.find(target).or_else(|| html.find(&encoded))
+    } else {
+        let opening_tag = error
+            .0
+            .split_once('<')
+            .and_then(|(_, rest)| rest.split_once('>'))
+            .map(|(tag, _)| format!("<{tag}"));
+        opening_tag.and_then(|tag| {
+            let lower = html.to_ascii_lowercase();
+            lower.find(&tag.to_ascii_lowercase())
+        })
+    };
+    let Some((line, column)) = offset.and_then(|offset| source_location_at(html, offset)) else {
+        return error;
+    };
+    Error(format!(
+        "{}; location {} {line} {column}",
+        error.0,
+        source_name.unwrap_or("<html>")
+    ))
+}
+
+fn add_html_conversion_error_location(
+    error: Error,
+    html: &str,
+    css_text: &str,
+    source_name: Option<&str>,
+) -> Error {
+    let error = add_html_location(error, html, source_name);
+    if error.0.contains("; location ") {
+        return error;
+    }
+    let Some(details) = error.0.strip_prefix("strict mode: ") else {
+        return error;
+    };
+    let Some((code, message)) = details.split_once(": ") else {
+        return error;
+    };
+    if code != "css-property" {
+        return error;
+    }
+    let mut diagnostic = Diagnostic::new("css-property", message);
+    if let Some(declaration) = message.strip_prefix("unsupported CSS declaration: ") {
+        if let Some((property, value)) = declaration.split_once(": ") {
+            diagnostic.property = Some(property.to_owned());
+            diagnostic.value = Some(value.to_owned());
+        }
+    } else if let Some((property, value)) = message.split_once(": ") {
+        if matches!(property, "position" | "break-inside") {
+            diagnostic.property = Some(property.to_owned());
+            diagnostic.value = Some(value.split_whitespace().next().unwrap_or(value).to_owned());
+        } else if property == "transform" {
+            diagnostic.property = Some(property.to_owned());
+        }
+    }
+    diagnostic_location(&mut diagnostic, html, css_text, source_name);
+    let (Some(source), Some(line), Some(column)) =
+        (diagnostic.source, diagnostic.line, diagnostic.column)
+    else {
+        return error;
+    };
+    Error(format!("{}; location {source} {line} {column}", error.0))
+}
+
+fn add_missing_glyph_source_location(error: Error, source: &str, label: &str) -> Error {
+    if error.0.contains("; location ") {
+        return error;
+    }
     let Some(hex) = error
         .0
         .strip_prefix("no registered font for U+")
@@ -98,25 +190,483 @@ fn add_html_location(error: Error, html: &str, source_name: Option<&str>) -> Err
     else {
         return error;
     };
-    let Some(ch) = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) else {
+    let Some(character) = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) else {
         return error;
     };
-    let Some(offset) = source_character_offset(html, ch) else {
+    let Some(offset) = source_character_offset(source, character) else {
         return error;
     };
-    let before = &html[..offset];
-    let line = before.bytes().filter(|byte| *byte == b'\n').count() + 1;
-    let column = before
-        .rsplit_once('\n')
-        .map_or(before, |(_, current)| current)
-        .chars()
-        .count()
-        + 1;
+    let Some((line, column)) = source_location_at(source, offset) else {
+        return error;
+    };
+    Error(format!("{}; location {label} {line} {column}", error.0))
+}
+
+#[derive(Clone)]
+struct SourceContext {
+    html: Arc<str>,
+    source_name: Option<Arc<str>>,
+}
+
+impl SourceContext {
+    fn new(html: &str, source_name: Option<String>) -> Self {
+        Self {
+            html: Arc::from(html),
+            source_name: source_name.map(Arc::from),
+        }
+    }
+}
+
+fn add_node_location(error: Error, offset: Option<usize>, source: &SourceContext) -> Error {
+    // Missing-glyph locations point to the actual character (including entity
+    // references), which is more precise than the containing element span.
+    if error.0.contains("; location ") || error.0.starts_with("no registered font for U+") {
+        return error;
+    }
+    let Some((line, column)) = offset.and_then(|offset| source_location_at(&source.html, offset))
+    else {
+        return error;
+    };
     Error(format!(
         "{}; location {} {line} {column}",
         error.0,
-        source_name.unwrap_or("<html>")
+        source.source_name.as_deref().unwrap_or("<html>")
     ))
+}
+
+fn add_text_token_location(
+    error: Error,
+    token: &str,
+    html: &str,
+    css_text: &str,
+    source_name: Option<&str>,
+) -> Error {
+    if error.0.contains("; location ") || token.is_empty() {
+        return error;
+    }
+    let location = find_source_location(css_text, token)
+        .map(|position| ("<css>", position))
+        .or_else(|| {
+            find_source_location(html, token)
+                .map(|position| (source_name.unwrap_or("<html>"), position))
+        });
+    let Some((source, (line, column))) = location else {
+        return error;
+    };
+    Error(format!("{}; location {source} {line} {column}", error.0))
+}
+
+fn add_css_error_location(
+    error: Error,
+    html: &str,
+    css_text: &str,
+    all_css: &str,
+    source_name: Option<&str>,
+) -> Error {
+    if error.0.contains("; location ") {
+        return error;
+    }
+    let needle = if error.0.contains("unclosed CSS comment") {
+        "/*".to_owned()
+    } else if let Some((_, details)) = error.0.rsplit_once("unsupported at-rule: ") {
+        details
+            .split([' ', '{'])
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    } else if let Some((_, details)) = error.0.rsplit_once("unsupported selector: ") {
+        details
+            .split([' ', '{'])
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    } else {
+        error
+            .0
+            .split(": ")
+            .last()
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
+    };
+    if let Some(position) = find_source_location(css_text, &needle) {
+        return Error(format!(
+            "{}; location <css> {} {}",
+            error.0, position.0, position.1
+        ));
+    }
+    if let Some(position) = find_source_location(html, &needle) {
+        return Error(format!(
+            "{}; location {} {} {}",
+            error.0,
+            source_name.unwrap_or("<html>"),
+            position.0,
+            position.1
+        ));
+    }
+    if let Some(position) = find_source_location(all_css, &needle) {
+        return Error(format!(
+            "{}; location <css> {} {}",
+            error.0, position.0, position.1
+        ));
+    }
+    error
+}
+
+fn find_source_location(source: &str, needle: &str) -> Option<(usize, usize)> {
+    let offset = source.find(needle)?;
+    source_location_at(source, offset)
+}
+
+fn source_location_at(source: &str, offset: usize) -> Option<(usize, usize)> {
+    if !source.is_char_boundary(offset) {
+        return None;
+    }
+    let prefix = &source[..offset];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let column = prefix
+        .rsplit('\n')
+        .next()
+        .map_or(1, |last_line| last_line.chars().count() + 1);
+    Some((line, column))
+}
+
+fn find_source_location_ascii_case_insensitive(
+    source: &str,
+    needle: &str,
+) -> Option<(usize, usize)> {
+    let offset = source
+        .to_ascii_lowercase()
+        .find(&needle.to_ascii_lowercase())?;
+    source_location_at(source, offset)
+}
+
+fn find_embedded_css_location(html: &str, needle: &str) -> Option<(usize, usize)> {
+    let lower = html.to_ascii_lowercase();
+    let mut cursor = 0;
+    while let Some(relative) = lower[cursor..].find("<style") {
+        let start = cursor + relative;
+        let after_name = start + "<style".len();
+        if lower
+            .as_bytes()
+            .get(after_name)
+            .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b'>')
+        {
+            cursor = after_name;
+            continue;
+        }
+        let body_start = lower[after_name..].find('>')? + after_name + 1;
+        let body_end = lower[body_start..].find("</style")? + body_start;
+        if let Some(relative) = html[body_start..body_end].find(needle) {
+            return source_location_at(html, body_start + relative);
+        }
+        cursor = body_end + "</style".len();
+    }
+    None
+}
+
+fn find_declaration_offset(source: &str, property: &str, value: &str) -> Option<usize> {
+    let lower = source.to_ascii_lowercase();
+    let property_lower = property.to_ascii_lowercase();
+    let mut cursor = 0;
+    while let Some(relative) = lower[cursor..].find(&property_lower) {
+        let start = cursor + relative;
+        let before = source[..start].chars().next_back();
+        let mut after_property = start + property.len();
+        while source
+            .as_bytes()
+            .get(after_property)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            after_property += 1;
+        }
+        let boundary = before.is_none_or(|ch| ch.is_ascii_whitespace() || matches!(ch, '{' | ';'));
+        if boundary && source.as_bytes().get(after_property) == Some(&b':') {
+            let last_comment = source[..start].rfind("/*");
+            let last_comment_end = source[..start].rfind("*/");
+            let outside_comment =
+                last_comment.is_none_or(|open| last_comment_end.is_some_and(|close| close > open));
+            if outside_comment {
+                let value_start = after_property + 1;
+                let value_end = source[value_start..]
+                    .find([';', '}'])
+                    .map_or(source.len(), |offset| value_start + offset);
+                let actual = source[value_start..value_end]
+                    .trim()
+                    .trim_end_matches("!important")
+                    .trim();
+                if actual.eq_ignore_ascii_case(value.trim()) {
+                    return Some(start);
+                }
+            }
+        }
+        cursor = start + property.len();
+    }
+    None
+}
+
+fn find_inline_style_declaration_offset(html: &str, property: &str, value: &str) -> Option<usize> {
+    let bytes = html.as_bytes();
+    let lower = html.to_ascii_lowercase();
+    let mut cursor = 0;
+    while cursor < bytes.len() {
+        let relative = lower[cursor..].find('<')?;
+        let open = cursor + relative;
+        if lower[open..].starts_with("<!--") {
+            cursor = lower[open + 4..]
+                .find("-->")
+                .map_or(bytes.len(), |end| open + 4 + end + 3);
+            continue;
+        }
+        let mut index = open + 1;
+        if bytes
+            .get(index)
+            .is_some_and(|byte| matches!(byte, b'/' | b'!' | b'?'))
+        {
+            cursor = lower[index..]
+                .find('>')
+                .map_or(bytes.len(), |end| index + end + 1);
+            continue;
+        }
+        let name_start = index;
+        while bytes.get(index).is_some_and(u8::is_ascii_alphanumeric) {
+            index += 1;
+        }
+        if name_start == index {
+            cursor = open + 1;
+            continue;
+        }
+        let tag = &lower[name_start..index];
+        let mut tag_end = index;
+        let mut quote = None;
+        while tag_end < bytes.len() {
+            let byte = bytes[tag_end];
+            if quote == Some(byte) {
+                quote = None;
+            } else if quote.is_none() && matches!(byte, b'\'' | b'"') {
+                quote = Some(byte);
+            } else if quote.is_none() && byte == b'>' {
+                break;
+            }
+            tag_end += 1;
+        }
+        if tag_end >= bytes.len() {
+            return None;
+        }
+
+        while index < tag_end {
+            while index < tag_end
+                && (bytes[index].is_ascii_whitespace() || matches!(bytes[index], b'/'))
+            {
+                index += 1;
+            }
+            let attribute_start = index;
+            while index < tag_end
+                && !bytes[index].is_ascii_whitespace()
+                && !matches!(bytes[index], b'=' | b'/' | b'>')
+            {
+                index += 1;
+            }
+            if attribute_start == index {
+                index += 1;
+                continue;
+            }
+            let is_style = lower[attribute_start..index] == *"style";
+            while index < tag_end && bytes[index].is_ascii_whitespace() {
+                index += 1;
+            }
+            if bytes.get(index) != Some(&b'=') {
+                continue;
+            }
+            index += 1;
+            while index < tag_end && bytes[index].is_ascii_whitespace() {
+                index += 1;
+            }
+            if index >= tag_end {
+                break;
+            }
+            let (value_start, value_end) = if matches!(bytes[index], b'\'' | b'"') {
+                let delimiter = bytes[index];
+                index += 1;
+                let start = index;
+                while index < tag_end && bytes[index] != delimiter {
+                    index += 1;
+                }
+                let end = index;
+                index = (index + 1).min(tag_end);
+                (start, end)
+            } else {
+                let start = index;
+                while index < tag_end && !bytes[index].is_ascii_whitespace() {
+                    index += 1;
+                }
+                (start, index)
+            };
+            if is_style {
+                let inline = &html[value_start..value_end];
+                if let Some(offset) = find_declaration_offset(inline, property, value) {
+                    return Some(value_start + offset);
+                }
+            }
+        }
+        cursor = tag_end + 1;
+        if matches!(
+            tag,
+            "script"
+                | "style"
+                | "textarea"
+                | "title"
+                | "xmp"
+                | "iframe"
+                | "noembed"
+                | "noframes"
+                | "plaintext"
+        ) {
+            let closing = format!("</{tag}");
+            cursor = lower[cursor..]
+                .find(&closing)
+                .map_or(bytes.len(), |offset| cursor + offset);
+        }
+    }
+    None
+}
+
+fn diagnostic_location(
+    diagnostic: &mut Diagnostic,
+    html: &str,
+    css_text: &str,
+    source_name: Option<&str>,
+) {
+    if diagnostic.line.is_some() && diagnostic.column.is_some() {
+        return;
+    }
+    let html_source = source_name.unwrap_or("<html>");
+    let mut needles = Vec::<String>::new();
+    if let Some(property) = diagnostic.property.as_deref() {
+        needles.push(format!("{property}:"));
+        needles.push(property.to_owned());
+    }
+    if let Some(selector) = diagnostic.selector.as_deref() {
+        needles.push(selector.to_owned());
+    }
+    match diagnostic.code {
+        "html-tag" => {
+            if let Some(tag) = diagnostic
+                .message
+                .split_once('<')
+                .and_then(|(_, rest)| rest.split_once('>'))
+                .map(|(tag, _)| format!("<{tag}"))
+            {
+                if let Some(position) = find_source_location_ascii_case_insensitive(html, &tag) {
+                    diagnostic.source = Some(html_source.to_owned());
+                    diagnostic.line = Some(position.0);
+                    diagnostic.column = Some(position.1);
+                    return;
+                }
+            }
+            if diagnostic.message.contains("<script>") {
+                needles.push("<script".into());
+            }
+        }
+        "pdf-link" => {
+            if let Some((_, target)) = diagnostic.message.split_once(": ") {
+                needles.push(target.to_owned());
+                needles.push(
+                    target
+                        .replace('&', "&amp;")
+                        .replace('"', "&quot;")
+                        .replace('\'', "&#39;")
+                        .replace('<', "&lt;")
+                        .replace('>', "&gt;"),
+                );
+            }
+        }
+        "css-property" => {
+            if let (Some(property), Some(value)) =
+                (diagnostic.property.as_deref(), diagnostic.value.as_deref())
+            {
+                if let Some((source, position)) = find_declaration_offset(css_text, property, value)
+                    .and_then(|offset| {
+                        source_location_at(css_text, offset).map(|pos| ("<css>", pos))
+                    })
+                    .or_else(|| {
+                        find_inline_style_declaration_offset(html, property, value).and_then(
+                            |offset| source_location_at(html, offset).map(|pos| (html_source, pos)),
+                        )
+                    })
+                {
+                    diagnostic.source = Some(source.to_owned());
+                    diagnostic.line = Some(position.0);
+                    diagnostic.column = Some(position.1);
+                    return;
+                }
+            }
+            if diagnostic.property.is_none() {
+                if let Some((_, token)) = diagnostic.message.split_once(": ") {
+                    let token = token.trim();
+                    if !token.is_empty() {
+                        needles.push(token.to_owned());
+                        if let Some((first, _)) = token.split_once([' ', ':', ';']) {
+                            if !first.is_empty() {
+                                needles.push(first.to_owned());
+                            }
+                        }
+                    }
+                }
+            }
+            if diagnostic.message.contains("image borders and backgrounds") {
+                needles.extend(["background".into(), "border".into()]);
+            }
+            if diagnostic.message.contains("page break is unsupported") {
+                needles.extend([
+                    "break-before".into(),
+                    "break-after".into(),
+                    "page-break-before".into(),
+                    "page-break-after".into(),
+                ]);
+            }
+            if diagnostic.message.contains("transform") {
+                needles.push("transform".into());
+            }
+            if diagnostic.message.contains("position:") {
+                needles.push("position".into());
+            }
+            if diagnostic.message.contains("break-inside") {
+                needles.push("break-inside".into());
+            }
+        }
+        "css-value" | "css-syntax" | "at-rule" | "selector" | "font-face" => {
+            if diagnostic.code == "font-face" {
+                needles.push("@font-face".into());
+            }
+            if let Some((_, token)) = diagnostic.message.split_once(": ") {
+                let token = token.trim();
+                if !token.is_empty() {
+                    needles.push(token.to_owned());
+                    if let Some((first, _)) = token.split_once([' ', ':', ';']) {
+                        if !first.is_empty() {
+                            needles.push(first.to_owned());
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    needles.dedup();
+    let location = needles.iter().find_map(|needle| {
+        find_source_location(css_text, needle)
+            .map(|position| ("<css>", position))
+            .or_else(|| {
+                find_embedded_css_location(html, needle).map(|position| (html_source, position))
+            })
+            .or_else(|| find_source_location(html, needle).map(|position| (html_source, position)))
+    });
+    if let Some((source, (line, column))) = location {
+        diagnostic.source = Some(source.to_owned());
+        diagnostic.line = Some(line);
+        diagnostic.column = Some(column);
+    }
 }
 fn local_resource_path(base_dir: &Path, src: &str, restrict: bool) -> Result<PathBuf> {
     let candidate = base_dir.join(src);
@@ -181,7 +731,45 @@ fn data_image(src: &str, remaining: usize) -> Result<(Vec<u8>, ImageFormat)> {
     }
     Ok((bytes, format))
 }
-/// A fixed RGB raster loaded at layout time.
+fn data_resource(src: &str, remaining: usize) -> Result<Vec<u8>> {
+    let (header, payload) = src
+        .strip_prefix("data:")
+        .and_then(|value| value.split_once(','))
+        .ok_or_else(|| Error("invalid resource data URI".into()))?;
+    if !header
+        .split(';')
+        .any(|part| part.eq_ignore_ascii_case("base64"))
+    {
+        return Err(Error("resource data URI requires base64 encoding".into()));
+    }
+    if payload.len() > (remaining.saturating_mul(4) / 3).saturating_add(8) {
+        return Err(Error("render limit exceeded: max_resource_bytes".into()));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|e| Error(format!("invalid resource data URI base64: {e}")))?;
+    if bytes.len() > remaining {
+        return Err(Error("render limit exceeded: max_resource_bytes".into()));
+    }
+    Ok(bytes)
+}
+/// Prepared vector PDF objects retained after layout.
+#[derive(Clone)]
+pub struct SvgData {
+    pub chunk: pdf_writer::Chunk,
+    pub root: pdf_writer::Ref,
+}
+impl std::fmt::Debug for SvgData {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SvgData")
+            .field("bytes", &self.chunk.len())
+            .field("root", &self.root.get())
+            .finish()
+    }
+}
+
+/// A fixed RGB raster loaded at layout time, optionally with vector SVG source.
 #[derive(Debug)]
 pub struct ImageData {
     pub rgb: Vec<u8>,
@@ -192,6 +780,7 @@ pub struct ImageData {
     pub display_width: f32,
     pub display_height: f32,
     pub digest: [u8; 32],
+    pub svg: Option<SvgData>,
 }
 fn render_svg(
     bytes: &[u8],
@@ -299,8 +888,8 @@ fn render_svg(
             }
         }
     }
-    for font_source in font_sources {
-        options.fontdb_mut().load_font_data(font_source);
+    for font_source in &font_sources {
+        options.fontdb_mut().load_font_data(font_source.clone());
     }
     let tree =
         usvg::Tree::from_data(bytes, &options).map_err(|e| Error(format!("SVG parse: {e}")))?;
@@ -341,6 +930,21 @@ fn render_svg(
         }
         alpha.push(a);
     }
+    let mut vector_options = svg2pdf::usvg::Options::default();
+    for font_source in &font_sources {
+        vector_options
+            .fontdb_mut()
+            .load_font_data(font_source.clone());
+    }
+    let vector_tree = svg2pdf::usvg::Tree::from_data(bytes, &vector_options)
+        .map_err(|e| Error(format!("SVG vector parse: {e}")))?;
+    let conversion = svg2pdf::ConversionOptions {
+        raster_scale: dpi / 96.0,
+        embed_text: false,
+        ..svg2pdf::ConversionOptions::default()
+    };
+    let (chunk, root) = svg2pdf::to_chunk(&vector_tree, conversion)
+        .map_err(|e| Error(format!("SVG vector export: {e}")))?;
     Ok(ImageData {
         rgb,
         alpha: alpha.iter().any(|a| *a != 255).then_some(alpha),
@@ -350,6 +954,7 @@ fn render_svg(
         display_width: intrinsic.width() * 0.75,
         display_height: intrinsic.height() * 0.75,
         digest,
+        svg: Some(SvgData { chunk, root }),
     })
 }
 impl ImageData {
@@ -357,7 +962,58 @@ impl ImageData {
         self.rgb.len()
             + self.alpha.as_ref().map_or(0, Vec::len)
             + self.jpeg.as_ref().map_or(0, Vec::len)
+            + self.svg.as_ref().map_or(0, |svg| svg.chunk.len())
     }
+}
+fn downsample_image(data: &ImageData, max_dpi: f32, width: f32, height: f32) -> Result<ImageData> {
+    let target_width = ((width / 72.0) * max_dpi).ceil().max(1.0) as u32;
+    let target_height = ((height / 72.0) * max_dpi).ceil().max(1.0) as u32;
+    if target_width >= data.width && target_height >= data.height {
+        return Err(Error("image does not require downsampling".into()));
+    }
+    let image = if let Some(jpeg) = &data.jpeg {
+        image::load_from_memory(jpeg).map_err(|e| Error(format!("image downsample decode: {e}")))?
+    } else {
+        let mut rgba = Vec::with_capacity(data.width as usize * data.height as usize * 4);
+        for (index, rgb) in data.rgb.as_chunks::<3>().0.iter().enumerate() {
+            rgba.extend_from_slice(rgb);
+            rgba.push(data.alpha.as_ref().map_or(255, |alpha| alpha[index]));
+        }
+        image::DynamicImage::ImageRgba8(
+            image::RgbaImage::from_raw(data.width, data.height, rgba)
+                .ok_or_else(|| Error("invalid raster buffer for downsampling".into()))?,
+        )
+    };
+    let resized = image.resize_exact(
+        target_width.min(data.width),
+        target_height.min(data.height),
+        image::imageops::FilterType::Lanczos3,
+    );
+    let rgba = resized.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
+    let mut alpha = Vec::with_capacity(width as usize * height as usize);
+    for pixel in rgba.pixels() {
+        rgb.extend_from_slice(&pixel.0[..3]);
+        alpha.push(pixel[3]);
+    }
+    let alpha = alpha.iter().any(|value| *value != 255).then_some(alpha);
+    let mut hash = Sha256::new();
+    hash.update(data.digest);
+    hash.update(b"downsample");
+    hash.update(width.to_be_bytes());
+    hash.update(height.to_be_bytes());
+    Ok(ImageData {
+        rgb,
+        alpha,
+        jpeg: None,
+        width,
+        height,
+        display_width: data.display_width,
+        display_height: data.display_height,
+        digest: hash.finalize().into(),
+        svg: None,
+    })
 }
 #[derive(Default)]
 struct ImageCache {
@@ -436,6 +1092,9 @@ pub enum Item {
         w: f32,
         h: f32,
     },
+    /// A CSS affine transform in top-left page coordinates.
+    BeginTransform([f32; 6]),
+    EndTransform,
     BeginOpacity(f32),
     EndOpacity,
     BeginClip {
@@ -477,11 +1136,39 @@ fn translate_item(item: &mut Item, dx: f32, dy: f32) {
             *x += dx;
             *y += dy;
         }
+        Item::BeginTransform(matrix) => {
+            // The enclosed primitives are translated too. Conjugating keeps
+            // the transform origin attached to those primitives instead of
+            // applying the translation twice.
+            matrix[4] += dx - matrix[0] * dx - matrix[2] * dy;
+            matrix[5] += dy - matrix[1] * dx - matrix[3] * dy;
+        }
         Item::BeginActualText(_)
         | Item::EndActualText
+        | Item::EndTransform
         | Item::BeginOpacity(_)
         | Item::EndOpacity
         | Item::EndClip => {}
+    }
+}
+
+fn item_bounds(item: &Item) -> Option<(f32, f32, f32, f32)> {
+    match item {
+        Item::Text {
+            x,
+            y,
+            size,
+            natural_advance,
+            ..
+        } => Some((*x, *y - *size, natural_advance.max(0.0), *size * 1.2)),
+        Item::Rect { x, y, w, h, .. }
+        | Item::RoundedRect { x, y, w, h, .. }
+        | Item::Border { x, y, w, h, .. }
+        | Item::Image { x, y, w, h, .. }
+        | Item::BeginClip { x, y, w, h, .. }
+        | Item::Link { x, y, w, h, .. } => Some((*x, *y, *w, *h)),
+        Item::Destination { x, y, .. } => Some((*x, *y, 0.0, 0.0)),
+        _ => None,
     }
 }
 #[derive(Clone, Debug, Default)]
@@ -498,6 +1185,13 @@ pub struct PreparedDocument {
     pub warnings: Vec<Diagnostic>,
     pub stats: Arc<Mutex<RenderStats>>,
     pub metadata: DocumentMetadata,
+    pub(crate) outlines: Vec<OutlineEntry>,
+}
+#[derive(Clone, Debug)]
+pub(crate) struct OutlineEntry {
+    pub title: String,
+    pub destination: String,
+    pub level: u8,
 }
 impl PreparedDocument {
     pub fn page_count(&self) -> usize {
@@ -507,8 +1201,15 @@ impl PreparedDocument {
         self.to_pdf_with_cancel(None)
     }
     pub fn to_pdf_with_cancel(&self, token: Option<&AtomicBool>) -> Result<Vec<u8>> {
+        self.to_pdf_with_options(&crate::pdf::PdfOptions::default(), token)
+    }
+    pub fn to_pdf_with_options(
+        &self,
+        options: &crate::pdf::PdfOptions,
+        token: Option<&AtomicBool>,
+    ) -> Result<Vec<u8>> {
         let start = Instant::now();
-        let bytes = crate::pdf::export_with_cancel(self, token)?;
+        let bytes = crate::pdf::export_with_options(self, options, token)?;
         if let Ok(mut stats) = self.stats.lock() {
             stats.pdf_export_ms = start.elapsed().as_secs_f64() * 1000.0;
             stats.output_size = bytes.len();
@@ -529,6 +1230,8 @@ pub struct Renderer {
     pub synthetic_bold: bool,
     pub synthetic_italic: bool,
     pub svg_dpi: f32,
+    /// Optional upper bound for raster pixels per rendered inch.
+    pub max_image_dpi: Option<f32>,
     pub presentational_hints: bool,
     images: Arc<Mutex<ImageCache>>,
 }
@@ -546,6 +1249,7 @@ impl Renderer {
             synthetic_bold: false,
             synthetic_italic: false,
             svg_dpi: 144.0,
+            max_image_dpi: None,
             presentational_hints: false,
             images: Arc::new(Mutex::new(ImageCache::default())),
         }
@@ -574,17 +1278,24 @@ impl Renderer {
         };
         let css_start = Instant::now();
         let all_css = format!("{}\n{}", html::embedded_css(html), css_text);
-        let sheet = css::parse(&all_css, self.strict)?;
+        let sheet = css::parse(&all_css, self.strict).map_err(|error| {
+            add_css_error_location(error, html, css_text, &all_css, self.source_name.as_deref())
+        })?;
         let css_cascade_ms = css_start.elapsed().as_secs_f64() * 1000.0;
         if sheet.rules.len() > self.limits.max_css_rules {
             return Err(Error("render limit exceeded: max_css_rules".into()));
         }
-        if sheet.page.width <= sheet.page.margin[1] + sheet.page.margin[3]
-            || sheet.page.height <= sheet.page.margin[0] + sheet.page.margin[2]
-            || sheet.page.margin.iter().any(|v| *v < 0.0)
-        {
-            return Err(Error(
-                "@page margins leave no positive content rectangle".into(),
+        if sheet.resolved_page_styles().iter().any(|page| {
+            page.width <= page.margin[1] + page.margin[3]
+                || page.height <= page.margin[0] + page.margin[2]
+                || page.margin.iter().any(|value| *value < 0.0)
+        }) {
+            return Err(add_text_token_location(
+                Error("@page margins leave no positive content rectangle".into()),
+                "@page",
+                html,
+                css_text,
+                self.source_name.as_deref(),
             ));
         }
         let fonts = self.fonts.snapshot();
@@ -593,31 +1304,103 @@ impl Renderer {
         // Local @font-face files are snapshotted before layout, never at PDF export.
         for face in &sheet.faces {
             let src = face.src.trim();
-            let path = src
-                .strip_prefix("url(")
-                .and_then(|s| s.strip_suffix(')'))
-                .ok_or_else(|| Error(format!("unsupported @font-face src: {src}")))?
-                .trim()
-                .trim_matches(['\'', '"']);
-            if path.contains("://") || path.starts_with("data:") {
-                return Err(Error("@font-face supports local file URLs only".into()));
+            let Some(path) = src.strip_prefix("url(").and_then(|s| s.strip_suffix(')')) else {
+                return Err(add_text_token_location(
+                    Error(format!("unsupported @font-face src: {src}")),
+                    src,
+                    html,
+                    css_text,
+                    self.source_name.as_deref(),
+                ));
+            };
+            let path = path.trim().trim_matches(['\'', '"']);
+            if path.starts_with("data:") {
+                let bytes = data_resource(
+                    path,
+                    self.limits
+                        .max_resource_bytes
+                        .saturating_sub(font_resource_bytes),
+                )
+                .map_err(|error| {
+                    add_text_token_location(
+                        error,
+                        path,
+                        html,
+                        css_text,
+                        self.source_name.as_deref(),
+                    )
+                })?;
+                font_resource_bytes = font_resource_bytes.saturating_add(bytes.len());
+                fonts
+                    .register_bytes(bytes, &face.family, face.weight, &face.style)
+                    .map_err(|error| {
+                        add_text_token_location(
+                            error,
+                            path,
+                            html,
+                            css_text,
+                            self.source_name.as_deref(),
+                        )
+                    })?;
+                continue;
             }
-            let resolved =
-                local_resource_path(&self.base_dir, path, self.limits.restrict_base_dir)?;
+            if path.contains("://") {
+                return Err(add_text_token_location(
+                    Error("@font-face supports local file URLs only".into()),
+                    path,
+                    html,
+                    css_text,
+                    self.source_name.as_deref(),
+                ));
+            }
+            let resolved = local_resource_path(&self.base_dir, path, self.limits.restrict_base_dir)
+                .map_err(|error| {
+                    add_text_token_location(
+                        error,
+                        path,
+                        html,
+                        css_text,
+                        self.source_name.as_deref(),
+                    )
+                })?;
             let size = std::fs::metadata(&resolved)
-                .map_err(|e| Error(format!("font {}: {e}", resolved.display())))?
+                .map_err(|e| {
+                    add_text_token_location(
+                        Error(format!("font {}: {e}", resolved.display())),
+                        path,
+                        html,
+                        css_text,
+                        self.source_name.as_deref(),
+                    )
+                })?
                 .len() as usize;
             font_resource_bytes = font_resource_bytes.saturating_add(size);
             if font_resource_bytes > self.limits.max_resource_bytes {
-                return Err(Error("render limit exceeded: max_resource_bytes".into()));
+                return Err(add_text_token_location(
+                    Error("render limit exceeded: max_resource_bytes".into()),
+                    path,
+                    html,
+                    css_text,
+                    self.source_name.as_deref(),
+                ));
             }
             cancelled(token.as_deref())?;
-            fonts.register_file(
-                &resolved.to_string_lossy(),
-                &face.family,
-                face.weight,
-                &face.style,
-            )?;
+            fonts
+                .register_file(
+                    &resolved.to_string_lossy(),
+                    &face.family,
+                    face.weight,
+                    &face.style,
+                )
+                .map_err(|error| {
+                    add_text_token_location(
+                        error,
+                        path,
+                        html,
+                        css_text,
+                        self.source_name.as_deref(),
+                    )
+                })?;
         }
         let parse_start = Instant::now();
         let (root, warnings, metadata) = html::parse_with_metadata_and_hints(
@@ -625,7 +1408,10 @@ impl Renderer {
             &sheet,
             self.strict,
             self.presentational_hints,
-        )?;
+        )
+        .map_err(|error| {
+            add_html_conversion_error_location(error, html, css_text, self.source_name.as_deref())
+        })?;
         let parse_ms = parse_start.elapsed().as_secs_f64() * 1000.0;
         fn count_tree(node: &Node) -> (usize, usize) {
             node.children.iter().fold(
@@ -644,16 +1430,6 @@ impl Renderer {
             return Err(Error("render limit exceeded: max_layout_iterations".into()));
         }
         cancelled(token.as_deref())?;
-        for page in sheet.named_pages.values() {
-            if page.width <= page.margin[1] + page.margin[3]
-                || page.height <= page.margin[0] + page.margin[2]
-                || page.margin.iter().any(|v| *v < 0.0)
-            {
-                return Err(Error(
-                    "named @page margins leave no positive content rectangle".into(),
-                ));
-            }
-        }
         let layout_start = Instant::now();
         let mut flow = Flow::new(
             sheet.clone(),
@@ -663,18 +1439,25 @@ impl Renderer {
             warnings,
             self.limits.clone(),
             token,
+            SourceContext::new(html, self.source_name.clone()),
         );
         flow.experimental_shaping = true;
         flow.svg_dpi = self.svg_dpi;
+        flow.max_image_dpi = self.max_image_dpi;
         flow.resource_bytes = font_resource_bytes;
-        for child in &root.children {
-            flow.node(child)
-                .map_err(|error| add_html_location(error, html, self.source_name.as_deref()))?;
-        }
-        flow.render_margin_boxes()?;
+        flow.node(&root)
+            .map_err(|error| add_html_location(error, html, self.source_name.as_deref()))?;
+        flow.render_fixed_nodes()
+            .map_err(|error| add_html_location(error, html, self.source_name.as_deref()))?;
+        flow.compose_positioned_layers();
+        flow.render_margin_boxes().map_err(|error| {
+            let css_error = add_missing_glyph_source_location(error, css_text, "<css>");
+            add_html_location(css_error, html, self.source_name.as_deref())
+        })?;
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
         let mut seen: HashMap<(&'static str, String), usize> = HashMap::new();
-        for warning in flow.warnings {
+        for mut warning in flow.warnings {
+            diagnostic_location(&mut warning, html, css_text, self.source_name.as_deref());
             let key = (warning.code, warning.message.clone());
             if let Some(&index) = seen.get(&key) {
                 diagnostics[index].occurrences += warning.occurrences;
@@ -712,6 +1495,7 @@ impl Renderer {
             warnings: diagnostics,
             stats: Arc::new(Mutex::new(stats)),
             metadata,
+            outlines: flow.outlines,
         })
     }
 }
@@ -737,6 +1521,7 @@ struct Glyph {
     soft_hyphen: bool,
     soft_hyphen_advance: f32,
     inline_box: Option<Arc<InlineBox>>,
+    destination: Option<String>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TextDecoration {
@@ -749,6 +1534,7 @@ struct InlineRun {
     style: Style,
     href: Option<Arc<str>>,
     inline_box: Option<Node>,
+    destination: Option<String>,
 }
 #[derive(Clone)]
 struct InlineBox {
@@ -862,11 +1648,13 @@ fn soft_hyphen_glyph(
         soft_hyphen: true,
         soft_hyphen_advance: natural_advance + style.letter_spacing,
         inline_box: None,
+        destination: None,
     })
 }
 fn inline_runs(
     node: &Node,
     inherited_href: Option<Arc<str>>,
+    inherited_destination: Option<String>,
     out: &mut Vec<InlineRun>,
     root: bool,
 ) {
@@ -883,12 +1671,19 @@ fn inline_runs(
         })
         .map(Arc::<str>::from)
         .or(inherited_href);
+    let destination = node
+        .attr("id")
+        .or_else(|| (node.tag == "a").then(|| node.attr("name")).flatten())
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .or(inherited_destination);
     if !root && node.tag != "#text" && node.style.display == "inline-block" {
         out.push(InlineRun {
             text: String::new(),
             style: node.style.clone(),
             href,
             inline_box: Some(node.clone()),
+            destination,
         });
         return;
     }
@@ -898,6 +1693,7 @@ fn inline_runs(
             style: node.style.clone(),
             href,
             inline_box: None,
+            destination,
         });
         return;
     }
@@ -907,16 +1703,27 @@ fn inline_runs(
             style: node.style.clone(),
             href: href.clone(),
             inline_box: None,
+            destination: destination.clone(),
+        });
+    } else if destination.is_some() && node.children.is_empty() {
+        out.push(InlineRun {
+            text: String::new(),
+            style: node.style.clone(),
+            href: href.clone(),
+            inline_box: None,
+            destination: destination.clone(),
         });
     }
     for child in &node.children {
-        inline_runs(child, href.clone(), out, false);
+        inline_runs(child, href.clone(), destination.clone(), out, false);
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Kept explicit: these values are the inline layout context.
 fn inline_box_glyph(
     node: &Node,
     href: Option<Arc<str>>,
+    destination: Option<String>,
     containing_width: f32,
     fonts: &FontRegistry,
     token: Option<&AtomicBool>,
@@ -1048,8 +1855,46 @@ fn inline_box_glyph(
             height,
             inner_width,
             href,
-            destination: node.attr("id").map(str::to_owned),
+            destination: destination.or_else(|| {
+                node.attr("id")
+                    .or_else(|| (node.tag == "a").then(|| node.attr("name")).flatten())
+                    .map(str::to_owned)
+            }),
         })),
+        destination: None,
+    })
+}
+
+fn anchor_glyph(destination: String, style: &Style, fonts: &FontRegistry) -> Result<Glyph> {
+    let font = fonts.resolve_with_stretch(
+        &style.family,
+        style.weight,
+        &style.font_style,
+        style.font_stretch,
+        ' ',
+    )?;
+    let (id, _) = font.glyph(' ')?;
+    Ok(Glyph {
+        ch: ' ',
+        id,
+        font,
+        advance: 0.0,
+        natural_advance: 0.0,
+        x_offset: 0.0,
+        y_offset: 0.0,
+        unicode: Some(Arc::<str>::from("")),
+        size: style.font_size,
+        color: style.color,
+        alpha: style.color_alpha * style.opacity,
+        shift: 0.0,
+        decoration: TextDecoration::None,
+        href: None,
+        preserve_space: true,
+        visible: false,
+        soft_hyphen: false,
+        soft_hyphen_advance: 0.0,
+        inline_box: None,
+        destination: Some(destination),
     })
 }
 
@@ -1134,6 +1979,7 @@ fn shape_segment(
                 soft_hyphen: false,
                 soft_hyphen_advance: 0.0,
                 inline_box: None,
+                destination: None,
             },
             can_wrap,
             break_word,
@@ -1203,12 +2049,13 @@ fn lines_for_shaped(
         return Err(Error("text-indent leaves no usable first line".into()));
     }
     let mut runs = Vec::new();
-    inline_runs(node, None, &mut runs, true);
+    inline_runs(node, None, None, &mut runs, true);
     let mut units = Vec::new();
     let mut previous_space = false;
     let mut character_index = 0usize;
     let mut preceding_rtl = false;
     for run in runs {
+        let run_start = units.len();
         let style = &run.style;
         let preserve = matches!(style.white_space.as_str(), "pre" | "pre-wrap");
         if let Some(inline) = &run.inline_box {
@@ -1216,6 +2063,7 @@ fn lines_for_shaped(
                 inline_box_glyph(
                     inline,
                     run.href.clone(),
+                    run.destination.clone(),
                     width,
                     fonts,
                     token,
@@ -1317,6 +2165,7 @@ fn lines_for_shaped(
                         soft_hyphen: false,
                         soft_hyphen_advance: 0.0,
                         inline_box: None,
+                        destination: None,
                     },
                     false,
                     false,
@@ -1400,6 +2249,7 @@ fn lines_for_shaped(
                         soft_hyphen: false,
                         soft_hyphen_advance: 0.0,
                         inline_box: None,
+                        destination: None,
                     },
                     !matches!(style.white_space.as_str(), "nowrap" | "pre"),
                     style.overflow_wrap != "normal" || style.word_break == "break-all",
@@ -1463,6 +2313,20 @@ fn lines_for_shaped(
         if let Some(font) = segment_font {
             shape_segment(&segment, &font, style, &run.href, &mut units)?;
         }
+        if let Some(destination) = run.destination {
+            if let Some(glyph) = units[run_start..].iter_mut().find_map(|unit| match unit {
+                ShapedUnit::Glyph(glyph, _, _) if glyph.id != 0 => Some(glyph),
+                _ => None,
+            }) {
+                glyph.destination = Some(destination);
+            } else {
+                units.push(ShapedUnit::Glyph(
+                    anchor_glyph(destination, style, fonts)?,
+                    false,
+                    false,
+                ));
+            }
+        }
     }
     let default_height = node.style.line_height.max(node.style.font_size);
     let mut lines = Vec::new();
@@ -1523,6 +2387,13 @@ fn lines_for_shaped(
 
 struct Flow {
     pages: Vec<Page>,
+    outlines: Vec<OutlineEntry>,
+    counter_scopes: Vec<HashMap<String, Vec<i32>>>,
+    page_counters: Vec<HashMap<String, Vec<i32>>>,
+    strings: HashMap<String, String>,
+    page_strings: Vec<HashMap<String, String>>,
+    running_elements: HashMap<String, String>,
+    page_running_elements: Vec<HashMap<String, String>>,
     page_content: bool,
     y: f32,
     page: PageStyle,
@@ -1536,6 +2407,7 @@ struct Flow {
     cancel: Option<Arc<AtomicBool>>,
     experimental_shaping: bool,
     svg_dpi: f32,
+    max_image_dpi: Option<f32>,
     shaping_ns: AtomicU64,
     iterations: usize,
     resource_bytes: usize,
@@ -1544,6 +2416,35 @@ struct Flow {
     frame: Option<(f32, f32)>,
     center_children: bool,
     paint_visible: bool,
+    containing_blocks: Vec<ContainingBlock>,
+    fixed_nodes: Vec<Node>,
+    positioned_layers: Vec<PositionedLayer>,
+    layer_order: usize,
+    source: SourceContext,
+}
+
+#[derive(Clone, Copy)]
+struct ContainingBlock {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    clip: bool,
+}
+
+struct PositionedLayer {
+    page: usize,
+    z_index: i32,
+    order: usize,
+    items: Vec<Item>,
+}
+
+struct ContainerGeometry {
+    margins: [f32; 4],
+    padding: [f32; 4],
+    outer: f32,
+    width: f32,
+    x: f32,
 }
 
 fn resolved_dimension(fixed: Option<f32>, percent: Option<f32>, reference: f32) -> Option<f32> {
@@ -1620,17 +2521,158 @@ fn constrained_dimension(value: f32, minimum: Option<f32>, maximum: Option<f32>)
         .max(minimum.unwrap_or(0.0))
 }
 
+fn affine_multiply(left: [f32; 6], right: [f32; 6]) -> [f32; 6] {
+    [
+        left[0] * right[0] + left[2] * right[1],
+        left[1] * right[0] + left[3] * right[1],
+        left[0] * right[2] + left[2] * right[3],
+        left[1] * right[2] + left[3] * right[3],
+        left[0] * right[4] + left[2] * right[5] + left[4],
+        left[1] * right[4] + left[3] * right[5] + left[5],
+    ]
+}
+
+fn resolve_grid_tracks(tracks: &[css::GridTrack], available: f32, gap: f32) -> Result<Vec<f32>> {
+    if tracks.is_empty() {
+        return Ok(vec![available]);
+    }
+    let usable = available - gap * tracks.len().saturating_sub(1) as f32;
+    if usable <= EPS {
+        return Err(Error("grid gaps leave no usable track width".into()));
+    }
+    fn minimum(track: &css::GridTrack, reference: f32) -> f32 {
+        match track {
+            css::GridTrack::Fixed(value) => *value,
+            css::GridTrack::Percent(value) => reference * value,
+            css::GridTrack::MinMax(minimum_track, _) => minimum(minimum_track, reference),
+            css::GridTrack::Fr(_) | css::GridTrack::Auto => 0.0,
+        }
+    }
+    fn flexible(track: &css::GridTrack) -> f32 {
+        match track {
+            css::GridTrack::Fr(value) => *value,
+            css::GridTrack::Auto => 1.0,
+            css::GridTrack::MinMax(_, maximum) => match maximum.as_ref() {
+                css::GridTrack::Fr(value) => *value,
+                css::GridTrack::Auto => 1.0,
+                _ => 0.0,
+            },
+            _ => 0.0,
+        }
+    }
+    let mut values: Vec<_> = tracks.iter().map(|track| minimum(track, usable)).collect();
+    let fixed: f32 = values.iter().sum();
+    let weight: f32 = tracks.iter().map(flexible).sum();
+    let remaining = (usable - fixed).max(0.0);
+    if weight > 0.0 {
+        for (value, track) in values.iter_mut().zip(tracks) {
+            *value += remaining * flexible(track) / weight;
+        }
+    }
+    for (value, track) in values.iter_mut().zip(tracks) {
+        if let css::GridTrack::MinMax(_, maximum) = track {
+            let cap = match maximum.as_ref() {
+                css::GridTrack::Fixed(value) => Some(*value),
+                css::GridTrack::Percent(value) => Some(usable * value),
+                _ => None,
+            };
+            if let Some(cap) = cap {
+                *value = value.min(cap).max(minimum(track, usable));
+            }
+        }
+    }
+    if values.iter().any(|value| *value <= EPS) {
+        return Err(Error("grid track has no usable size".into()));
+    }
+    Ok(values)
+}
+
+fn range_bounds(items: &[Item]) -> Option<(f32, f32, f32, f32)> {
+    items.iter().filter_map(item_bounds).fold(
+        None,
+        |bounds: Option<(f32, f32, f32, f32)>, (x, y, w, h)| {
+            Some(match bounds {
+                None => (x, y, x + w, y + h),
+                Some((left, top, right, bottom)) => {
+                    (left.min(x), top.min(y), right.max(x + w), bottom.max(y + h))
+                }
+            })
+        },
+    )
+}
+
+fn stretch_box_item(item: &mut Item, top: f32, height: f32) {
+    match item {
+        Item::Rect { y, h, .. }
+        | Item::RoundedRect { y, h, .. }
+        | Item::Border { y, h, .. }
+        | Item::BeginClip { y, h, .. }
+            if (*y - top).abs() <= EPS && *h < height =>
+        {
+            *h = height;
+        }
+        _ => {}
+    }
+}
+
 impl Flow {
-    fn margin_content(raw: &str, page: usize, pages: usize) -> String {
+    fn margin_content(
+        raw: &str,
+        page: usize,
+        pages: usize,
+        counters: &HashMap<String, Vec<i32>>,
+        strings: &HashMap<String, String>,
+        running: &HashMap<String, String>,
+    ) -> String {
         let mut out = String::new();
         let mut rest = raw.trim();
         while !rest.is_empty() {
             rest = rest.trim_start();
-            if let Some(tail) = rest.strip_prefix("counter(page)") {
-                out.push_str(&page.to_string());
+            let function = ["counter", "counters", "string", "element"]
+                .into_iter()
+                .find_map(|name| {
+                    let tail = rest.strip_prefix(name)?.strip_prefix('(')?;
+                    let close = tail.find(')')?;
+                    Some((name, &tail[..close], &tail[close + 1..]))
+                });
+            if let Some(("counter", argument, tail)) = function {
+                let value = match argument.trim() {
+                    "page" => Some(page.to_string()),
+                    "pages" => Some(pages.to_string()),
+                    name => counters
+                        .get(name)
+                        .and_then(|stack| stack.last())
+                        .map(ToString::to_string),
+                };
+                if let Some(value) = value {
+                    out.push_str(&value);
+                }
                 rest = tail;
-            } else if let Some(tail) = rest.strip_prefix("counter(pages)") {
-                out.push_str(&pages.to_string());
+            } else if let Some(("counters", argument, tail)) = function {
+                let name = argument.split(',').next().unwrap_or("").trim();
+                let separator = argument
+                    .split_once(',')
+                    .map(|(_, separator)| separator.trim().trim_matches(['\'', '"']))
+                    .unwrap_or("");
+                if let Some(stack) = counters.get(name) {
+                    out.push_str(
+                        &stack
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(separator),
+                    );
+                }
+                rest = tail;
+            } else if let Some(("string", argument, tail)) = function {
+                if let Some(value) = strings.get(argument.trim()) {
+                    out.push_str(value);
+                }
+                rest = tail;
+            } else if let Some(("element", argument, tail)) = function {
+                if let Some(value) = running.get(argument.trim()) {
+                    out.push_str(value);
+                }
                 rest = tail;
             } else if let Some(quote) = rest.chars().next().filter(|c| *c == '\'' || *c == '"') {
                 let mut escaped = false;
@@ -1674,7 +2716,14 @@ impl Flow {
         total: usize,
         occupied: [bool; 3],
     ) -> Result<()> {
-        let content = Self::margin_content(&box_style.content, index + 1, total);
+        let content = Self::margin_content(
+            &box_style.content,
+            index + 1,
+            total,
+            &self.page_counters[index],
+            &self.page_strings[index],
+            &self.page_running_elements[index],
+        );
         if content.is_empty() {
             return Ok(());
         }
@@ -1717,6 +2766,7 @@ impl Flow {
             style,
             text: content,
             children: vec![],
+            source_offset: None,
         };
         let lines = lines_for(
             &node,
@@ -1779,14 +2829,24 @@ impl Flow {
     fn render_margin_boxes(&mut self) -> Result<()> {
         let total = self.pages.len();
         for index in 0..total {
+            let counters = &self.page_counters[index];
+            let strings = &self.page_strings[index];
+            let running = &self.page_running_elements[index];
             let mut boxes: Vec<_> = self.pages[index].style.boxes.clone().into_iter().collect();
             boxes.sort_by(|left, right| left.0.cmp(&right.0));
             let occupied = |edge: &str| {
                 ["left", "center", "right"].map(|side| {
                     boxes.iter().any(|(name, box_style)| {
                         name == &format!("@{edge}-{side}")
-                            && !Self::margin_content(&box_style.content, index + 1, total)
-                                .is_empty()
+                            && !Self::margin_content(
+                                &box_style.content,
+                                index + 1,
+                                total,
+                                counters,
+                                strings,
+                                running,
+                            )
+                            .is_empty()
                     })
                 })
             };
@@ -1808,6 +2868,7 @@ impl Flow {
         }
         Ok(())
     }
+    #[allow(clippy::too_many_arguments)]
     fn new(
         sheet: Sheet,
         fonts: FontRegistry,
@@ -1816,13 +2877,9 @@ impl Flow {
         warnings: Vec<Diagnostic>,
         limits: RenderLimits,
         cancel: Option<Arc<AtomicBool>>,
+        source: SourceContext,
     ) -> Self {
-        let mut page = sheet
-            .pseudo_pages
-            .get(":first")
-            .or_else(|| sheet.pseudo_pages.get(":right"))
-            .cloned()
-            .unwrap_or_else(|| sheet.page.clone());
+        let mut page = sheet.page_style_for(None, 0, false);
         if page.landscape_size_keyword {
             page.rotation = 0;
         }
@@ -1833,6 +2890,13 @@ impl Flow {
                 style: page.clone(),
                 name: None,
             }],
+            outlines: Vec::new(),
+            counter_scopes: vec![HashMap::new()],
+            page_counters: vec![HashMap::new()],
+            strings: HashMap::new(),
+            page_strings: vec![HashMap::new()],
+            running_elements: HashMap::new(),
+            page_running_elements: vec![HashMap::new()],
             page_content: false,
             y: page.margin[0],
             page,
@@ -1846,6 +2910,7 @@ impl Flow {
             cancel,
             experimental_shaping: false,
             svg_dpi: 144.0,
+            max_image_dpi: None,
             shaping_ns: AtomicU64::new(0),
             iterations: 0,
             resource_bytes: 0,
@@ -1854,6 +2919,11 @@ impl Flow {
             frame: None,
             center_children: false,
             paint_visible: true,
+            containing_blocks: vec![],
+            fixed_nodes: vec![],
+            positioned_layers: vec![],
+            layer_order: 0,
+            source,
         }
     }
     fn content_width(&self) -> f32 {
@@ -1884,35 +2954,16 @@ impl Flow {
             style: self.page.clone(),
             name: self.page_name.clone(),
         });
+        self.page_counters.push(self.counter_values());
+        self.page_strings.push(self.strings.clone());
+        self.page_running_elements
+            .push(self.running_elements.clone());
         self.page_content = false;
         self.y = self.page.margin[0];
         Ok(())
     }
     fn style_for(&self, name: Option<&str>, index: usize, blank: bool) -> PageStyle {
-        let side = if (index + 1).is_multiple_of(2) {
-            ":left"
-        } else {
-            ":right"
-        };
-        let mut style = name
-            .and_then(|n| self.sheet.named_pages.get(n))
-            .or_else(|| {
-                if blank {
-                    self.sheet.pseudo_pages.get(":blank")
-                } else {
-                    None
-                }
-            })
-            .or_else(|| {
-                if index == 0 {
-                    self.sheet.pseudo_pages.get(":first")
-                } else {
-                    None
-                }
-            })
-            .or_else(|| self.sheet.pseudo_pages.get(side))
-            .cloned()
-            .unwrap_or_else(|| self.sheet.page.clone());
+        let mut style = self.sheet.page_style_for(name, index, blank);
         // `size: landscape` already selects a landscape sheet. In this
         // compatibility case, a second 90-degree PDF page rotation would
         // display the landscape content sideways in common PDF viewers.
@@ -1989,7 +3040,11 @@ impl Flow {
         }
     }
     fn destination(&mut self, node: &Node, x: f32, y: f32) {
-        if let Some(name) = node.attr("id").filter(|name| !name.is_empty()) {
+        let name = node
+            .attr("id")
+            .or_else(|| (node.tag == "a").then(|| node.attr("name")).flatten())
+            .filter(|name| !name.is_empty());
+        if let Some(name) = name {
             self.item(Item::Destination {
                 name: name.to_owned(),
                 x,
@@ -1998,39 +3053,372 @@ impl Flow {
         }
     }
     fn node(&mut self, node: &Node) -> Result<()> {
+        let result = self.node_inner(node);
+        result.map_err(|error| add_node_location(error, node.source_offset, &self.source))
+    }
+    fn node_inner(&mut self, node: &Node) -> Result<()> {
         cancelled(self.cancel.as_deref())?;
         self.iterations = self.iterations.saturating_add(1);
         if self.iterations > self.limits.max_layout_iterations {
             return Err(Error("render limit exceeded: max_layout_iterations".into()));
         }
+        if let Some(name) = &node.style.running_name {
+            let value = node
+                .plain_text()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            self.running_elements.insert(name.clone(), value.clone());
+            if let Some(page_values) = self.page_running_elements.last_mut() {
+                page_values.insert(name.clone(), value);
+            }
+            return Ok(());
+        }
+        let mut reset_scope = HashMap::new();
+        for (name, value) in &node.style.counter_reset {
+            reset_scope.insert(name.clone(), vec![*value]);
+        }
+        let has_counter_scope = !reset_scope.is_empty();
+        if has_counter_scope {
+            self.counter_scopes.push(reset_scope);
+        }
+        for (name, amount) in &node.style.counter_increment {
+            if let Some(counter) = self
+                .counter_scopes
+                .iter_mut()
+                .rev()
+                .find_map(|scope| scope.get_mut(name))
+            {
+                if let Some(value) = counter.last_mut() {
+                    *value = value.saturating_add(*amount);
+                }
+            } else {
+                self.counter_scopes
+                    .last_mut()
+                    .expect("root counter scope")
+                    .insert(name.clone(), vec![amount.saturating_add(0)]);
+            }
+        }
+        if let Some(name) = &node.style.string_set {
+            self.strings.insert(
+                name.clone(),
+                node.plain_text()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+        }
+        self.sync_page_context();
         let old_visibility = self.paint_visible;
         self.paint_visible = node.style.visibility == "visible";
         let result = self.positioned_node(node);
         self.paint_visible = old_visibility;
+        if has_counter_scope {
+            self.counter_scopes.pop();
+        }
         result
     }
+    fn counter_values(&self) -> HashMap<String, Vec<i32>> {
+        let mut values = HashMap::new();
+        for scope in &self.counter_scopes {
+            for (name, stack) in scope {
+                values
+                    .entry(name.clone())
+                    .and_modify(|current: &mut Vec<i32>| current.extend(stack.iter().copied()))
+                    .or_insert_with(|| stack.clone());
+            }
+        }
+        values
+    }
+    fn sync_page_context(&mut self) {
+        let counters = self.counter_values();
+        if let Some(values) = self.page_counters.last_mut() {
+            *values = counters;
+        }
+        if let Some(values) = self.page_strings.last_mut() {
+            *values = self.strings.clone();
+        }
+        if let Some(values) = self.page_running_elements.last_mut() {
+            *values = self.running_elements.clone();
+        }
+    }
     fn positioned_node(&mut self, node: &Node) -> Result<()> {
-        if node.style.position != "relative" {
-            return self.node_content(node);
+        if node.style.position == "fixed" {
+            self.fixed_nodes.push(node.clone());
+            return Ok(());
+        }
+        if node.style.position == "absolute" {
+            return self.out_of_flow_node(node, false);
         }
         let item_counts: Vec<usize> = self.pages.iter().map(|p| p.items.len()).collect();
         self.node_content(node)?;
-        let dx = node.style.inset[3]
-            .or_else(|| node.style.inset[1].map(|right| -right))
-            .unwrap_or(0.0);
-        let dy = node.style.inset[0]
-            .or_else(|| node.style.inset[2].map(|bottom| -bottom))
-            .unwrap_or(0.0);
-        for (index, page) in self.pages.iter_mut().enumerate() {
-            for item in page
-                .items
-                .iter_mut()
-                .skip(*item_counts.get(index).unwrap_or(&0))
-            {
-                translate_item(item, dx, dy);
+        if node.style.position == "relative" {
+            let horizontal = |index: usize| {
+                node.style.inset[index].or_else(|| {
+                    node.style.inset_percent[index].map(|value| self.content_width() * value)
+                })
+            };
+            let vertical = |index: usize| {
+                node.style.inset[index].or_else(|| {
+                    node.style.inset_percent[index].map(|value| self.full_height() * value)
+                })
+            };
+            let dx = horizontal(3)
+                .or_else(|| horizontal(1).map(|right| -right))
+                .unwrap_or(0.0);
+            let dy = vertical(0)
+                .or_else(|| vertical(2).map(|bottom| -bottom))
+                .unwrap_or(0.0);
+            for (index, page) in self.pages.iter_mut().enumerate() {
+                for item in page
+                    .items
+                    .iter_mut()
+                    .skip(*item_counts.get(index).unwrap_or(&0))
+                {
+                    translate_item(item, dx, dy);
+                }
+            }
+        }
+        if node.style.transform != [1.0, 0.0, 0.0, 1.0, 0.0, 0.0] {
+            for (index, page) in self.pages.iter_mut().enumerate() {
+                let start = *item_counts.get(index).unwrap_or(&0);
+                if start >= page.items.len() {
+                    continue;
+                }
+                let bounds = page.items[start..].iter().filter_map(item_bounds).fold(
+                    None,
+                    |bounds: Option<(f32, f32, f32, f32)>, (x, y, w, h)| {
+                        Some(match bounds {
+                            None => (x, y, x + w, y + h),
+                            Some((left, top, right, bottom)) => {
+                                (left.min(x), top.min(y), right.max(x + w), bottom.max(y + h))
+                            }
+                        })
+                    },
+                );
+                if let Some((left, top, right, bottom)) = bounds {
+                    let origin_x = (left + right) / 2.0;
+                    let origin_y = (top + bottom) / 2.0;
+                    let matrix = affine_multiply(
+                        [1.0, 0.0, 0.0, 1.0, origin_x, origin_y],
+                        affine_multiply(
+                            node.style.transform,
+                            [1.0, 0.0, 0.0, 1.0, -origin_x, -origin_y],
+                        ),
+                    );
+                    page.items.insert(start, Item::BeginTransform(matrix));
+                    page.items.push(Item::EndTransform);
+                }
+            }
+        }
+        if node.style.position == "relative" && node.style.z_index != 0 {
+            for (page_index, page) in self.pages.iter_mut().enumerate() {
+                let start = *item_counts.get(page_index).unwrap_or(&0);
+                if start >= page.items.len() {
+                    continue;
+                }
+                self.positioned_layers.push(PositionedLayer {
+                    page: page_index,
+                    z_index: node.style.z_index,
+                    order: self.layer_order,
+                    items: page.items.split_off(start),
+                });
+                self.layer_order += 1;
             }
         }
         Ok(())
+    }
+    fn current_containing_block(&self, fixed: bool) -> ContainingBlock {
+        if !fixed {
+            if let Some(block) = self.containing_blocks.last() {
+                return *block;
+            }
+        }
+        ContainingBlock {
+            x: self.page.margin[3],
+            y: self.page.margin[0],
+            w: self.page.width - self.page.margin[1] - self.page.margin[3],
+            h: self.page.height - self.page.margin[0] - self.page.margin[2],
+            clip: false,
+        }
+    }
+    fn out_of_flow_node(&mut self, node: &Node, fixed: bool) -> Result<()> {
+        let block = self.current_containing_block(fixed);
+        let inset = [
+            node.style.inset[0]
+                .or_else(|| node.style.inset_percent[0].map(|value| block.h * value)),
+            node.style.inset[1]
+                .or_else(|| node.style.inset_percent[1].map(|value| block.w * value)),
+            node.style.inset[2]
+                .or_else(|| node.style.inset_percent[2].map(|value| block.h * value)),
+            node.style.inset[3]
+                .or_else(|| node.style.inset_percent[3].map(|value| block.w * value)),
+        ];
+        let horizontal = node.style.border_widths[1]
+            + node.style.border_widths[3]
+            + node.style.padding[1]
+            + node.style.padding[3];
+        let declared_width =
+            resolved_dimension(node.style.width, node.style.width_percent, block.w).map(|width| {
+                if node.style.box_sizing == "border-box" {
+                    width
+                } else {
+                    width + horizontal
+                }
+            });
+        let width = declared_width
+            .or_else(|| match (inset[3], inset[1]) {
+                (Some(left), Some(right)) => Some((block.w - left - right).max(EPS)),
+                (Some(left), None) => Some((block.w - left).max(EPS)),
+                (None, Some(right)) => Some((block.w - right).max(EPS)),
+                _ => None,
+            })
+            .unwrap_or(block.w);
+        let x = if let Some(left) = inset[3] {
+            block.x + left
+        } else if let Some(right) = inset[1] {
+            block.x + block.w - right - width
+        } else {
+            block.x
+        };
+        let declared_height =
+            resolved_dimension(node.style.height, node.style.height_percent, block.h);
+        let height = declared_height.or_else(|| match (inset[0], inset[2]) {
+            (Some(top), Some(bottom)) => Some((block.h - top - bottom).max(EPS)),
+            _ => None,
+        });
+        let y = if let Some(top) = inset[0] {
+            block.y + top
+        } else if let (Some(bottom), Some(height)) = (inset[2], height) {
+            block.y + block.h - bottom - height
+        } else {
+            block.y
+        };
+
+        let page_index = self.pages.len() - 1;
+        let start = self.pages[page_index].items.len();
+        let saved_y = self.y;
+        let saved_frame = self.frame;
+        let saved_page_content = self.page_content;
+        let saved_pending = self.pending_break;
+        let saved_pending_side = self.pending_break_side.clone();
+        self.y = y;
+        self.frame = Some((x, width));
+        self.page_content = false;
+        let mut clone = node.clone();
+        // Keep a positioning context for nested absolute descendants without
+        // applying the out-of-flow algorithm recursively to this box itself.
+        clone.style.position = "relative".into();
+        clone.style.inset = [None; 4];
+        clone.style.inset_percent = [None; 4];
+        clone.style.margin = [0.0; 4];
+        clone.style.margin_percent = [None; 4];
+        clone.style.width = Some(width);
+        clone.style.width_percent = None;
+        clone.style.box_sizing = "border-box".into();
+        clone.style.break_before = false;
+        clone.style.break_after = false;
+        clone.style.break_before_side = None;
+        clone.style.break_after_side = None;
+        clone.style.page_name = None;
+        if let Some(height) = height {
+            clone.style.height = Some(height);
+            clone.style.height_percent = None;
+        }
+        self.node(&clone)?;
+        if self.pages.len() - 1 != page_index {
+            return Err(Error(if fixed {
+                "fixed positioned box cannot fragment across pages".into()
+            } else {
+                "absolute positioned box cannot fragment across pages".into()
+            }));
+        }
+        let mut items = self.pages[page_index].items.split_off(start);
+        if block.clip && !items.is_empty() {
+            items.insert(
+                0,
+                Item::BeginClip {
+                    x: block.x,
+                    y: block.y,
+                    w: block.w,
+                    h: block.h,
+                    radius: [0.0; 4],
+                },
+            );
+            items.push(Item::EndClip);
+        }
+        self.positioned_layers.push(PositionedLayer {
+            page: page_index,
+            z_index: node.style.z_index,
+            order: self.layer_order,
+            items,
+        });
+        self.layer_order += 1;
+        self.y = saved_y;
+        self.frame = saved_frame;
+        self.page_content = saved_page_content;
+        self.pending_break = saved_pending;
+        self.pending_break_side = saved_pending_side;
+        Ok(())
+    }
+    fn render_fixed_nodes(&mut self) -> Result<()> {
+        if self.fixed_nodes.is_empty() {
+            return Ok(());
+        }
+        let nodes = std::mem::take(&mut self.fixed_nodes);
+        let page_count = self.pages.len();
+        let last = page_count - 1;
+        let saved_page = self.page.clone();
+        let saved_name = self.page_name.clone();
+        let saved_y = self.y;
+        let saved_frame = self.frame;
+        let saved_content = self.page_content;
+        for page_index in 0..page_count {
+            if page_index != last {
+                self.pages.swap(page_index, last);
+            }
+            self.page = self.pages[last].style.clone();
+            self.page_name = self.pages[last].name.clone();
+            self.y = self.page.margin[0];
+            self.frame = None;
+            let first_layer = self.positioned_layers.len();
+            for node in &nodes {
+                self.out_of_flow_node(node, true)?;
+            }
+            for layer in &mut self.positioned_layers[first_layer..] {
+                layer.page = page_index;
+            }
+            if page_index != last {
+                self.pages.swap(page_index, last);
+            }
+        }
+        self.page = saved_page;
+        self.page_name = saved_name;
+        self.y = saved_y;
+        self.frame = saved_frame;
+        self.page_content = saved_content;
+        Ok(())
+    }
+    fn compose_positioned_layers(&mut self) {
+        for page_index in 0..self.pages.len() {
+            let mut layers: Vec<_> = self
+                .positioned_layers
+                .iter_mut()
+                .filter(|layer| layer.page == page_index)
+                .collect();
+            layers.sort_by_key(|layer| (layer.z_index, layer.order));
+            let normal = std::mem::take(&mut self.pages[page_index].items);
+            let mut items = Vec::new();
+            for layer in layers.iter_mut().filter(|layer| layer.z_index < 0) {
+                items.append(&mut layer.items);
+            }
+            items.extend(normal);
+            for layer in layers.iter_mut().filter(|layer| layer.z_index >= 0) {
+                items.append(&mut layer.items);
+            }
+            self.pages[page_index].items = items;
+        }
+        self.positioned_layers.clear();
     }
     fn node_content(&mut self, node: &Node) -> Result<()> {
         if node.tag == "#text" {
@@ -2043,10 +3431,10 @@ impl Flow {
             return self.table(node);
         }
         if node.style.display == "grid" {
-            return self.grid(node);
+            return self.grid_advanced(node);
         }
         if node.style.display == "flex" {
-            return self.flex(node);
+            return self.flex_advanced(node);
         }
         if node.tag == "img" {
             return self.image(node);
@@ -2091,7 +3479,11 @@ impl Flow {
         let first_block = node
             .children
             .iter()
-            .find(|child| child.tag != "#text" || !child.text.trim().is_empty())
+            .find(|child| {
+                (child.tag == "#text"
+                    || (child.style.position != "absolute" && child.style.position != "fixed"))
+                    && (child.tag != "#text" || !child.text.trim().is_empty())
+            })
             .filter(|child| {
                 !matches!(
                     child.tag.as_str(),
@@ -2121,6 +3513,7 @@ impl Flow {
             margins[0]
         };
         let box_y = self.y;
+        self.destination(node, self.content_x() + margins[3], box_y);
         let page_index = self.pages.len() - 1;
         let insert_at = self.pages[page_index].items.len();
         self.y += borders[0] + padding[0];
@@ -2130,10 +3523,26 @@ impl Flow {
             self.content_x() + margins[3] + borders[3] + padding[3],
             inner_width,
         ));
+        let establishes_containing_block = style.position != "static";
+        if establishes_containing_block {
+            self.containing_blocks.push(ContainingBlock {
+                x: self.frame.expect("block frame").0,
+                y: content_start,
+                w: inner_width,
+                h: resolved_dimension(style.height, style.height_percent, self.full_height())
+                    .unwrap_or_else(|| (self.limit() - content_start).max(EPS)),
+                clip: style.overflow == "hidden",
+            });
+        }
         let mut group = Vec::new();
         let mut pending_margin = 0.0;
         let mut first_block_pending = style.margin_top_consumed || collapse_first;
         for child in &node.children {
+            if child.tag != "#text" && matches!(child.style.position.as_str(), "absolute" | "fixed")
+            {
+                self.node(child)?;
+                continue;
+            }
             if matches!(
                 child.tag.as_str(),
                 "#text" | "span" | "strong" | "b" | "em" | "i" | "u" | "a" | "sup" | "sub" | "br"
@@ -2198,6 +3607,9 @@ impl Flow {
             inline.style.break_before = false;
             inline.style.break_after = false;
             self.paragraph(&inline)?;
+        }
+        if establishes_containing_block {
+            self.containing_blocks.pop();
         }
         let collapse_last = !style.margin_bottom_consumed
             && padding[2] <= EPS
@@ -2294,6 +3706,440 @@ impl Flow {
         self.finish(&node.style);
         Ok(())
     }
+    fn container_geometry(&self, style: &Style, kind: &str) -> Result<ContainerGeometry> {
+        let reference = self.content_width();
+        let margins = resolved_edges(style.margin, style.margin_percent, reference);
+        let padding = resolved_edges(style.padding, style.padding_percent, reference);
+        let edges = padding[1] + padding[3] + style.border_widths[1] + style.border_widths[3];
+        let available = reference - margins[1] - margins[3];
+        let sizing = constrained_dimension(
+            resolved_dimension(style.width, style.width_percent, reference).unwrap_or(
+                if style.box_sizing == "border-box" {
+                    available
+                } else {
+                    available - edges
+                },
+            ),
+            resolved_dimension(style.min_width, style.min_width_percent, reference),
+            resolved_dimension(style.max_width, style.max_width_percent, reference),
+        );
+        let outer = if style.box_sizing == "border-box" {
+            sizing
+        } else {
+            sizing + edges
+        };
+        let width = outer - edges;
+        if width <= EPS {
+            return Err(Error(format!("{kind} container has no usable width")));
+        }
+        let x = self.content_x() + margins[3] + style.border_widths[3] + padding[3];
+        Ok(ContainerGeometry {
+            margins,
+            padding,
+            outer,
+            width,
+            x,
+        })
+    }
+
+    fn flex_advanced(&mut self, node: &Node) -> Result<()> {
+        self.begin(&node.style)?;
+        let ContainerGeometry {
+            margins,
+            padding,
+            outer: _outer,
+            width,
+            x,
+        } = self.container_geometry(&node.style, "flex")?;
+        self.y += margins[0] + node.style.border_widths[0] + padding[0];
+        let start_y = self.y;
+        let start_page = self.pages.len();
+        let old_frame = self.frame;
+        let declared_height = resolved_dimension(
+            node.style.height,
+            node.style.height_percent,
+            self.full_height(),
+        );
+        let establishes = node.style.position != "static";
+        if establishes {
+            self.containing_blocks.push(ContainingBlock {
+                x,
+                y: start_y,
+                w: width,
+                h: declared_height.unwrap_or_else(|| (self.limit() - start_y).max(EPS)),
+                clip: node.style.overflow == "hidden",
+            });
+        }
+        for child in node.children.iter().filter(|child| {
+            child.tag != "#text" && matches!(child.style.position.as_str(), "absolute" | "fixed")
+        }) {
+            self.node(child)?;
+        }
+        let mut children: Vec<_> = node
+            .children
+            .iter()
+            .filter(|child| {
+                (child.tag == "#text"
+                    || !matches!(child.style.position.as_str(), "absolute" | "fixed"))
+                    && (child.tag != "#text" || !child.text.trim().is_empty())
+            })
+            .collect();
+        let reverse = node.style.flex_direction.ends_with("-reverse");
+        if reverse {
+            children.reverse();
+        }
+        let is_row = node.style.flex_direction.starts_with("row");
+        if is_row {
+            self.flex_rows(node, &children, x, width, start_y, declared_height)?;
+        } else {
+            self.flex_column(node, &children, x, width, start_y, declared_height)?;
+        }
+        if establishes {
+            self.containing_blocks.pop();
+        }
+        self.frame = old_frame;
+        let used = if self.pages.len() == start_page {
+            (self.y - start_y).max(0.0)
+        } else {
+            0.0
+        };
+        let height = constrained_dimension(
+            declared_height.unwrap_or(used),
+            resolved_dimension(
+                node.style.min_height,
+                node.style.min_height_percent,
+                self.full_height(),
+            ),
+            resolved_dimension(
+                node.style.max_height,
+                node.style.max_height_percent,
+                self.full_height(),
+            ),
+        );
+        let constrained = declared_height.is_some()
+            || node.style.min_height.is_some()
+            || node.style.min_height_percent.is_some()
+            || node.style.max_height.is_some()
+            || node.style.max_height_percent.is_some();
+        if self.pages.len() != start_page && constrained {
+            return Err(Error(
+                "height-constrained flex container cannot split across pages".into(),
+            ));
+        }
+        if self.pages.len() == start_page {
+            self.y = start_y + used.max(height);
+        }
+        self.y += padding[2] + node.style.border_widths[2] + margins[2];
+        self.finish(&node.style);
+        Ok(())
+    }
+
+    fn flex_rows(
+        &mut self,
+        node: &Node,
+        children: &[&Node],
+        x: f32,
+        width: f32,
+        start_y: f32,
+        declared_height: Option<f32>,
+    ) -> Result<()> {
+        if children.is_empty() {
+            self.y = start_y;
+            return Ok(());
+        }
+        let initial_page_count = self.pages.len();
+        let fallback = ((width - node.style.column_gap * children.len().saturating_sub(1) as f32)
+            / children.len() as f32)
+            .max(EPS);
+        let bases: Vec<f32> = children
+            .iter()
+            .map(|child| {
+                resolved_dimension(
+                    child.style.flex_basis,
+                    child.style.flex_basis_percent,
+                    width,
+                )
+                .or_else(|| resolved_dimension(child.style.width, child.style.width_percent, width))
+                .unwrap_or(fallback)
+                .max(EPS)
+            })
+            .collect();
+        let mut lines: Vec<Vec<usize>> = vec![Vec::new()];
+        let mut occupied = 0.0;
+        for (index, basis) in bases.iter().enumerate() {
+            let addition = if lines.last().is_some_and(|line| line.is_empty()) {
+                *basis
+            } else {
+                node.style.column_gap + *basis
+            };
+            if node.style.flex_wrap != "nowrap"
+                && occupied + addition > width + EPS
+                && lines.last().is_some_and(|line| !line.is_empty())
+            {
+                lines.push(vec![index]);
+                occupied = *basis;
+            } else {
+                lines.last_mut().unwrap().push(index);
+                occupied += addition;
+            }
+        }
+        if node.style.flex_wrap == "wrap-reverse" {
+            lines.reverse();
+        }
+        let mut line_records: Vec<(usize, usize, f32, f32)> = Vec::new();
+        self.y = start_y;
+        for (line_number, line) in lines.iter().enumerate() {
+            let estimate = line
+                .iter()
+                .filter_map(|index| {
+                    resolved_dimension(
+                        children[*index].style.height,
+                        children[*index].style.height_percent,
+                        declared_height.unwrap_or(self.full_height()),
+                    )
+                })
+                .fold(40.0_f32, f32::max);
+            if self.y + estimate > self.limit() + EPS && self.page_has_content() {
+                self.new_page()?;
+            }
+            let row_page = self.pages.len();
+            let row_y = self.y;
+            let row_start = self.pages.last().map_or(0, |page| page.items.len());
+            let base_total: f32 = line.iter().map(|index| bases[*index]).sum();
+            let gaps = node.style.column_gap * line.len().saturating_sub(1) as f32;
+            let free = width - base_total - gaps;
+            let grow_total: f32 = line
+                .iter()
+                .map(|index| children[*index].style.flex_grow)
+                .sum();
+            let shrink_total: f32 = line
+                .iter()
+                .map(|index| children[*index].style.flex_shrink * bases[*index])
+                .sum();
+            let mut sizes: Vec<f32> = line
+                .iter()
+                .map(|index| {
+                    let mut value = bases[*index];
+                    if free > 0.0 && grow_total > 0.0 {
+                        value += free * children[*index].style.flex_grow / grow_total;
+                    } else if free < 0.0 && shrink_total > 0.0 {
+                        value += free * children[*index].style.flex_shrink * bases[*index]
+                            / shrink_total;
+                    }
+                    value.max(EPS)
+                })
+                .collect();
+            let used_main: f32 = sizes.iter().sum::<f32>() + gaps;
+            let remaining = (width - used_main).max(0.0);
+            let (mut cursor, extra_gap) = match node.style.justify_content.as_str() {
+                "end" => (x + remaining, 0.0),
+                "center" => (x + remaining / 2.0, 0.0),
+                "space-between" if line.len() > 1 => (x, remaining / (line.len() - 1) as f32),
+                "space-around" => {
+                    let gap = remaining / line.len() as f32;
+                    (x + gap / 2.0, gap)
+                }
+                _ => (x, 0.0),
+            };
+            let mut ranges = Vec::new();
+            let mut row_end = row_y;
+            for ((index, child_index), item_width) in line.iter().enumerate().zip(sizes.drain(..)) {
+                self.y = row_y;
+                self.frame = Some((cursor, item_width));
+                let start = self.pages.last().map_or(0, |page| page.items.len());
+                let mut child = children[*child_index].clone();
+                child.style.margin = [0.0; 4];
+                child.style.margin_percent = [None; 4];
+                child.style.width = Some(item_width);
+                child.style.width_percent = None;
+                child.style.box_sizing = "border-box".into();
+                self.node(&child)?;
+                if self.pages.len() != row_page {
+                    return Err(Error("flex line cannot split across pages".into()));
+                }
+                let end = self.pages.last().unwrap().items.len();
+                ranges.push((start, end, self.y, child.style.align_self.clone()));
+                row_end = row_end.max(self.y);
+                cursor += item_width;
+                if index + 1 < line.len() {
+                    cursor += node.style.column_gap + extra_gap;
+                }
+            }
+            for (start, end, child_end, align_self) in ranges {
+                let align = if align_self == "auto" {
+                    &node.style.align_items
+                } else {
+                    &align_self
+                };
+                let shift = match align.as_str() {
+                    "end" => row_end - child_end,
+                    "center" => (row_end - child_end) / 2.0,
+                    _ => 0.0,
+                };
+                if align == "stretch" {
+                    let height = row_end - row_y;
+                    for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                        stretch_box_item(item, row_y, height);
+                    }
+                } else if shift > EPS {
+                    for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                        shift_item(item, shift);
+                    }
+                }
+            }
+            let row_end_index = self.pages.last().unwrap().items.len();
+            line_records.push((row_start, row_end_index, row_y, row_end - row_y));
+            self.y = row_end;
+            if line_number + 1 < lines.len() {
+                self.y += node.style.row_gap;
+            }
+        }
+        if let Some(height) = declared_height.filter(|_| self.pages.len() == initial_page_count) {
+            let used = self.y - start_y;
+            let extra = (height - used).max(0.0);
+            if extra > EPS {
+                let count = line_records.len();
+                let (first, between) = match node.style.align_content.as_str() {
+                    "end" => (extra, 0.0),
+                    "center" => (extra / 2.0, 0.0),
+                    "space-between" if count > 1 => (0.0, extra / (count - 1) as f32),
+                    "space-around" => {
+                        let gap = extra / count as f32;
+                        (gap / 2.0, gap)
+                    }
+                    "stretch" => (0.0, extra / count as f32),
+                    _ => (0.0, 0.0),
+                };
+                for (line_index, (start, end, _, _)) in line_records.iter().enumerate() {
+                    let shift = first + between * line_index as f32;
+                    for item in &mut self.pages.last_mut().unwrap().items[*start..*end] {
+                        shift_item(item, shift);
+                    }
+                }
+                self.y = start_y + height;
+            }
+        }
+        Ok(())
+    }
+
+    fn flex_column(
+        &mut self,
+        node: &Node,
+        children: &[&Node],
+        x: f32,
+        width: f32,
+        start_y: f32,
+        declared_height: Option<f32>,
+    ) -> Result<()> {
+        let bases: Vec<Option<f32>> = children
+            .iter()
+            .map(|child| {
+                resolved_dimension(
+                    child.style.flex_basis,
+                    child.style.flex_basis_percent,
+                    declared_height.unwrap_or(self.full_height()),
+                )
+                .or_else(|| {
+                    resolved_dimension(
+                        child.style.height,
+                        child.style.height_percent,
+                        declared_height.unwrap_or(self.full_height()),
+                    )
+                })
+            })
+            .collect();
+        let total_basis: f32 = bases.iter().flatten().sum();
+        let gaps = node.style.row_gap * children.len().saturating_sub(1) as f32;
+        let free = declared_height
+            .map(|height| height - total_basis - gaps)
+            .unwrap_or(0.0);
+        let grow_total: f32 = children.iter().map(|child| child.style.flex_grow).sum();
+        let shrink_total: f32 = children
+            .iter()
+            .enumerate()
+            .map(|(index, child)| child.style.flex_shrink * bases[index].unwrap_or(0.0))
+            .sum();
+        let leading = if free > 0.0 && grow_total <= EPS {
+            match node.style.justify_content.as_str() {
+                "end" => free,
+                "center" => free / 2.0,
+                "space-around" if !children.is_empty() => free / children.len() as f32 / 2.0,
+                _ => 0.0,
+            }
+        } else {
+            0.0
+        };
+        let extra_gap = if free > 0.0 && grow_total <= EPS {
+            match node.style.justify_content.as_str() {
+                "space-between" if children.len() > 1 => free / (children.len() - 1) as f32,
+                "space-around" if !children.is_empty() => free / children.len() as f32,
+                _ => 0.0,
+            }
+        } else {
+            0.0
+        };
+        self.y = start_y + leading;
+        for (index, child) in children.iter().enumerate() {
+            let mut allocated = bases[index];
+            if let Some(value) = allocated.as_mut() {
+                if free > 0.0 && grow_total > EPS {
+                    *value += free * child.style.flex_grow / grow_total;
+                } else if free < 0.0 && shrink_total > EPS {
+                    *value += free * child.style.flex_shrink * *value / shrink_total;
+                }
+                *value = value.max(EPS);
+            }
+            if let Some(height) = allocated {
+                if self.y + height > self.limit() + EPS && self.page_has_content() {
+                    self.new_page()?;
+                }
+            }
+            self.frame = Some((x, width));
+            let page = self.pages.len();
+            let start = self.pages.last().unwrap().items.len();
+            let mut clone = (*child).clone();
+            clone.style.margin = [0.0; 4];
+            clone.style.margin_percent = [None; 4];
+            if let Some(height) = allocated {
+                clone.style.height = Some(height);
+                clone.style.height_percent = None;
+                clone.style.box_sizing = "border-box".into();
+            }
+            self.node(&clone)?;
+            if self.pages.len() != page && allocated.is_some() {
+                return Err(Error("sized flex item cannot split across pages".into()));
+            }
+            if self.pages.len() == page {
+                let end = self.pages.last().unwrap().items.len();
+                let align = if child.style.align_self == "auto" {
+                    node.style.align_items.as_str()
+                } else {
+                    child.style.align_self.as_str()
+                };
+                if matches!(align, "center" | "end") {
+                    if let Some((left, _, right, _)) =
+                        range_bounds(&self.pages.last().unwrap().items[start..end])
+                    {
+                        let item_width = right - left;
+                        let shift = if align == "center" {
+                            (width - item_width).max(0.0) / 2.0
+                        } else {
+                            (width - item_width).max(0.0)
+                        };
+                        for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                            translate_item(item, shift, 0.0);
+                        }
+                    }
+                }
+            }
+            if index + 1 < children.len() {
+                self.y += node.style.row_gap + extra_gap;
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
     fn flex(&mut self, node: &Node) -> Result<()> {
         if node.style.flex_direction == "row" {
             return self.grid_with_columns(node, node.children.len().max(1));
@@ -2394,6 +4240,332 @@ impl Flow {
         self.finish(&node.style);
         Ok(())
     }
+    fn grid_advanced(&mut self, node: &Node) -> Result<()> {
+        self.begin(&node.style)?;
+        let ContainerGeometry {
+            margins,
+            padding,
+            outer: _outer,
+            width,
+            x,
+        } = self.container_geometry(&node.style, "grid")?;
+        self.y += margins[0] + node.style.border_widths[0] + padding[0];
+        let start_y = self.y;
+        let start_pages = self.pages.len();
+        let old_frame = self.frame;
+        let declared_height = resolved_dimension(
+            node.style.height,
+            node.style.height_percent,
+            self.full_height(),
+        );
+        let establishes = node.style.position != "static";
+        if establishes {
+            self.containing_blocks.push(ContainingBlock {
+                x,
+                y: start_y,
+                w: width,
+                h: declared_height.unwrap_or_else(|| (self.limit() - start_y).max(EPS)),
+                clip: node.style.overflow == "hidden",
+            });
+        }
+        for child in node.children.iter().filter(|child| {
+            child.tag != "#text" && matches!(child.style.position.as_str(), "absolute" | "fixed")
+        }) {
+            self.node(child)?;
+        }
+        let children: Vec<_> = node
+            .children
+            .iter()
+            .filter(|child| {
+                (child.tag == "#text"
+                    || !matches!(child.style.position.as_str(), "absolute" | "fixed"))
+                    && (child.tag != "#text" || !child.text.trim().is_empty())
+            })
+            .collect();
+        let tracks = if node.style.grid_template_columns.is_empty() {
+            vec![css::GridTrack::Fr(1.0); node.style.grid_columns.unwrap_or(1).max(1)]
+        } else {
+            node.style.grid_template_columns.clone()
+        };
+        let column_widths = resolve_grid_tracks(&tracks, width, node.style.column_gap)?;
+        let columns = column_widths.len();
+        let tracks_width = column_widths.iter().sum::<f32>()
+            + node.style.column_gap * columns.saturating_sub(1) as f32;
+        let horizontal_extra = (width - tracks_width).max(0.0);
+        let (grid_x, grid_column_gap) = match node.style.justify_content.as_str() {
+            "end" => (x + horizontal_extra, node.style.column_gap),
+            "center" => (x + horizontal_extra / 2.0, node.style.column_gap),
+            "space-between" if columns > 1 => (
+                x,
+                node.style.column_gap + horizontal_extra / (columns - 1) as f32,
+            ),
+            "space-around" => {
+                let extra_gap = horizontal_extra / columns as f32;
+                (x + extra_gap / 2.0, node.style.column_gap + extra_gap)
+            }
+            _ => (x, node.style.column_gap),
+        };
+        let mut occupancy: Vec<Vec<bool>> = Vec::new();
+        let mut placements: Vec<(&Node, usize, usize, usize, usize)> = Vec::new();
+        let ensure_rows = |occupancy: &mut Vec<Vec<bool>>, rows: usize| {
+            while occupancy.len() < rows {
+                occupancy.push(vec![false; columns]);
+            }
+        };
+        for child in children {
+            let column_span = child.style.grid_column_span.min(columns).max(1);
+            let row_span = child.style.grid_row_span.max(1);
+            let explicit_column = child.style.grid_column_start.map(|value| value - 1);
+            let explicit_row = child.style.grid_row_start.map(|value| value - 1);
+            let (row, column) = if let (Some(row), Some(column)) = (explicit_row, explicit_column) {
+                if column + column_span > columns {
+                    return Err(Error("grid placement exceeds explicit columns".into()));
+                }
+                ensure_rows(&mut occupancy, row + row_span);
+                (row, column)
+            } else {
+                let mut row = explicit_row.unwrap_or(0);
+                let mut found = None;
+                while found.is_none() {
+                    ensure_rows(&mut occupancy, row + row_span);
+                    let columns_to_try: Box<dyn Iterator<Item = usize>> =
+                        if let Some(column) = explicit_column {
+                            Box::new(std::iter::once(column))
+                        } else {
+                            Box::new(0..=columns - column_span)
+                        };
+                    for column in columns_to_try {
+                        if column + column_span <= columns
+                            && (row..row + row_span).all(|grid_row| {
+                                occupancy[grid_row][column..column + column_span]
+                                    .iter()
+                                    .all(|occupied| !occupied)
+                            })
+                        {
+                            found = Some((row, column));
+                            break;
+                        }
+                    }
+                    if explicit_row.is_some() && found.is_none() {
+                        return Err(Error(
+                            "explicit grid placement overlaps another item".into(),
+                        ));
+                    }
+                    row += 1;
+                }
+                found.unwrap()
+            };
+            if (row..row + row_span).any(|grid_row| {
+                occupancy[grid_row][column..column + column_span]
+                    .iter()
+                    .any(|occupied| *occupied)
+            }) {
+                return Err(Error(
+                    "explicit grid placement overlaps another item".into(),
+                ));
+            }
+            for grid_row in &mut occupancy[row..row + row_span] {
+                grid_row[column..column + column_span].fill(true);
+            }
+            placements.push((child, row, column, row_span, column_span));
+        }
+        let row_count = occupancy
+            .len()
+            .max(node.style.grid_template_rows.len())
+            .max(1);
+        let mut row_sizes = vec![None; row_count];
+        if !node.style.grid_template_rows.is_empty() {
+            if let Some(height) = declared_height {
+                let resolved = resolve_grid_tracks(
+                    &node.style.grid_template_rows,
+                    height,
+                    node.style.row_gap,
+                )?;
+                for (slot, value) in row_sizes.iter_mut().zip(resolved) {
+                    *slot = Some(value);
+                }
+            } else {
+                for (slot, track) in row_sizes.iter_mut().zip(&node.style.grid_template_rows) {
+                    *slot = match track {
+                        css::GridTrack::Fixed(value) => Some(*value),
+                        css::GridTrack::Percent(value) => Some(self.full_height() * value),
+                        css::GridTrack::MinMax(minimum, _) => match minimum.as_ref() {
+                            css::GridTrack::Fixed(value) => Some(*value),
+                            css::GridTrack::Percent(value) => Some(self.full_height() * value),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                }
+            }
+        }
+        self.y = start_y;
+        let initial_page_count = self.pages.len();
+        let mut row_records = Vec::new();
+        for (row, row_size) in row_sizes.iter().copied().enumerate().take(row_count) {
+            let estimate = row_size.unwrap_or(40.0);
+            if self.y + estimate > self.limit() + EPS && self.page_has_content() {
+                self.new_page()?;
+            }
+            let row_page = self.pages.len();
+            let row_y = self.y;
+            let row_item_start = self.pages.last().map_or(0, |page| page.items.len());
+            let mut row_end = row_y + row_size.unwrap_or(0.0);
+            let mut ranges = Vec::new();
+            for (child, _, column, row_span, column_span) in
+                placements.iter().filter(|placement| placement.1 == row)
+            {
+                let cell_x = grid_x
+                    + column_widths[..*column].iter().sum::<f32>()
+                    + grid_column_gap * *column as f32;
+                let cell_width = column_widths[*column..*column + *column_span]
+                    .iter()
+                    .sum::<f32>()
+                    + grid_column_gap * column_span.saturating_sub(1) as f32;
+                let justify = if child.style.justify_self == "auto" {
+                    node.style.justify_items.as_str()
+                } else {
+                    child.style.justify_self.as_str()
+                };
+                let requested_width =
+                    resolved_dimension(child.style.width, child.style.width_percent, cell_width);
+                let item_width = if justify == "stretch" {
+                    cell_width
+                } else {
+                    requested_width.unwrap_or(cell_width).min(cell_width)
+                };
+                let offset = match justify {
+                    "end" => cell_width - item_width,
+                    "center" => (cell_width - item_width) / 2.0,
+                    _ => 0.0,
+                };
+                self.y = row_y;
+                self.frame = Some((cell_x + offset.max(0.0), item_width));
+                let start = self.pages.last().unwrap().items.len();
+                let mut clone = (*child).clone();
+                clone.style.margin = [0.0; 4];
+                clone.style.margin_percent = [None; 4];
+                if justify == "stretch" || requested_width.is_none() {
+                    clone.style.width = Some(item_width);
+                    clone.style.width_percent = None;
+                    clone.style.box_sizing = "border-box".into();
+                }
+                let align = if clone.style.align_self == "auto" {
+                    node.style.align_items.clone()
+                } else {
+                    clone.style.align_self.clone()
+                };
+                if *row_span == 1 && align == "stretch" {
+                    if let Some(height) = row_size {
+                        clone.style.height = Some(height);
+                        clone.style.height_percent = None;
+                        clone.style.box_sizing = "border-box".into();
+                    }
+                }
+                self.node(&clone)?;
+                if self.pages.len() != row_page {
+                    return Err(Error("grid row cannot split across pages".into()));
+                }
+                let end = self.pages.last().unwrap().items.len();
+                let child_end = self.y;
+                let contribution = (child_end - row_y) / *row_span as f32;
+                row_end = row_end.max(row_y + contribution.max(0.0));
+                ranges.push((start, end, child_end, align));
+            }
+            if row_end <= row_y + EPS {
+                row_end = row_y + row_size.unwrap_or(0.0);
+            }
+            for (start, end, child_end, align) in ranges {
+                let shift = match align.as_str() {
+                    "end" => row_end - child_end,
+                    "center" => (row_end - child_end) / 2.0,
+                    _ => 0.0,
+                };
+                if align == "stretch" {
+                    let height = row_end - row_y;
+                    for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                        stretch_box_item(item, row_y, height);
+                    }
+                } else if shift > EPS {
+                    for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                        shift_item(item, shift);
+                    }
+                }
+            }
+            row_records.push((
+                row_page - 1,
+                row_item_start,
+                self.pages.last().map_or(0, |page| page.items.len()),
+            ));
+            self.y = row_end;
+            if row + 1 < row_count {
+                self.y += node.style.row_gap;
+            }
+        }
+        if let Some(height) = declared_height.filter(|_| self.pages.len() == initial_page_count) {
+            let extra = (height - (self.y - start_y)).max(0.0);
+            if extra > EPS {
+                let (first, between) = match node.style.align_content.as_str() {
+                    "end" => (extra, 0.0),
+                    "center" => (extra / 2.0, 0.0),
+                    "space-between" if row_count > 1 => (0.0, extra / (row_count - 1) as f32),
+                    "space-around" => {
+                        let gap = extra / row_count as f32;
+                        (gap / 2.0, gap)
+                    }
+                    "stretch" => (0.0, extra / row_count as f32),
+                    _ => (0.0, 0.0),
+                };
+                for (row, (page, start, end)) in row_records.iter().enumerate() {
+                    let shift = first + between * row as f32;
+                    for item in &mut self.pages[*page].items[*start..*end] {
+                        shift_item(item, shift);
+                    }
+                }
+                self.y = start_y + height;
+            }
+        }
+        if establishes {
+            self.containing_blocks.pop();
+        }
+        self.frame = old_frame;
+        let used = if self.pages.len() == start_pages {
+            self.y - start_y
+        } else {
+            0.0
+        };
+        let height = constrained_dimension(
+            declared_height.unwrap_or(used),
+            resolved_dimension(
+                node.style.min_height,
+                node.style.min_height_percent,
+                self.full_height(),
+            ),
+            resolved_dimension(
+                node.style.max_height,
+                node.style.max_height_percent,
+                self.full_height(),
+            ),
+        );
+        let constrained = declared_height.is_some()
+            || node.style.min_height.is_some()
+            || node.style.min_height_percent.is_some()
+            || node.style.max_height.is_some()
+            || node.style.max_height_percent.is_some();
+        if self.pages.len() != start_pages && constrained {
+            return Err(Error(
+                "height-constrained grid container cannot split across pages".into(),
+            ));
+        }
+        if self.pages.len() == start_pages {
+            self.y = start_y + used.max(height);
+        }
+        self.y += padding[2] + node.style.border_widths[2] + margins[2];
+        self.finish(&node.style);
+        Ok(())
+    }
+
+    #[allow(dead_code)]
     fn grid(&mut self, node: &Node) -> Result<()> {
         self.grid_with_columns(node, node.style.grid_columns.unwrap_or(1))
     }
@@ -2609,6 +4781,13 @@ impl Flow {
         };
         for glyph in &line.glyphs {
             let baseline = y + line.baseline - glyph.shift;
+            if let Some(name) = &glyph.destination {
+                self.visible_item(Item::Destination {
+                    name: name.clone(),
+                    x: pen,
+                    y,
+                });
+            }
             if let Some(inline) = &glyph.inline_box {
                 let box_x = pen + inline.style.margin[3];
                 let box_y = baseline - inline.height;
@@ -2843,6 +5022,34 @@ impl Flow {
             self.page_content = true;
             if offset == 0 {
                 self.destination(node, x, start);
+                if matches!(node.tag.as_str(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+                    let title = node
+                        .plain_text()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if !title.is_empty() {
+                        let destination = node.attr("id").map(str::to_owned).unwrap_or_else(|| {
+                            let name = format!("_serpentype_outline_{}", self.outlines.len());
+                            self.item(Item::Destination {
+                                name: name.clone(),
+                                x,
+                                y: start,
+                            });
+                            name
+                        });
+                        let level = node
+                            .tag
+                            .strip_prefix('h')
+                            .and_then(|number| number.parse::<u8>().ok())
+                            .unwrap_or(1);
+                        self.outlines.push(OutlineEntry {
+                            title,
+                            destination,
+                            level,
+                        });
+                    }
+                }
             }
             self.paint_box(x, start, w, used, s);
             if s.overflow == "hidden" {
@@ -2941,6 +5148,9 @@ impl Flow {
             let mut hash = Sha256::new();
             hash.update(&bytes);
             hash.update(self.svg_dpi.to_bits().to_be_bytes());
+            for font_digest in self.fonts.source_digests()? {
+                hash.update(font_digest);
+            }
             hash.finalize().into()
         } else {
             Sha256::digest(&bytes).into()
@@ -2996,6 +5206,7 @@ impl Flow {
                         display_width: dimensions.0 as f32 * 0.75,
                         display_height: dimensions.1 as f32 * 0.75,
                         digest,
+                        svg: None,
                     })
                 } else {
                     let mut image = image::load_from_memory(&bytes)
@@ -3021,6 +5232,7 @@ impl Flow {
                         display_width: iw as f32 * 0.75,
                         display_height: ih as f32 * 0.75,
                         digest,
+                        svg: None,
                     })
                 };
                 data
@@ -3043,14 +5255,14 @@ impl Flow {
             data
         };
         let (iw, ih) = (data.display_width, data.display_height);
-        let mut width = node
+        let mut box_width = node
             .style
             .width
             .or_else(|| node.style.width_percent.map(|p| self.content_width() * p))
             .unwrap_or(iw)
             .min(self.content_width());
-        width = constrained_dimension(
-            width,
+        box_width = constrained_dimension(
+            box_width,
             resolved_dimension(
                 node.style.min_width,
                 node.style.min_width_percent,
@@ -3062,20 +5274,20 @@ impl Flow {
                 self.content_width(),
             ),
         );
-        let mut height = node
+        let mut box_height = node
             .style
             .height
             .or_else(|| node.style.height_percent.map(|p| self.full_height() * p))
-            .unwrap_or_else(|| width / node.style.aspect_ratio.unwrap_or(iw / ih));
+            .unwrap_or_else(|| box_width / node.style.aspect_ratio.unwrap_or(iw / ih));
         if let Some(max_height) = resolved_dimension(
             node.style.max_height,
             node.style.max_height_percent,
             self.full_height(),
         ) {
-            if height > max_height {
-                let scale = max_height / height;
-                height = max_height;
-                width *= scale;
+            if box_height > max_height {
+                let scale = max_height / box_height;
+                box_height = max_height;
+                box_width *= scale;
             }
         }
         if let Some(min_height) = resolved_dimension(
@@ -3083,38 +5295,82 @@ impl Flow {
             node.style.min_height_percent,
             self.full_height(),
         ) {
-            if height < min_height {
-                let scale = min_height / height;
-                height = min_height;
-                width *= scale;
+            if box_height < min_height {
+                let scale = min_height / box_height;
+                box_height = min_height;
+                box_width *= scale;
             }
         }
-        if height > self.full_height() + EPS {
+        if box_height > self.full_height() + EPS {
             return Err(Error("image exceeds page content height".into()));
         }
-        if self.y + height > self.limit() + EPS && self.page_has_content() {
+        if self.y + box_height > self.limit() + EPS && self.page_has_content() {
             self.new_page()?;
         }
-        self.destination(node, self.content_x(), self.y);
+        let box_x = self.content_x()
+            + if self.center_children {
+                (self.content_width() - box_width).max(0.0) / 2.0
+            } else {
+                0.0
+            };
+        let (paint_width, paint_height) = match node.style.object_fit.as_str() {
+            "contain" => {
+                let scale = (box_width / iw).min(box_height / ih);
+                (iw * scale, ih * scale)
+            }
+            "cover" => {
+                let scale = (box_width / iw).max(box_height / ih);
+                (iw * scale, ih * scale)
+            }
+            "none" => (iw, ih),
+            "scale-down" => {
+                let scale = 1.0_f32.min((box_width / iw).min(box_height / ih));
+                (iw * scale, ih * scale)
+            }
+            _ => (box_width, box_height),
+        };
+        let paint_x = box_x
+            + (box_width - paint_width) * node.style.object_position[0]
+            + node.style.object_position_offset[0];
+        let paint_y = self.y
+            + (box_height - paint_height) * node.style.object_position[1]
+            + node.style.object_position_offset[1];
+        let data = if let Some(max_dpi) = self.max_image_dpi.filter(|_| data.svg.is_none()) {
+            match downsample_image(&data, max_dpi, paint_width, paint_height) {
+                Ok(downsampled) => Arc::new(downsampled),
+                Err(error) if error.0 == "image does not require downsampling" => data,
+                Err(error) => return Err(error),
+            }
+        } else {
+            data
+        };
+        self.destination(node, box_x, self.y);
         if node.style.opacity < 1.0 - EPS {
             self.item(Item::BeginOpacity(node.style.opacity));
         }
+        if node.style.object_fit != "fill" {
+            self.item(Item::BeginClip {
+                x: box_x,
+                y: self.y,
+                w: box_width,
+                h: box_height,
+                radius: [0.0; 4],
+            });
+        }
         self.item(Item::Image {
             data,
-            x: self.content_x()
-                + if self.center_children {
-                    (self.content_width() - width).max(0.0) / 2.0
-                } else {
-                    0.0
-                },
-            y: self.y,
-            w: width,
-            h: height,
+            x: paint_x,
+            y: paint_y,
+            w: paint_width,
+            h: paint_height,
         });
+        if node.style.object_fit != "fill" {
+            self.item(Item::EndClip);
+        }
         if node.style.opacity < 1.0 - EPS {
             self.item(Item::EndOpacity);
         }
-        self.y += height;
+        self.y += box_height;
         self.finish(&node.style);
         Ok(())
     }
@@ -3730,6 +5986,7 @@ impl Flow {
             vec![],
             self.limits.clone(),
             self.cancel.clone(),
+            self.source.clone(),
         );
         let local_page = PageStyle {
             width,

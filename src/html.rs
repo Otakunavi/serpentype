@@ -3,7 +3,7 @@ use crate::css::{self, Sheet, Style};
 use crate::{Diagnostic, Error, Result};
 use kuchiki::traits::TendrilSink;
 use kuchiki::NodeRef;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Debug, Default)]
 pub struct DocumentMetadata {
@@ -22,6 +22,8 @@ pub struct Node {
     pub style: Style,
     pub text: String,
     pub children: Vec<Node>,
+    /// Byte offset of the corresponding opening element in the source HTML, when available.
+    pub source_offset: Option<usize>,
 }
 impl Node {
     pub fn attr(&self, key: &str) -> Option<&str> {
@@ -44,6 +46,94 @@ const TAGS: &[&str] = &[
     "h5", "h6", "span", "strong", "b", "em", "i", "u", "a", "sup", "sub", "br", "img", "table",
     "colgroup", "col", "thead", "tbody", "tfoot", "tr", "th", "td",
 ];
+
+#[derive(Default)]
+struct SourceOffsets {
+    elements: HashMap<String, VecDeque<usize>>,
+}
+
+impl SourceOffsets {
+    fn new(source: &str) -> Self {
+        let bytes = source.as_bytes();
+        let lower = source.to_ascii_lowercase();
+        let mut elements: HashMap<String, VecDeque<usize>> = HashMap::new();
+        let mut cursor = 0;
+        while cursor < bytes.len() {
+            if bytes[cursor] != b'<' {
+                cursor += 1;
+                continue;
+            }
+            let start = cursor;
+            cursor += 1;
+            if source[start..].starts_with("<!--") {
+                cursor = source[start + 4..]
+                    .find("-->")
+                    .map_or(bytes.len(), |end| start + 4 + end + 3);
+                continue;
+            }
+            if cursor >= bytes.len() || matches!(bytes[cursor], b'/' | b'!' | b'?') {
+                cursor = bytes[cursor..]
+                    .iter()
+                    .position(|byte| *byte == b'>')
+                    .map_or(bytes.len(), |end| cursor + end + 1);
+                continue;
+            }
+            let name_start = cursor;
+            while cursor < bytes.len()
+                && (bytes[cursor].is_ascii_alphanumeric() || matches!(bytes[cursor], b'-' | b':'))
+            {
+                cursor += 1;
+            }
+            if cursor == name_start {
+                continue;
+            }
+            let name = String::from_utf8_lossy(&bytes[name_start..cursor]).to_ascii_lowercase();
+            elements.entry(name.clone()).or_default().push_back(start);
+            let mut quote = None;
+            while cursor < bytes.len() {
+                let byte = bytes[cursor];
+                if let Some(end_quote) = quote {
+                    if byte == end_quote {
+                        quote = None;
+                    }
+                } else if matches!(byte, b'\'' | b'"') {
+                    quote = Some(byte);
+                } else if byte == b'>' {
+                    cursor += 1;
+                    break;
+                }
+                cursor += 1;
+            }
+            if matches!(
+                name.as_str(),
+                "script"
+                    | "style"
+                    | "textarea"
+                    | "title"
+                    | "xmp"
+                    | "iframe"
+                    | "noembed"
+                    | "noframes"
+                    | "plaintext"
+            ) {
+                let closing = format!("</{name}");
+                cursor = lower[cursor..]
+                    .find(&closing)
+                    .and_then(|offset| {
+                        lower[cursor + offset..]
+                            .find('>')
+                            .map(|end| cursor + offset + end + 1)
+                    })
+                    .unwrap_or(bytes.len());
+            }
+        }
+        Self { elements }
+    }
+
+    fn take(&mut self, tag: &str) -> Option<usize> {
+        self.elements.get_mut(tag).and_then(VecDeque::pop_front)
+    }
+}
 
 fn defaults(tag: &str, style: &mut Style) {
     if matches!(
@@ -177,6 +267,7 @@ fn apply_presentational_hints(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn convert(
     dom: &NodeRef,
     parent: &Style,
@@ -184,6 +275,8 @@ fn convert(
     warnings: &mut Vec<Diagnostic>,
     presentational_hints: bool,
     inherited_table_hints: TableHints,
+    source_offsets: &mut SourceOffsets,
+    parent_source_offset: Option<usize>,
 ) -> Option<Node> {
     if let Some(text) = dom.as_text() {
         return Some(Node {
@@ -192,10 +285,12 @@ fn convert(
             style: parent.clone(),
             text: text.borrow().to_string(),
             children: vec![],
+            source_offset: parent_source_offset,
         });
     }
     let element = dom.as_element()?;
     let tag = element.name.local.to_string();
+    let source_offset = source_offsets.take(&tag).or(parent_source_offset);
     if !TAGS.contains(&tag.as_str()) {
         warnings.push(Diagnostic::new(
             "html-tag",
@@ -256,21 +351,50 @@ fn convert(
         css::apply(&mut style, key, value, warnings);
     }
     if tag == "img" && (style.border_width > 0.0 || style.background.is_some()) {
-        warnings.push(Diagnostic::new(
+        let property = if style.background.is_some() {
+            "background"
+        } else {
+            "border"
+        };
+        let mut diagnostic = Diagnostic::new(
             "css-property",
             "image borders and backgrounds are unsupported",
-        ));
+        );
+        diagnostic.property = Some(property.into());
+        warnings.push(diagnostic);
     }
-    if style.position == "relative"
+    if style.position != "static"
+        && style.position != "running"
+        && style.display == "inline"
         && matches!(
             tag.as_str(),
             "span" | "strong" | "b" | "em" | "i" | "u" | "a" | "sup" | "sub" | "br"
         )
     {
-        warnings.push(Diagnostic::new(
+        warnings.push(
+            Diagnostic::new(
+                "css-property",
+                format!(
+                    "position: {} is unsupported on inline <{tag}>",
+                    style.position
+                ),
+            )
+            .property("position", &style.position),
+        );
+    }
+    if style.transform != [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+        && style.display == "inline"
+        && matches!(
+            tag.as_str(),
+            "span" | "strong" | "b" | "em" | "i" | "u" | "a" | "sup" | "sub" | "br"
+        )
+    {
+        let mut diagnostic = Diagnostic::new(
             "css-property",
-            format!("position: relative is unsupported on inline <{tag}>"),
-        ));
+            format!("transform is unsupported on inline <{tag}>"),
+        );
+        diagnostic.property = Some("transform".into());
+        warnings.push(diagnostic);
     }
     if style.break_inside_avoid
         && matches!(
@@ -278,10 +402,13 @@ fn convert(
             "div" | "section" | "article" | "body" | "span" | "td" | "th"
         )
     {
-        warnings.push(Diagnostic::new(
-            "css-property",
-            format!("break-inside: avoid is unsupported on <{tag}>"),
-        ));
+        warnings.push(
+            Diagnostic::new(
+                "css-property",
+                format!("break-inside: avoid is unsupported on <{tag}>"),
+            )
+            .property("break-inside", "avoid"),
+        );
     }
     if (style.break_before || style.break_after)
         && matches!(
@@ -289,10 +416,20 @@ fn convert(
             "span" | "strong" | "b" | "em" | "i" | "td" | "th" | "tr" | "thead" | "tbody" | "tfoot"
         )
     {
-        warnings.push(Diagnostic::new(
-            "css-property",
-            format!("page break is unsupported on <{tag}>"),
-        ));
+        warnings.push(
+            Diagnostic::new(
+                "css-property",
+                format!("page break is unsupported on <{tag}>"),
+            )
+            .property(
+                if style.break_before {
+                    "break-before"
+                } else {
+                    "break-after"
+                },
+                "page",
+            ),
+        );
     }
     if style.display == "none" {
         return None;
@@ -307,6 +444,8 @@ fn convert(
                 warnings,
                 presentational_hints,
                 child_table_hints,
+                source_offsets,
+                source_offset,
             )
         })
         .collect();
@@ -316,6 +455,7 @@ fn convert(
         style,
         text: String::new(),
         children,
+        source_offset,
     })
 }
 
@@ -376,6 +516,7 @@ pub fn parse_with_metadata_and_hints(
         ));
     }
     let root_style = Style::default();
+    let mut source_offsets = SourceOffsets::new(html);
     let root = convert(
         body.as_node(),
         &root_style,
@@ -383,16 +524,18 @@ pub fn parse_with_metadata_and_hints(
         &mut warnings,
         presentational_hints,
         TableHints::default(),
+        &mut source_offsets,
+        None,
     )
     .ok_or_else(|| Error("empty HTML body".into()))?;
     let mut anchors = HashSet::new();
     fn collect_anchors(node: &Node, anchors: &mut HashSet<String>) {
-        if matches!(
-            node.tag.as_str(),
-            "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "img"
-        ) {
-            if let Some(id) = node.attr("id").filter(|id| !id.is_empty()) {
-                anchors.insert(id.to_owned());
+        if let Some(id) = node.attr("id").filter(|id| !id.is_empty()) {
+            anchors.insert(id.to_owned());
+        }
+        if node.tag == "a" {
+            if let Some(name) = node.attr("name").filter(|name| !name.is_empty()) {
+                anchors.insert(name.to_owned());
             }
         }
         for child in &node.children {
@@ -427,7 +570,10 @@ pub fn parse_with_metadata_and_hints(
     collect_anchors(&root, &mut anchors);
     check_links(&root, &anchors, &mut warnings);
     if strict && !warnings.is_empty() {
-        return Err(Error(warnings[0].message.clone()));
+        return Err(Error(format!(
+            "strict mode: {}: {}",
+            warnings[0].code, warnings[0].message
+        )));
     }
     Ok((root, warnings, metadata))
 }

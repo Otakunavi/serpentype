@@ -5,6 +5,28 @@ pub mod html;
 pub mod layout;
 pub mod pdf;
 
+/// Catch internal unwind panics before they can cross a foreign-function boundary.
+#[cfg(any(feature = "python", test))]
+pub(crate) fn catch_internal<T>(operation: impl FnOnce() -> T) -> std::result::Result<T, ()> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)).map_err(|_| ())
+}
+
+#[cfg(test)]
+mod ffi_safety_tests {
+    use super::catch_internal;
+
+    #[test]
+    fn panic_in_foreign_boundary_is_caught() {
+        let result = catch_internal(|| panic!("injected renderer panic"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ordinary_result_crosses_boundary_unchanged() {
+        assert_eq!(catch_internal(|| 42), Ok(42));
+    }
+}
+
 #[cfg(feature = "python")]
 mod python;
 

@@ -1,0 +1,6 @@
+@page { size: 290pt 170pt; margin: 20pt }
+@font-face { font-family: "Source Sans 3"; src: url("SourceSans3-Regular.otf.woff2"); font-weight: 400 }
+body { margin: 0; font-family: "Noto Sans"; color: #26384b }
+h1 { margin: 0 0 12pt; font-size: 15pt; color: #17466d }
+p { margin: 0 0 9pt; font-size: 10pt }
+.webfont { font-family: "Source Sans 3"; font-size: 13pt; color: #47708d }

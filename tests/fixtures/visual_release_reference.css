@@ -1,0 +1,6 @@
+@page { size: 260pt 190pt; margin: 20pt; bleed: 4pt; marks: crop; @bottom-center { content: "Serpentype • " counter(page) } }
+body { margin: 0; font-family: "Noto Sans"; color: #243247 }
+h1 { margin: 0 0 10pt; font-size: 18pt; color: #173b63 }
+p { margin: 0 0 14pt; font-size: 10pt }
+table { width: 210pt; border-collapse: collapse }
+td { border: 0.6pt solid #7790a5; padding: 5pt; font-size: 9pt }

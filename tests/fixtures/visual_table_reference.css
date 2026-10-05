@@ -1,0 +1,6 @@
+@page { size: 280pt 180pt; margin: 14pt; @bottom-right { content: "Page " counter(page); font-size: 7pt } }
+body { margin: 0; font-family: "Noto Sans"; color: #203248 }
+h1 { margin: 0 0 8pt; font-size: 13pt; color: #173b63 }
+table { width: 252pt; border-collapse: collapse; table-layout: fixed }
+th { background: #315d7e; color: white; font-size: 7pt; padding: 4pt; text-align: left }
+td { border: 0.6pt solid #91a6b5; padding: 5pt 4pt; font-size: 7pt }

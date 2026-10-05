@@ -1,0 +1,5 @@
+@page { size: 280pt 170pt; margin: 16pt; @bottom-center { content: "Page " counter(page); font-size: 7pt } }
+body { margin: 0; font-family: "Noto Sans"; color: #26384b }
+h1 { margin: 0 0 8pt; font-size: 13pt; color: #17466d }
+.split { margin: 0; font-size: 9pt; line-height: 12pt; orphans: 3; widows: 3 }
+.tail { margin-top: 8pt; font-size: 8pt; color: #597184 }

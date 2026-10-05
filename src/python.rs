@@ -1,9 +1,11 @@
 //! PyO3 adapter. Expensive layout and export release the Python GIL.
+use crate::catch_internal;
 use crate::font::FontRegistry;
 use crate::layout::{PreparedDocument, RenderLimits, RenderStats, Renderer};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -11,6 +13,7 @@ use std::sync::Arc;
 pyo3::create_exception!(_serpentype, RenderLimitError, PyValueError);
 pyo3::create_exception!(_serpentype, RenderCancelledError, PyValueError);
 pyo3::create_exception!(_serpentype, MissingGlyphError, PyValueError);
+pyo3::create_exception!(_serpentype, StrictModeError, PyValueError);
 
 fn missing_glyph_error(message: &str) -> Option<PyErr> {
     let details = message.strip_prefix("no registered font for U+")?;
@@ -51,17 +54,97 @@ fn missing_glyph_error(message: &str) -> Option<PyErr> {
     Some(error)
 }
 
+fn attach_location(error: &PyErr, message: &str) {
+    let Some((_, location)) = message.rsplit_once("; location ") else {
+        return;
+    };
+    let mut parts = location.rsplitn(3, ' ');
+    let column = parts.next().and_then(|value| value.parse::<usize>().ok());
+    let line = parts.next().and_then(|value| value.parse::<usize>().ok());
+    let source = parts.next();
+    let (Some(line), Some(column), Some(source)) = (line, column, source) else {
+        return;
+    };
+    Python::with_gil(|py| {
+        let value = error.value(py);
+        let _ = value.setattr("source", source);
+        let _ = value.setattr("line", line);
+        let _ = value.setattr("column", column);
+    });
+}
+
+fn attach_input_location(
+    error: &PyErr,
+    message: &str,
+    html: &str,
+    css: &str,
+    source: Option<&str>,
+) {
+    if message.contains("; location ") {
+        attach_location(error, message);
+        return;
+    }
+    // Resource loader errors include the requested URL/path. Match that token
+    // against source attributes rather than guessing from the error category.
+    let resource_source = Python::with_gil(|py| {
+        error
+            .value(py)
+            .getattr("resource_source")
+            .ok()
+            .and_then(|value| value.extract::<String>().ok())
+    });
+    let candidate = resource_source
+        .as_deref()
+        .filter(|part| html.contains(part) || css.contains(part))
+        .or_else(|| {
+            message
+                .split(|character: char| {
+                    character.is_whitespace()
+                        || matches!(character, '\'' | '"' | '`' | ',' | ';' | ')' | '(')
+                })
+                .filter(|part| {
+                    part.len() >= 3
+                        && (part.contains('/') || part.contains(':') || part.contains('.'))
+                })
+                .find(|part| html.contains(part) || css.contains(part))
+        });
+    let Some(candidate) = candidate else { return };
+    let location = html
+        .find(candidate)
+        .map(|offset| (source.unwrap_or("<html>"), html, offset))
+        .or_else(|| css.find(candidate).map(|offset| ("<css>", css, offset)));
+    let Some((source, input, offset)) = location else {
+        return;
+    };
+    let prefix = &input[..offset];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let column = prefix
+        .rsplit('\n')
+        .next()
+        .map_or(1, |line| line.chars().count() + 1);
+    Python::with_gil(|py| {
+        let value = error.value(py);
+        let _ = value.setattr("source", source);
+        let _ = value.setattr("line", line);
+        let _ = value.setattr("column", column);
+    });
+}
+
 fn pyerr(error: crate::Error) -> PyErr {
     let message = error.to_string();
-    if message.starts_with("render limit exceeded:") {
-        RenderLimitError::new_err(message)
-    } else if message == "render cancelled" {
-        RenderCancelledError::new_err(message)
+    let exception = if message.starts_with("strict mode:") {
+        StrictModeError::new_err(message.clone())
+    } else if message.starts_with("render limit exceeded:") {
+        RenderLimitError::new_err(message.clone())
+    } else if message.starts_with("render cancelled") {
+        RenderCancelledError::new_err(message.clone())
     } else if let Some(error) = missing_glyph_error(&message) {
         error
     } else {
-        PyValueError::new_err(message)
-    }
+        PyValueError::new_err(message.clone())
+    };
+    attach_location(&exception, &message);
+    exception
 }
 
 #[pyclass(name = "RenderLimits", frozen)]
@@ -272,6 +355,10 @@ impl PyDiagnostic {
 }
 
 const CAPABILITIES: &[(&str, &str)] = &[
+    ("diagnostics.filters", "full"),
+    ("diagnostics.source-locations", "full"),
+    ("strict.typed-errors", "full"),
+    ("ffi.panic-guard", "full"),
     ("pdf.deterministic", "partial"),
     ("css.text-align.justify", "partial"),
     ("css.text-indent", "partial"),
@@ -328,12 +415,17 @@ const CAPABILITIES: &[(&str, &str)] = &[
     ("css.paged.recto-verso", "partial"),
     ("css.paged.pseudo-pages", "partial"),
     ("css.position.relative", "partial"),
+    ("css.position.absolute", "partial"),
+    ("css.position.fixed", "partial"),
+    ("css.transform", "partial"),
     ("image.png", "partial"),
     ("image.jpeg", "partial"),
     ("image.webp", "partial"),
     ("image.gif", "partial"),
     ("layout.flex", "partial"),
     ("layout.grid", "partial"),
+    ("layout.flex.fragmentation", "full"),
+    ("layout.grid.fragmentation", "full"),
     ("layout.gap", "partial"),
 ];
 #[pyfunction]
@@ -396,6 +488,14 @@ impl PyFontRegistry {
 #[pyclass(name = "Renderer", frozen)]
 pub struct PyRenderer {
     inner: Renderer,
+    resource_loader: Option<Py<PyAny>>,
+    strict: bool,
+    diagnostic_allow_codes: Option<HashSet<String>>,
+    diagnostic_deny_codes: HashSet<String>,
+    diagnostic_allow_severities: Option<HashSet<String>>,
+    diagnostic_deny_severities: HashSet<String>,
+    max_diagnostics: usize,
+    diagnostic_callback: Option<Py<PyAny>>,
 }
 #[pymethods]
 impl PyRenderer {
@@ -406,7 +506,7 @@ impl PyRenderer {
     }
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(fonts=None, base_dir=".", strict=false, limits=None, experimental_shaping=true, svg_dpi=144.0, synthetic_bold=false, synthetic_italic=false, presentational_hints=false, source_name=None))]
+    #[pyo3(signature=(fonts=None, base_dir=".", strict=false, limits=None, experimental_shaping=true, svg_dpi=144.0, synthetic_bold=false, synthetic_italic=false, presentational_hints=false, source_name=None, max_image_dpi=None, resource_loader=None, diagnostic_allow_codes=None, diagnostic_deny_codes=None, diagnostic_allow_severities=None, diagnostic_deny_severities=None, max_diagnostics=None, diagnostic_callback=None))]
     fn new(
         fonts: Option<PyRef<'_, PyFontRegistry>>,
         base_dir: &str,
@@ -418,26 +518,80 @@ impl PyRenderer {
         synthetic_italic: bool,
         presentational_hints: bool,
         source_name: Option<String>,
+        max_image_dpi: Option<f32>,
+        resource_loader: Option<Py<PyAny>>,
+        diagnostic_allow_codes: Option<Vec<String>>,
+        diagnostic_deny_codes: Option<Vec<String>>,
+        diagnostic_allow_severities: Option<Vec<String>>,
+        diagnostic_deny_severities: Option<Vec<String>>,
+        max_diagnostics: Option<usize>,
+        diagnostic_callback: Option<Py<PyAny>>,
     ) -> PyResult<Self> {
         if !svg_dpi.is_finite() || svg_dpi <= 0.0 {
             return Err(PyValueError::new_err(
                 "svg_dpi must be a positive finite number",
             ));
         }
+        if max_image_dpi.is_some_and(|dpi| !dpi.is_finite() || dpi <= 0.0) {
+            return Err(PyValueError::new_err(
+                "max_image_dpi must be a positive finite number or None",
+            ));
+        }
+        let valid_severity = |severity: &str| matches!(severity, "info" | "warning" | "error");
+        for severity in diagnostic_allow_severities
+            .iter()
+            .flatten()
+            .chain(diagnostic_deny_severities.iter().flatten())
+        {
+            if !valid_severity(severity) {
+                return Err(PyValueError::new_err(format!(
+                    "invalid diagnostic severity: {severity}"
+                )));
+            }
+        }
+        let diagnostic_allow_codes =
+            diagnostic_allow_codes.map(|values| values.into_iter().collect::<HashSet<_>>());
+        let diagnostic_deny_codes = diagnostic_deny_codes
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let diagnostic_allow_severities =
+            diagnostic_allow_severities.map(|values| values.into_iter().collect::<HashSet<_>>());
+        let diagnostic_deny_severities = diagnostic_deny_severities
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let policy_enabled = diagnostic_allow_codes.is_some()
+            || !diagnostic_deny_codes.is_empty()
+            || diagnostic_allow_severities.is_some()
+            || !diagnostic_deny_severities.is_empty()
+            || max_diagnostics.is_some()
+            || diagnostic_callback.is_some();
         let registry = fonts
             .map(|f| f.inner.clone())
             .unwrap_or_else(|| FontRegistry::new(64 * 1024 * 1024));
-        let mut inner = Renderer::new(registry, PathBuf::from(base_dir), strict);
+        let mut inner = Renderer::new(registry, PathBuf::from(base_dir), strict && !policy_enabled);
         if let Some(limits) = limits {
             inner.limits = limits.inner.clone();
         }
         inner.experimental_shaping = experimental_shaping;
         inner.svg_dpi = svg_dpi;
+        inner.max_image_dpi = max_image_dpi;
         inner.synthetic_bold = synthetic_bold;
         inner.synthetic_italic = synthetic_italic;
         inner.presentational_hints = presentational_hints;
         inner.source_name = source_name;
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            resource_loader,
+            strict,
+            diagnostic_allow_codes,
+            diagnostic_deny_codes,
+            diagnostic_allow_severities,
+            diagnostic_deny_severities,
+            max_diagnostics: max_diagnostics.unwrap_or(usize::MAX),
+            diagnostic_callback,
+        })
     }
     #[pyo3(signature=(html, css="", cancel_token=None))]
     fn layout(
@@ -448,20 +602,98 @@ impl PyRenderer {
         cancel_token: Option<PyRef<'_, PyCancelToken>>,
     ) -> PyResult<PyPreparedDocument> {
         let renderer = self.inner.clone();
-        let html = html.to_owned();
-        let css = css.to_owned();
+        let loader_token = cancel_token
+            .as_ref()
+            .map(|token| {
+                Py::new(
+                    py,
+                    PyCancelToken {
+                        inner: token.inner.clone(),
+                    },
+                )
+            })
+            .transpose()?;
+        let original_html = html;
+        let original_css = css;
+        let (html, css): (String, String) = if let Some(loader) = &self.resource_loader {
+            let prepared = py
+                .import("serpentype.resources")?
+                .getattr("_prepare_renderer_sources")?
+                .call1((
+                    original_html,
+                    original_css,
+                    loader.bind(py),
+                    self.inner.base_dir.to_string_lossy().as_ref(),
+                    loader_token,
+                ));
+            match prepared {
+                Ok(value) => value.extract()?,
+                Err(error) => {
+                    let message = error.value(py).str()?.to_string_lossy().into_owned();
+                    attach_input_location(
+                        &error,
+                        &message,
+                        original_html,
+                        original_css,
+                        self.inner.source_name.as_deref(),
+                    );
+                    return Err(error);
+                }
+            }
+        } else {
+            (original_html.to_owned(), original_css.to_owned())
+        };
         let token = cancel_token.map(|t| t.inner.clone());
         let result = py.allow_threads(move || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                renderer.layout_with_cancel(&html, &css, token)
-            }))
+            catch_internal(|| renderer.layout_with_cancel(&html, &css, token))
         });
         let doc = result
             .map_err(|_| PyRuntimeError::new_err("renderer failed internally"))?
             .map_err(pyerr)?;
-        Ok(PyPreparedDocument {
-            inner: Arc::new(doc),
-        })
+        let policy_enabled = self.diagnostic_allow_codes.is_some()
+            || !self.diagnostic_deny_codes.is_empty()
+            || self.diagnostic_allow_severities.is_some()
+            || !self.diagnostic_deny_severities.is_empty()
+            || self.max_diagnostics != usize::MAX
+            || self.diagnostic_callback.is_some();
+        let doc = if policy_enabled {
+            let mut filtered = doc;
+            filtered.warnings.retain(|diagnostic| {
+                self.diagnostic_allow_codes
+                    .as_ref()
+                    .is_none_or(|allowed| allowed.contains(diagnostic.code))
+                    && !self.diagnostic_deny_codes.contains(diagnostic.code)
+                    && self
+                        .diagnostic_allow_severities
+                        .as_ref()
+                        .is_none_or(|allowed| allowed.contains(diagnostic.severity))
+                    && !self
+                        .diagnostic_deny_severities
+                        .contains(diagnostic.severity)
+            });
+            filtered.warnings.truncate(self.max_diagnostics);
+            if self.strict {
+                if let Some(first) = filtered.warnings.first() {
+                    return Err(StrictModeError::new_err(format!(
+                        "strict mode: {}: {}",
+                        first.code, first.message
+                    )));
+                }
+            }
+            if let Some(callback) = &self.diagnostic_callback {
+                for diagnostic in &filtered.warnings {
+                    let value = Py::new(py, PyDiagnostic::from(diagnostic))?;
+                    callback.call1(py, (value,))?;
+                }
+            }
+            if let Ok(mut stats) = filtered.stats.lock() {
+                stats.diagnostic_count = filtered.warnings.len();
+            }
+            Arc::new(filtered)
+        } else {
+            Arc::new(doc)
+        };
+        Ok(PyPreparedDocument { inner: doc })
     }
 }
 
@@ -519,18 +751,36 @@ impl PyPreparedDocument {
     fn diagnostics(&self) -> Vec<PyDiagnostic> {
         self.warnings()
     }
-    #[pyo3(signature=(cancel_token=None))]
+    #[pyo3(signature=(cancel_token=None, *, attachments=None, creation_date=None, modification_date=None))]
     fn to_pdf<'py>(
         &self,
         py: Python<'py>,
         cancel_token: Option<PyRef<'_, PyCancelToken>>,
+        attachments: Option<&Bound<'_, PyDict>>,
+        creation_date: Option<String>,
+        modification_date: Option<String>,
     ) -> PyResult<Bound<'py, PyBytes>> {
+        let mut pdf_attachments = Vec::new();
+        if let Some(attachments) = attachments {
+            for (name, data) in attachments.iter() {
+                let file_name = name.extract::<String>()?;
+                let bytes = data.downcast::<PyBytes>()?.as_bytes().to_vec();
+                pdf_attachments.push(crate::pdf::PdfAttachment {
+                    file_name,
+                    mime_type: "application/octet-stream".into(),
+                    data: bytes,
+                });
+            }
+        }
+        let options = crate::pdf::PdfOptions {
+            attachments: pdf_attachments,
+            creation_date,
+            modification_date,
+        };
         let doc = self.inner.clone();
         let token = cancel_token.map(|t| t.inner.clone());
         let result = py.allow_threads(move || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                doc.to_pdf_with_cancel(token.as_deref())
-            }))
+            catch_internal(|| doc.to_pdf_with_options(&options, token.as_deref()))
         });
         let bytes = result
             .map_err(|_| PyRuntimeError::new_err("PDF export failed internally"))?
@@ -555,6 +805,7 @@ fn _serpentype(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "RenderCancelledError",
         m.py().get_type::<RenderCancelledError>(),
     )?;
+    m.add("StrictModeError", m.py().get_type::<StrictModeError>())?;
     m.add_function(wrap_pyfunction!(capabilities, m)?)?;
     Ok(())
 }

@@ -4,10 +4,15 @@ build-backend = "maturin"
 
 [project]
 name = "serpentype"
-version = "0.2.0-alpha.1"
+version = "0.2.0"
 description = "Controlled HTML/CSS to PDF with paginated Rust layout"
 requires-python = ">=3.10"
 license = "MIT"
+
+[project.urls]
+Homepage = "https://github.com/Otakunavi/serpentype"
+Documentation = "https://github.com/Otakunavi/serpentype/tree/main/docs"
+Source = "https://github.com/Otakunavi/serpentype"
 
 [project.optional-dependencies]
 weasy-compat = []

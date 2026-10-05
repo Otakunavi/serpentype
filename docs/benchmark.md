@@ -1,5 +1,17 @@
 # Historical benchmark: Serpentype 0.1 vs WeasyPrint 70.0
 
+## 0.2 bounded-cache and independent-process stress
+
+Measured on 2026-10-05 on macOS arm64, CPython 3.13, against the locally installed optimized ABI3 wheel. `benchmarks/multiprocess_stress.py --jobs 64` ran independent worker processes, each rendering PDFs and loading 32 distinct 128 KB resources into a 512,000-byte LRU. Peak cache occupancy was exactly 512,000 bytes in every run and never exceeded its configured bound. Aggregate render throughput was 856.5, 1,085.7, 980.6 and 635.4 jobs/s for 1, 2, 4 and 8 processes, respectively. This short smoke measurement verifies the benchmark and bounded-cache gate; it is not a stable performance comparison. Raw data is in [`benchmark-results.jsonl`](../benchmark-results.jsonl) under `release-hardening-optimized-wheel`.
+
+## 0.2 positioning, Flex and Grid gate
+
+Measured on 2026-10-05 on macOS arm64 with the installed release ABI3 wheel. The immediately preceding `resources-svg-candidate` measurement is the baseline; the candidate is the median of five independent processes with seven warm repeats each. Warm layout changes for simple, forced-break, table and SVG documents were -11.0%, -7.9%, -4.3% and -5.9%; export changes were -19.8%, -20.7%, -12.7% and -17.0%. PDF sizes and page counts were unchanged. Median candidate peak RSS was 85.9 MB versus the retained 71.7 MB baseline (+19.7%), below the +20% release gate. All layout, export and RSS regression gates passed. Raw aggregate measurements are retained in [`benchmark-results.jsonl`](../benchmark-results.jsonl) under `position-flex-grid-candidate`.
+
+## 0.2 resources and vector SVG gate
+
+Measured on 2026-10-05 on macOS arm64 with release ABI3 wheels. The baseline is commit `7aa114e`; the candidate adds object fitting, raster downsampling, vector SVG and direct resource-loader integration. Warm median layout/export changes for simple, forced-break, table and SVG documents were respectively -18.9%/-13.8%, -5.0%/+0.5%, +0.7%/-1.1% and -6.0%/-44.1%. SVG PDF size fell from 14,265 to 8,450 bytes. Peak RSS changed from 72.0 MB to 71.7 MB (-0.4%). All layout, export and RSS regression gates passed. Raw measurements are retained in [`benchmark-results.jsonl`](../benchmark-results.jsonl) under `resources-svg-baseline-7aa114e` and `resources-svg-candidate`.
+
 ## 0.2 text and box-model gate
 
 Measured on 2026-10-01 on macOS arm64 with CPython 3.13.3. The baseline is commit `de2a270` with its RustyBuzz path enabled; the candidate makes that same shaping path unconditional and adds the CSS box features. Both measurements use release ABI3 wheels. Five warm runs and five independent cold processes were compared with the same `simple`, forced-break, 60-row table and SVG corpus.

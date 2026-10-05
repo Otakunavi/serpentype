@@ -1,10 +1,13 @@
 """Regression cases for capabilities added on the road to 0.2.0."""
 import base64
+import hashlib
 import io
 import json
 import re
 import tempfile
 import unittest
+from unittest import mock
+from urllib.request import HTTPRedirectHandler
 from pathlib import Path
 
 import serpentype
@@ -20,6 +23,10 @@ class Release020Tests(unittest.TestCase):
 
     def test_capabilities_are_machine_readable(self):
         matrix = serpentype.capabilities()
+        self.assertEqual(matrix["diagnostics.filters"], "full")
+        self.assertEqual(matrix["diagnostics.source-locations"], "full")
+        self.assertEqual(matrix["strict.typed-errors"], "full")
+        self.assertEqual(matrix["ffi.panic-guard"], "full")
         self.assertEqual(matrix["pdf.deterministic"], "partial")
         self.assertEqual(matrix["css.text-align.justify"], "partial")
         self.assertTrue(self.renderer.supports("css.text-align.justify"))
@@ -59,6 +66,11 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(matrix["html.table.repeat-tfoot"], "full")
         self.assertEqual(matrix["resource.loader"], "partial")
         self.assertEqual(matrix["css.position.relative"], "partial")
+        self.assertEqual(matrix["css.position.absolute"], "partial")
+        self.assertEqual(matrix["css.position.fixed"], "partial")
+        self.assertEqual(matrix["css.transform"], "partial")
+        self.assertEqual(matrix["layout.flex.fragmentation"], "full")
+        self.assertEqual(matrix["layout.grid.fragmentation"], "full")
         self.assertEqual(matrix["css.paged.recto-verso"], "partial")
         self.assertEqual(matrix["css.paged.pseudo-pages"], "partial")
         self.assertEqual(matrix["layout.gap"], "partial")
@@ -72,6 +84,295 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(matrix["html.table.nested"], "full")
         self.assertEqual(matrix["html.table.sizing"], "full")
         self.assertEqual(matrix["html.table.presentational-hints"], "full")
+
+    def test_diagnostic_filters_callbacks_limits_and_typed_strict_error(self):
+        html = "<blink>ignored</blink><p style='text-decoration:overline'>kept</p>"
+        seen = []
+        renderer = serpentype.Renderer(
+            fonts=self.renderer_fonts(),
+            diagnostic_deny_codes=["html-tag"],
+            diagnostic_allow_severities=["warning"],
+            max_diagnostics=1,
+            diagnostic_callback=seen.append,
+        )
+        document = renderer.layout(html)
+        self.assertEqual(len(document.diagnostics), 1)
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0].severity, "warning")
+        self.assertEqual(document.render_stats.diagnostic_count, 1)
+
+        strict_renderer = serpentype.Renderer(
+            fonts=self.renderer_fonts(), strict=True, source_name="strict.html"
+        )
+        with self.assertRaises(serpentype.StrictModeError) as strict_error:
+            strict_renderer.layout("<p>ok</p>\n<blink>lost</blink>")
+        self.assertEqual(strict_error.exception.source, "strict.html")
+        self.assertEqual(
+            (strict_error.exception.line, strict_error.exception.column), (2, 1)
+        )
+        with self.assertRaises(serpentype.StrictModeError) as strict_link:
+            strict_renderer.layout("<p>ok</p>\n<a href='#missing'>link</a>")
+        self.assertEqual(strict_link.exception.source, "strict.html")
+        self.assertEqual(
+            (strict_link.exception.line, strict_link.exception.column), (2, 10)
+        )
+        with self.assertRaises(serpentype.StrictModeError) as strict_inline_css:
+            strict_renderer.layout(
+                "<p>ok</p>\n<p style='height:nonsense'>lost</p>"
+            )
+        self.assertEqual(strict_inline_css.exception.source, "strict.html")
+        self.assertEqual(
+            (strict_inline_css.exception.line, strict_inline_css.exception.column),
+            (2, 11),
+        )
+        with self.assertRaises(serpentype.StrictModeError) as strict_stylesheet:
+            strict_renderer.layout("<p>lost</p>", "p { color: red }\n p { height: nonsense }")
+        self.assertEqual(strict_stylesheet.exception.source, "<css>")
+        self.assertEqual(
+            (strict_stylesheet.exception.line, strict_stylesheet.exception.column),
+            (2, 6),
+        )
+        serpentype.Renderer(
+            fonts=self.renderer_fonts(), strict=True, diagnostic_deny_codes=["html-tag"]
+        ).layout("<blink>lost</blink><p>retained</p>")
+
+    def test_diagnostic_allowlist_and_validation(self):
+        diagnostics = serpentype.Renderer(
+            fonts=self.renderer_fonts(), diagnostic_allow_codes=["html-tag"]
+        ).layout(
+            "<blink>x</blink><p style='text-decoration:overline'>y</p>"
+        ).diagnostics
+        self.assertEqual([item.code for item in diagnostics], ["html-tag"])
+        with self.assertRaises(ValueError):
+            serpentype.Renderer(
+                fonts=self.renderer_fonts(), diagnostic_allow_severities=["fatal"]
+            )
+
+    def test_html_and_css_diagnostics_include_source_locations(self):
+        renderer = serpentype.Renderer(
+            fonts=self.renderer_fonts(), source_name="invoice.html"
+        )
+        html_diagnostic = renderer.layout("<p>ok</p>\n<blink>x</blink>").diagnostics[0]
+        self.assertEqual(html_diagnostic.source, "invoice.html")
+        self.assertEqual((html_diagnostic.line, html_diagnostic.column), (2, 1))
+
+        css_diagnostic = renderer.layout(
+            "<p>ok</p>", "p { text-decoration: overline; }"
+        ).diagnostics[0]
+        self.assertEqual(css_diagnostic.source, "<css>")
+        self.assertEqual((css_diagnostic.line, css_diagnostic.column), (1, 5))
+
+    def test_resource_and_layout_errors_include_source_locations(self):
+        renderer = serpentype.Renderer(
+            fonts=self.renderer_fonts(), source_name="broken.html"
+        )
+        with self.assertRaises(ValueError) as missing_image:
+            renderer.layout("<p>ok</p>\n<img src='missing.png'>")
+        self.assertEqual(missing_image.exception.source, "broken.html")
+        self.assertEqual(
+            (missing_image.exception.line, missing_image.exception.column), (2, 1)
+        )
+
+        with self.assertRaises(ValueError) as after_script:
+            renderer.layout(
+                "<!-- comment > <img src='comment-fake.png'> -->\n"
+                '<script>const markup = "<img src=\'fake.png\'>";</script>\n'
+                "<img src='missing.png'>"
+            )
+        self.assertEqual(
+            (after_script.exception.line, after_script.exception.column), (3, 1)
+        )
+
+        loader = serpentype.ResourceLoader(allowed_schemes=("memory",))
+        renderer = serpentype.Renderer(
+            fonts=self.renderer_fonts(),
+            source_name="resource.html",
+            resource_loader=loader,
+        )
+        with self.assertRaises(ValueError) as resource_error:
+            renderer.layout("<p>ok</p>\n<img src='memory:missing'>")
+        self.assertEqual(resource_error.exception.source, "resource.html")
+        self.assertEqual(
+            (resource_error.exception.line, resource_error.exception.column), (2, 11)
+        )
+
+        limited_loader = serpentype.ResourceLoader(
+            mapping={"memory:too-large": b"oversized"}, max_resource_bytes=1
+        )
+        renderer = serpentype.Renderer(
+            fonts=self.renderer_fonts(),
+            source_name="limited.html",
+            resource_loader=limited_loader,
+        )
+        with self.assertRaises(serpentype.ResourceLimitError) as limited_error:
+            renderer.layout("<p>ok</p>\n<img src='memory:too-large'>")
+        self.assertEqual(limited_error.exception.source, "limited.html")
+        self.assertEqual(
+            (limited_error.exception.line, limited_error.exception.column), (2, 11)
+        )
+
+    def test_css_font_resource_errors_include_css_source_location(self):
+        with tempfile.TemporaryDirectory() as directory:
+            renderer = serpentype.Renderer(
+                fonts=self.renderer_fonts(), base_dir=directory,
+                source_name="font.css",
+            )
+            with self.assertRaises(ValueError) as error:
+                renderer.layout(
+                    "<p>font</p>",
+                    "@font-face { font-family: Missing; src: url(missing.ttf) }",
+                )
+        self.assertEqual(error.exception.source, "<css>")
+        self.assertEqual(
+            (error.exception.line, error.exception.column),
+            (1, "@font-face { font-family: Missing; src: url(missing.ttf) }".index("missing.ttf") + 1),
+        )
+
+        css = "@font-face { font-family: Local; src: local('FontName') }"
+        with self.assertRaisesRegex(ValueError, "unsupported @font-face src") as bad_src:
+            renderer.layout("<p>font</p>", css)
+        self.assertEqual(bad_src.exception.source, "<css>")
+        self.assertEqual(
+            (bad_src.exception.line, bad_src.exception.column),
+            (1, css.index("local('FontName')") + 1),
+        )
+
+    def test_css_parser_errors_include_the_offending_source_position(self):
+        renderer = serpentype.Renderer(
+            fonts=self.renderer_fonts(), source_name="malformed.html"
+        )
+        with self.assertRaises(ValueError) as unclosed_comment:
+            renderer.layout("<p>ok</p>", "p { color: red; }\n/* unfinished")
+        self.assertEqual(unclosed_comment.exception.source, "<css>")
+        self.assertEqual(
+            (unclosed_comment.exception.line, unclosed_comment.exception.column), (2, 1)
+        )
+
+        with self.assertRaises(ValueError) as unclosed_rule:
+            renderer.layout("<p>ok</p>", "p { color: red;")
+        self.assertEqual(unclosed_rule.exception.source, "<css>")
+        self.assertEqual(
+            (unclosed_rule.exception.line, unclosed_rule.exception.column), (1, 1)
+        )
+
+        strict_renderer = serpentype.Renderer(
+            fonts=self.renderer_fonts(), strict=True
+        )
+        with self.assertRaises(serpentype.StrictModeError) as strict_css:
+            strict_renderer.layout(
+                "<p>ok</p>", "p { color: red; }\n@supports (display: grid) { p { color: blue } }"
+            )
+        self.assertEqual(strict_css.exception.source, "<css>")
+        self.assertEqual(
+            (strict_css.exception.line, strict_css.exception.column), (2, 1)
+        )
+
+    def test_all_parser_and_conversion_diagnostic_kinds_have_locations(self):
+        payload = base64.b64encode(
+            Path(__file__).parent.joinpath("fixtures", "alpha.png").read_bytes()
+        ).decode("ascii")
+        html = (
+            "<script>not-run</script>\n<MARQUEE>ignored</MARQUEE>"
+            "<a href='#missing&amp;x'>link</a>"
+            f"<img src='data:image/png;base64,{payload}' style='background:red'>"
+            "<span style='position:absolute'>P</span>"
+            "<span style='transform:scale(2)'>T</span>"
+            "<div style='break-inside:avoid'>D</div>"
+            "<span style='break-before:page'>B</span>"
+        )
+        css = (
+            "@page { size: not-a-size; }\n"
+            "@supports (display: grid) { p { color: red } }\n"
+            "p:hover { color: red }\n"
+            "@font-face { font-family: MissingSource; }\n"
+            "p { height: not-a-length; text-decoration: overline; }"
+        )
+        diagnostics = serpentype.Renderer(
+            fonts=self.renderer_fonts(), source_name="all-diagnostics.html"
+        ).layout(html, css).diagnostics
+        self.assertGreaterEqual(len(diagnostics), 10)
+        for item in diagnostics:
+            with self.subTest(code=item.code, message=item.message):
+                self.assertIsNotNone(item.source)
+                self.assertGreaterEqual(item.line, 1)
+                self.assertGreaterEqual(item.column, 1)
+
+    def test_css_parser_warning_families_keep_original_line_and_column(self):
+        css = (
+            "@page { size: not-a-size; margin: 1pt 2pt 3pt 4pt 5pt; bleed: -2pt; "
+            "unknown-page-property: x }\n"
+            "@page:foo:bar { size: A4 }\n"
+            "@page { @top-left { font-size: nope; color: nope; strange: x } "
+            "@center { content: 'x' } }\n"
+            "@supports (display: grid) { p { color: red } }\n"
+            "@font-face { font-weight: 400 }\n"
+            "p:hover { color: red }\n"
+            "p { height: nonsense }\n"
+            "trailing-garbage"
+        )
+        diagnostics = self.renderer.layout("<p>CSS locations</p>", css).diagnostics
+        codes = {item.code for item in diagnostics}
+        self.assertTrue(
+            {"css-value", "css-property", "at-rule", "font-face", "selector", "css-syntax"}
+            .issubset(codes),
+            codes,
+        )
+        self.assertGreaterEqual(len(diagnostics), 12)
+        for item in diagnostics:
+            with self.subTest(code=item.code, message=item.message):
+                self.assertEqual(item.source, "<css>")
+                self.assertIsNotNone(item.line)
+                self.assertIsNotNone(item.column)
+
+    def test_unsupported_declaration_locations_select_the_matching_declaration(self):
+        inline = "<p>before</p>\n<span style='text-decoration:overline'>x</span>"
+        inline_warning = next(
+            diagnostic for diagnostic in self.renderer.layout(inline).diagnostics
+            if diagnostic.code == "css-property" and diagnostic.property == "text-decoration"
+        )
+        self.assertEqual(inline_warning.source, "<html>")
+        self.assertEqual(
+            (inline_warning.line, inline_warning.column),
+            (2, inline.splitlines()[1].index("text-decoration") + 1),
+        )
+
+        css = "p { color: red }\nspan { text-decoration: overline }"
+        css_warning = next(
+            diagnostic for diagnostic in self.renderer.layout("<span>x</span>", css).diagnostics
+            if diagnostic.code == "css-property" and diagnostic.property == "text-decoration"
+        )
+        self.assertEqual(css_warning.source, "<css>")
+        self.assertEqual((css_warning.line, css_warning.column), (2, 8))
+
+        html = (
+            "<!-- <span style='text-decoration:overline'>comment</span> -->\n"
+            "<script>const markup = \"<span style='text-decoration:overline'>\";</script>\n"
+            "<span style='text-decoration:overline'>actual</span>"
+        )
+        html_warning = next(
+            diagnostic for diagnostic in self.renderer.layout(html).diagnostics
+            if diagnostic.code == "css-property" and diagnostic.property == "text-decoration"
+        )
+        self.assertEqual((html_warning.line, html_warning.column), (3, 14))
+
+    def test_embedded_css_diagnostic_does_not_match_earlier_html_text(self):
+        html = (
+            "<p>not-a-size</p>\n<style>\n@page { size: not-a-size; }\n</style>"
+            "<p>content</p>"
+        )
+        warning = next(
+            diagnostic for diagnostic in self.renderer.layout(html).diagnostics
+            if diagnostic.code == "css-value" and "@page size" in diagnostic.message
+        )
+        self.assertEqual(warning.source, "<html>")
+        self.assertEqual((warning.line, warning.column), (3, 15))
+
+    def test_renderer_existing_positional_constructor_order_is_preserved(self):
+        renderer = serpentype.Renderer(
+            self.renderer_fonts(), ".", False, None, True, 144.0,
+            False, False, False, None,
+        )
+        self.assertEqual(renderer.layout("<p>Compatible</p>").page_count, 1)
 
     def test_inline_block_and_manual_soft_hyphen_export(self):
         from pypdf import PdfReader
@@ -103,6 +404,43 @@ class Release020Tests(unittest.TestCase):
         self.assertNotIn("SECRET", extracted)
         self.assertNotIn("BLOCK", extracted)
 
+    def test_positioned_fixed_and_transformed_content_exports(self):
+        from pypdf import PdfReader
+        html = ("<div class='fixed'>F</div>"
+                "<div class='host'><a href='https://example.test' class='absolute'>X</a>"
+                "<p>A</p></div><p style='break-before:page'>B</p>")
+        css = ("@page { size:180pt 120pt; margin:10pt } p { margin:0 } "
+               ".fixed { position:fixed; right:3pt; top:2pt; width:20pt; z-index:3 } "
+               ".host { position:relative; width:100pt; height:45pt; overflow:hidden } "
+               ".absolute { display:block; position:absolute; left:20%; top:8pt; width:30pt; "
+               "transform:translate(4pt,2pt) scale(1.1) rotate(5deg) }")
+        pdf = bytes(self.renderer.layout(html, css).to_pdf())
+        reader = PdfReader(io.BytesIO(pdf))
+        self.assertEqual(len(reader.pages), 2)
+        for page in reader.pages:
+            self.assertIn("F", page.extract_text())
+        first_stream = reader.pages[0].get_contents().get_data()
+        self.assertIn(b" cm", first_stream)
+        self.assertEqual(len(reader.pages[0]["/Annots"]), 1)
+
+    def test_extended_flex_grid_and_fragmentation_export(self):
+        from pypdf import PdfReader
+        html = ("<div class='flex'><div>A</div><div>B</div><div>C</div></div>"
+                "<div class='grid'><div class='span'>S</div><div>D</div><div>E</div></div>")
+        css = ("@page { size:180pt 110pt; margin:10pt } "
+               ".flex { display:flex; flex-direction:row; flex-wrap:wrap; width:140pt; gap:5pt } "
+               ".flex > div { flex:1 1 60pt; height:24pt } "
+               ".grid { display:grid; width:140pt; grid-template-columns:40pt 25% minmax(20pt,1fr); "
+               "grid-template-rows:repeat(2,30pt); gap:5pt; align-items:center } "
+               ".span { grid-column:2 / span 2 }")
+        document = self.renderer.layout(html, css)
+        self.assertGreaterEqual(document.page_count, 2)
+        extracted = "".join(
+            page.extract_text() for page in PdfReader(io.BytesIO(bytes(document.to_pdf()))).pages
+        )
+        for marker in "ABC SDE".replace(" ", ""):
+            self.assertIn(marker, extracted)
+
     def test_resource_loader_mapping_and_limits(self):
         payload = Path(__file__).parent.joinpath("fixtures", "alpha.png").read_bytes()
         loader = serpentype.ResourceLoader(mapping={"memory:logo": payload}, max_resources=1)
@@ -111,6 +449,47 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(loader.load("memory:logo", serpentype.ResourceKind.IMAGE).data, payload)
         with self.assertRaises(serpentype.ResourceLimitError):
             loader.load("data:text/plain,another", serpentype.ResourceKind.IMAGE)
+
+        aggregate = serpentype.ResourceLoader(
+            mapping={"memory:a": b"1234", "memory:b": b"5678"},
+            max_total_bytes=7, cache_bytes=1,
+        )
+        aggregate.load("memory:a", serpentype.ResourceKind.OTHER)
+        with self.assertRaises(serpentype.ResourceLimitError):
+            aggregate.load("memory:b", serpentype.ResourceKind.OTHER)
+
+    def test_bounded_resource_cache_evicts_old_entries(self):
+        loader = serpentype.ResourceLoader(
+            mapping={f"memory:{i}": bytes([i]) * 4 for i in range(8)},
+            cache_bytes=8,
+        )
+        for i in range(8):
+            loader.load(f"memory:{i}", serpentype.ResourceKind.OTHER)
+            self.assertLessEqual(loader.cache_size, 8)
+            self.assertLessEqual(loader.cached_resources, 2)
+        loader.load("memory:0", serpentype.ResourceKind.OTHER)
+        self.assertEqual(loader.cache_size, 8)
+
+    def test_seeded_adversarial_html_css_property_corpus(self):
+        import random
+
+        rng = random.Random(0x0200)
+        tags = ["p", "div", "span", "table", "td", "h2", "a", "section"]
+        properties = ["width", "margin", "padding", "color", "display", "break-before"]
+        values = ["0", "1px", "50%", "auto", "page", "rgb(1 2 3 / 20%)", "nonsense"]
+        for _ in range(80):
+            tag = rng.choice(tags)
+            prop = rng.choice(properties)
+            value = rng.choice(values)
+            html = f"<{tag} id='case-{_}' style='{prop}:{value}'>{rng.randrange(1000)}</{tag}>"
+            try:
+                document = self.renderer.layout(html)
+                pdf = bytes(document.to_pdf())
+                self.assertTrue(pdf.startswith(b"%PDF"))
+                self.assertLess(len(pdf), 2_000_000)
+            except (ValueError, RuntimeError):
+                # Malformed or unsupported combinations must fail in a controlled way.
+                pass
 
     def test_resource_loader_package_and_data_urls(self):
         loader = serpentype.ResourceLoader()
@@ -173,6 +552,71 @@ class Release020Tests(unittest.TestCase):
         loader = serpentype.ResourceLoader(cancel_token=token)
         with self.assertRaises(serpentype.ResourceCancelledError):
             loader.load("data:text/plain,hello", serpentype.ResourceKind.OTHER)
+
+    def test_resource_redirect_limit_counts_the_whole_chain(self):
+        from serpentype.resources import _Redirects
+
+        redirects = _Redirects(1, {"https"}, {"example.org"})
+        with mock.patch.object(HTTPRedirectHandler, "redirect_request", return_value=None):
+            redirects.redirect_request(None, None, 302, "", {},
+                                       "https://example.org/second")
+            with self.assertRaises(serpentype.ResourceLimitError):
+                redirects.redirect_request(None, None, 302, "", {},
+                                           "https://example.org/third")
+
+    def test_resource_cancellation_is_polled_between_stream_chunks(self):
+        token = serpentype.CancelToken()
+
+        class Stream:
+            def __init__(self):
+                self.reads = 0
+
+            def read(self, _size):
+                self.reads += 1
+                if self.reads == 1:
+                    token.cancel()
+                    return b"chunk"
+                return b""
+
+        loader = serpentype.ResourceLoader(
+            callback=lambda _url: {"file_obj": Stream()},
+            allowed_schemes=("memory",), cancel_token=token,
+        )
+        with self.assertRaises(serpentype.ResourceCancelledError):
+            loader.load("memory:stream", serpentype.ResourceKind.OTHER)
+
+    def test_direct_renderer_uses_resource_loader_for_images_svg_and_fonts(self):
+        fixtures = Path(__file__).parent / "fixtures"
+        png = (fixtures / "alpha.png").read_bytes()
+        font = Path(serpentype.bundled_font_path()).read_bytes()
+        svg = (b"<svg xmlns='http://www.w3.org/2000/svg' width='20' height='10'>"
+               b"<rect width='20' height='10' fill='red'/></svg>")
+        loader = serpentype.ResourceLoader(mapping={
+            "memory:logo": serpentype.Resource(png, "memory:logo", "image/png"),
+            "memory:shape": serpentype.Resource(svg, "memory:shape", "image/svg+xml"),
+            "memory:font": serpentype.Resource(font, "memory:font", "font/ttf"),
+        })
+        renderer = serpentype.Renderer(fonts=self.renderer_fonts(), resource_loader=loader)
+        css = ("@font-face { font-family:Loaded; src:url('memory:font') } "
+               "p { font-family:Loaded }")
+        pdf = bytes(renderer.layout(
+            "<p>Loaded</p><img src='memory:logo'><img src='memory:shape'>", css
+        ).to_pdf())
+        self.assertIn(b"/Subtype /Image", pdf)
+        self.assertIn(b"/Subtype /Form", pdf)
+        self.assertIn(b"/Font", pdf)
+
+    def test_renderer_cancel_token_reaches_resource_loader(self):
+        png = (Path(__file__).parent / "fixtures" / "alpha.png").read_bytes()
+        token = serpentype.CancelToken()
+        loader = serpentype.ResourceLoader(
+            mapping={"memory:logo": serpentype.Resource(
+                png, "memory:logo", "image/png")}
+        )
+        renderer = serpentype.Renderer(resource_loader=loader)
+        token.cancel()
+        with self.assertRaises(serpentype.ResourceCancelledError):
+            renderer.layout("<img src='memory:logo'>", cancel_token=token)
 
     def test_diagnostics_are_deduplicated_and_serializable(self):
         doc = self.renderer.layout("<p style='float:left; cursor:pointer'>A</p>"
@@ -381,6 +825,16 @@ class Release020Tests(unittest.TestCase):
         self.assertEqual(error.line, 2)
         self.assertEqual(error.column, 4)
 
+    def test_missing_margin_box_glyph_reports_css_source_location(self):
+        css = '@page { size:200pt 100pt; margin:10pt;\n @top-center { content: "\U00010fff" } }'
+        with self.assertRaises(serpentype.MissingGlyphError) as caught:
+            serpentype.Renderer(fonts=self.renderer_fonts(), source_name="invoice.css").layout(
+                "<p>ordinary text</p>", css
+            )
+        self.assertEqual(caught.exception.source, "<css>")
+        self.assertEqual(caught.exception.line, 2)
+        self.assertEqual(caught.exception.column, css.splitlines()[1].index("\U00010fff") + 1)
+
     def test_compat_html_filename_is_used_for_missing_glyph_source(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "invoice source.html"
@@ -557,12 +1011,13 @@ class Release020Tests(unittest.TestCase):
             local = bytes(renderer.layout("<img src='shape.svg'>").to_pdf())
             data_uri = "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
             inline = bytes(renderer.layout(f"<img src='{data_uri}'>").to_pdf())
-            self.assertIn(b"/Subtype /Image", local)
-            self.assertIn(b"/SMask", local)
-            self.assertIn(b"/Width 180 /Height 120", local)
+            self.assertIn(b"/Subtype /Form", local)
+            self.assertNotIn(b"/Subtype /Image", local)
             self.assertEqual(local, inline)
+            from pypdf import PdfReader
+            self.assertEqual(len(PdfReader(io.BytesIO(local)).pages), 1)
             low_dpi = serpentype.Renderer(base_dir=str(root), svg_dpi=96)
-            self.assertIn(b"/Width 120 /Height 80",
+            self.assertIn(b"/Subtype /Form",
                           bytes(low_dpi.layout("<img src='shape.svg'>").to_pdf()))
             (root / "invalid.svg").write_text("<svg><path")
             with self.assertRaisesRegex(ValueError, "SVG"):
@@ -605,7 +1060,7 @@ class Release020Tests(unittest.TestCase):
                "<circle cx='15' cy='10' r='8' fill='red'/></svg>")
         uri = "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
         pdf = serpentype.HTML(string=f"<img src='{uri}'>").write_pdf()
-        self.assertIn(b"/Subtype /Image", pdf)
+        self.assertIn(b"/Subtype /Form", pdf)
 
     def test_svg_embedded_raster_data_image(self):
         png = (Path(__file__).parent / "fixtures" / "alpha.png").read_bytes()
@@ -614,6 +1069,7 @@ class Release020Tests(unittest.TestCase):
                f"<image href='{png_uri}' width='20' height='20'/></svg>")
         svg_uri = "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
         pdf = bytes(self.renderer.layout(f"<img src='{svg_uri}'>").to_pdf())
+        self.assertIn(b"/Subtype /Form", pdf)
         self.assertIn(b"/Subtype /Image", pdf)
 
     def test_alpha_image_and_jpeg_passthrough(self):
@@ -665,6 +1121,181 @@ class Release020Tests(unittest.TestCase):
         self.assertIn(b"/Dest [", pdf)
         self.assertIn(b"/Names << /Dests", pdf)
 
+    def test_inline_and_general_id_anchors_export_as_named_destinations(self):
+        from pypdf import PdfReader
+
+        html = ("<p><a href='#inline'>Jump</a> to <span id='inline'>target</span>. "
+                "<a href='#legacy'>Legacy</a><a name='legacy'>anchor</a></p>")
+        pdf = bytes(self.renderer.layout(html).to_pdf())
+        reader = PdfReader(io.BytesIO(pdf))
+        names = reader.trailer["/Root"]["/Names"]["/Dests"]["/Names"]
+        destinations = {str(names[index]) for index in range(0, len(names), 2)}
+        self.assertTrue({"inline", "legacy"}.issubset(destinations))
+        self.assertTrue(any(annotation.get_object()["/Subtype"] == "/Link"
+                            for page in reader.pages
+                            for annotation in page.get("/Annots", [])))
+
+    def test_heading_bookmarks_preserve_nested_levels(self):
+        from pypdf import PdfReader
+
+        pdf = bytes(self.renderer.layout(
+            "<h1>Chapter</h1><h2>Section</h2><h1>Appendix</h1>").to_pdf())
+        root = PdfReader(io.BytesIO(pdf)).trailer["/Root"]
+        outline = root["/Outlines"].get_object()
+        first = outline["/First"].get_object()
+        child = first["/First"].get_object()
+        self.assertEqual(str(first["/Title"]), "Chapter")
+        self.assertEqual(str(child["/Title"]), "Section")
+        self.assertIn("/UseOutlines", str(root))
+
+    def test_pdf_attachments_and_configurable_utc_dates(self):
+        from pypdf import PdfReader
+
+        pdf = bytes(self.renderer.layout("<p>Attached</p>").to_pdf(
+            attachments={"source.txt": b"source payload"},
+            creation_date="D:20261005090000Z",
+            modification_date="D:20261005100000Z"))
+        reader = PdfReader(io.BytesIO(pdf))
+        root = reader.trailer["/Root"]
+        names = root["/Names"]["/EmbeddedFiles"]["/Names"]
+        self.assertEqual(str(names[0]), "source.txt")
+        embedded = names[1].get_object()["/EF"]["/F"].get_object().get_data()
+        self.assertEqual(embedded, b"source payload")
+        info = reader.metadata
+        self.assertEqual(info.creation_date.year, 2026)
+        self.assertEqual(info.modification_date.hour, 10)
+
+    def test_pdf_page_boxes_and_crop_marks_are_independent_of_trim_content(self):
+        from pypdf import PdfReader
+
+        pdf = bytes(self.renderer.layout("<p>Trimmed</p>",
+            "@page { size:200pt 100pt; margin:10pt; bleed:5pt; marks:crop }").to_pdf())
+        page = PdfReader(io.BytesIO(pdf)).pages[0]
+        self.assertEqual(float(page.mediabox.width), 234.0)
+        self.assertEqual(float(page.mediabox.height), 134.0)
+        self.assertEqual(float(page.trimbox.width), 200.0)
+        self.assertEqual(float(page.bleedbox.width), 210.0)
+        self.assertIn(b" m ", page.get_contents().get_data())
+
+    def test_invalid_pdf_date_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.renderer.layout("<p>Date</p>").to_pdf(creation_date="yesterday")
+
+    def test_pdf_bytes_match_cross_platform_determinism_fixture(self):
+        fonts = serpentype.FontRegistry()
+        fonts.register_file(serpentype.bundled_font_path(), "Noto Sans")
+        doc = serpentype.Renderer(fonts=fonts).layout(
+            "<p>Repeatable PDF 2026</p>",
+            "@page { size:200pt 100pt; margin:10pt }")
+        digest = hashlib.sha256(bytes(doc.to_pdf())).hexdigest()
+        self.assertEqual(digest, "2df1225a1772d9920d1059a3999f4b5cca511ad85f65fc82f4f17443bfd38a9a")
+
+    def test_paginated_pdf_matches_visual_reference(self):
+        self.assert_visual_reference("visual_release_reference")
+
+    def test_layout_modes_match_visual_reference(self):
+        self.assert_visual_reference("visual_layout_reference")
+
+    def test_raster_and_vector_images_match_visual_reference(self):
+        self.assert_visual_reference("visual_resources_reference", base_dir=True)
+
+    def test_repeating_table_header_matches_second_page_visual_reference(self):
+        self.assert_visual_reference(
+            "visual_table_reference", page=2, expected_text="Item"
+        )
+
+    def test_rowspan_and_nested_tables_match_visual_reference(self):
+        self.assert_visual_reference(
+            "visual_table_features_reference",
+            expected_text="Connected and nested table cells",
+        )
+
+    def test_first_left_right_and_blank_pages_match_visual_references(self):
+        for page, text in (
+            (1, ("First page", "First page")),
+            (2, ("LEFT", "Quarterly report", "FIXED PAGE MARK")),
+            (3, ("BLANK SIDE", "FIXED PAGE MARK")),
+            (4, ("LEFT", "Quarterly report", "FIXED PAGE MARK")),
+        ):
+            with self.subTest(page=page):
+                self.assert_visual_reference(
+                    "visual_page_selector_reference", page=page, expected_text=text
+                )
+
+    def test_typography_colors_visibility_and_borders_match_visual_reference(self):
+        self.assert_visual_reference(
+            "visual_typography_reference", expected_text="Typography and paint"
+        )
+
+    def test_font_fallback_and_shaping_match_visual_reference(self):
+        self.assert_visual_reference(
+            "visual_fonts_reference", expected_text="Font rendering"
+        )
+
+    def test_woff2_face_matches_visual_reference(self):
+        self.assert_visual_reference(
+            "visual_webfont_reference", base_dir=True, expected_text="Embedded web font"
+        )
+
+    def test_paragraph_page_continuation_matches_visual_references(self):
+        for page, text in ((1, "Paragraph pagination"), (2, "Following content")):
+            with self.subTest(page=page):
+                self.assert_visual_reference(
+                    "visual_pagination_reference", page=page, expected_text=text
+                )
+
+    def assert_visual_reference(self, name, *, base_dir=False, page=1, expected_text=None):
+        import subprocess
+        import tempfile
+        from PIL import Image, ImageChops
+
+        fixtures = Path(__file__).parent / "fixtures"
+        html = fixtures.joinpath(f"{name}.html").read_text()
+        css = fixtures.joinpath(f"{name}.css").read_text()
+        fonts = self.visual_reference_fonts()
+        if name == "visual_fonts_reference":
+            fonts.register_file(str(fixtures / "NotoEmoji-VF.ttf"), "Noto Emoji")
+        renderer = serpentype.Renderer(
+            fonts=fonts,
+            base_dir=str(fixtures) if base_dir else ".",
+            source_name=f"{name}.html",
+        )
+        pdf = bytes(renderer.layout(html, css).to_pdf())
+        from pypdf import PdfReader
+        pdf_pages = PdfReader(io.BytesIO(pdf)).pages
+        self.assertGreaterEqual(len(pdf_pages), page)
+        extracted = pdf_pages[page - 1].extract_text() or ""
+        expected_text = {
+            "visual_release_reference": "Release preview",
+            "visual_layout_reference": "Layout regression",
+            "visual_resources_reference": "Resource regression",
+            "visual_table_reference": "Repeated table header",
+        }.get(name) if expected_text is None else expected_text
+        expected_texts = expected_text if isinstance(expected_text, tuple) else (expected_text,)
+        for expected in expected_texts:
+            self.assertIn(expected, extracted)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "page"
+            subprocess.run(
+                ["pdftoppm", "-f", str(page), "-singlefile", "-png", "-r", "96", "-", str(output)],
+                input=pdf,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            with Image.open(output.with_suffix(".png")) as rendered, Image.open(
+                fixtures / (f"{name}-page-{page}.png" if page > 1 else f"{name}.png")
+            ) as reference:
+                rendered = rendered.convert("RGB")
+                reference = reference.convert("RGB")
+                self.assertEqual(rendered.size, reference.size)
+                histogram = ImageChops.difference(rendered, reference).convert("L").histogram()
+                pixels = rendered.width * rendered.height
+                mean_delta = sum(index * count for index, count in enumerate(histogram)) / pixels
+                changed_fraction = sum(histogram[9:]) / pixels
+                self.assertLessEqual(mean_delta, 3.0)
+                self.assertLessEqual(changed_fraction, 0.05)
+
     def test_pdf_metadata_from_html_head(self):
         html = ("<html lang='ru'><head><title>Invoice</title>"
                 "<meta name='author' content='Alice'>"
@@ -680,6 +1311,13 @@ class Release020Tests(unittest.TestCase):
     def renderer_fonts():
         fonts = serpentype.FontRegistry()
         fonts.register_file(serpentype.bundled_font_path(), "Noto Sans")
+        return fonts
+
+    @staticmethod
+    def visual_reference_fonts():
+        fonts = serpentype.FontRegistry()
+        fonts.register_file(serpentype.bundled_font_path(), "Noto Sans")
+        fonts.register_file(serpentype.bundled_font_path(700), "Noto Sans", 700)
         return fonts
 
 

@@ -1,6 +1,6 @@
 # Serpentype 0.2.0 alpha 1
 
-This is an alpha preview of the work toward 0.2.0. The [capability matrix](docs/capabilities.md) identifies the supported, partial and experimental features.
+This is the 0.2.0 release candidate. The [capability matrix](docs/capabilities.md) identifies the supported, partial and experimental features; final cross-platform CI and publication gates are tracked in the [release checklist](docs/release-checklist-0.2.0.md).
 
 Serpentype is a Rust document layout engine with a Python API. It accepts a **controlled** HTML/CSS subset, calculates page breaks, then exports the prepared pages as a vector/text PDF. No browser, system renderer, or system font is used by Serpentype. A prebuilt platform wheel needs only Python ≥3.10.
 
@@ -26,7 +26,9 @@ The development branch accepts registered TTF, CFF-outline OTF, WOFF and WOFF2 f
 
 Table pagination supports fixed/auto and constrained columns, `colspan`, fragmented `rowspan`, nested tables, and repeated `<thead>`/`<tfoot>` including connected spans. Oversized rowspan groups continue across pages between complete text lines. Use `tfoot { display: table-row-group }` when the footer should appear once. See the [capability matrix](docs/capabilities.md) for the exact border and nested-pagination boundaries.
 
-The Python compatibility API accepts a bounded resource loader for images and `@font-face` fonts:
+The controlled CSS layout subset includes block-level relative/absolute/fixed positioning with repeated fixed content, integer z-order and translate/scale/rotate transforms. Flex supports reverse directions, wrapping, grow/shrink/basis and alignment; Grid supports fixed/percentage/`fr`/auto/minmax/repeat tracks, explicit placement and spans. Flex lines and Grid rows paginate atomically. Browser-complete intrinsic sizing, stacking contexts and named Grid lines are intentionally outside the supported boundary; see the [capability matrix](docs/capabilities.md).
+
+The direct renderer and Python compatibility API accept a bounded resource loader for images, SVG and `@font-face` fonts:
 
 ```python
 from serpentype import HTML, ResourceLoader
@@ -38,9 +40,10 @@ loader = ResourceLoader(
     max_total_bytes=10_000_000,
 )
 pdf = HTML(string="<img src='memory:logo'>", resource_loader=loader).write_pdf()
+# The same loader can be passed to Renderer(resource_loader=loader).
 ```
 
-`HTML` and `CSS` also accept `url_fetcher(url)` returning a WeasyPrint-style dictionary with `string`, `file_obj` or `filename` and optional `mime_type`. HTTP(S) is opt-in through `ResourceLoader(allowed_schemes=(..., "https"), allowed_hosts=(...))`. Direct `Renderer` calls still use local paths and data image URLs; the Python loader integration applies to `HTML` and `CSS`.
+`HTML` and `CSS` also accept `url_fetcher(url)` returning a WeasyPrint-style dictionary with `string`, `file_obj` or `filename` and optional `mime_type`. HTTP(S) is opt-in through `ResourceLoader(allowed_schemes=(..., "https"), allowed_hosts=(...))`. `Renderer(max_image_dpi=300)` can downsample oversized raster resources; supported SVG is preserved as vector PDF content.
 
 For the cameral-control `page_definition.css`, pass the stylesheet after the application's Jinja variables and conditionals have been rendered. Register a font under `Times Newer Roman` before layout. The stylesheet's named pages, first-page margin boxes, page counters, QR flex column, and five-column grid are supported. Its `size: landscape` pages display horizontally; the redundant `page-orientation: rotate-right` does not rotate them again. Rotation still applies when the page size is not given by the `landscape` keyword.
 

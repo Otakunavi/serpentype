@@ -3,7 +3,8 @@ from importlib.resources import files
 from ._serpentype import (CacheStats, CancelToken, Diagnostic, FontRegistry,
                           MissingGlyphError,
                           PreparedDocument, RenderCancelledError, RenderLimitError,
-                          RenderLimits, RenderStats, Renderer, capabilities)
+                          RenderLimits, RenderStats, Renderer, StrictModeError,
+                          capabilities)
 from .compat import CSS, HTML, Document, FontConfiguration
 from .resources import (Resource, ResourceKind, ResourceLoader, ResourceLimitError,
                         ResourceCancelledError)
@@ -15,4 +16,4 @@ def bundled_font_path(weight: int = 400) -> str:
     return str(files("serpentype").joinpath("assets", name))
 
 
-__all__ = ["CSS", "HTML", "Document", "FontConfiguration", "Resource", "ResourceKind", "ResourceLoader", "ResourceLimitError", "ResourceCancelledError", "CacheStats", "CancelToken", "Diagnostic", "FontRegistry", "MissingGlyphError", "PreparedDocument", "RenderCancelledError", "RenderLimitError", "RenderLimits", "RenderStats", "Renderer", "bundled_font_path", "capabilities"]
+__all__ = ["CSS", "HTML", "Document", "FontConfiguration", "Resource", "ResourceKind", "ResourceLoader", "ResourceLimitError", "ResourceCancelledError", "CacheStats", "CancelToken", "Diagnostic", "FontRegistry", "MissingGlyphError", "PreparedDocument", "RenderCancelledError", "RenderLimitError", "StrictModeError", "RenderLimits", "RenderStats", "Renderer", "bundled_font_path", "capabilities"]

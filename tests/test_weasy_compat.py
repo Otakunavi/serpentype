@@ -91,12 +91,12 @@ class WeasyCompatTests(unittest.TestCase):
         )
         encoded = base64.b64encode(svg).decode()
         pdf = HTML(string=f'<img src="data:image/svg+xml;base64,{encoded}">').write_pdf()
-        self.assertIn(b"/Subtype /Image", pdf)
+        self.assertIn(b"/Subtype /Form", pdf)
         path_svg = base64.b64encode(
             b'<svg width="20" height="20"><path d="M0 0L20 20"/></svg>'
         ).decode()
         path_pdf = HTML(string=f'<img src="data:image/svg+xml;base64,{path_svg}">').write_pdf()
-        self.assertIn(b"/Subtype /Image", path_pdf)
+        self.assertIn(b"/Subtype /Form", path_pdf)
         malformed = base64.b64encode(b'<svg><path').decode()
         with self.assertRaisesRegex(ValueError, "SVG"):
             HTML(string=f'<img src="data:image/svg+xml;base64,{malformed}">').write_pdf()

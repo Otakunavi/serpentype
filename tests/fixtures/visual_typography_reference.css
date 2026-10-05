@@ -1,0 +1,10 @@
+@page { size: 290pt 220pt; margin: 18pt }
+body { margin: 0; font-family: "Noto Sans"; color: #26384b }
+h1 { margin: 0 0 8pt; color: #17466d; font-size: 15pt }
+p { margin: 0 0 6pt; font-size: 8pt }
+.lead { font-size: 9pt; color: #3d5974 }
+.justify { text-align: justify; text-indent: 12pt; line-height: 10pt }
+.hyphenated { hyphens: manual; width: 55pt }
+.badge { opacity: 0.65; color: #16445e; background: #8fc7bd; padding: 5pt }
+.hidden { visibility: hidden; background: #e4a640; padding: 4pt }
+.bordered { border: 1pt dashed #a25248; border-radius: 5pt; padding: 4pt }
