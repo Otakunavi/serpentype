@@ -1,6 +1,6 @@
 # Capability matrix for the 0.2.0 release candidate
 
-`serpentype.capabilities()` returns the machine readable matrix. `Renderer.supports(name)` is true for `full` and `partial`; callers should inspect the level before depending on complete CSS behavior. Package version 0.2.0 is the release candidate; the remaining cross-platform CI, signing and publication gates are tracked in the release checklist.
+`serpentype.capabilities()` returns the machine readable matrix. `Renderer.supports(name)` is true for `full` and `partial`; callers should inspect the level before depending on complete CSS behavior. Package version 0.2.0 is the release candidate; cross-platform CI passed and signing/publication gates are tracked in the release checklist.
 
 | Capability | Level | Tested behavior and boundary |
 | --- | --- | --- |

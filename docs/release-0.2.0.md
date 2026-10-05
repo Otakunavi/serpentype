@@ -1,6 +1,6 @@
 # 0.2.0 release candidate status
 
-Package metadata is 0.2.0. This candidate is ready for final cross-platform CI; signing and publication remain gated on the checklist. The atomic status and remaining count are maintained in the [0.2.0 release checklist](release-checklist-0.2.0.md).
+Package metadata is 0.2.0. The seven-target build, deterministic-PDF and Python ABI3 CI gates have passed; signed tagging and publication remain open. The atomic status and remaining count are maintained in the [0.2.0 release checklist](release-checklist-0.2.0.md).
 
 ## Delivered in the development branch
 
@@ -9,10 +9,10 @@ Styled inline fragments and atomic text-flow `inline-block` boxes; Unicode graph
 ## Verification completed locally
 
 - Rust: 82 unit/integration tests pass using `cargo test --no-default-features --locked`, including the injected panic-boundary guard tests.
-- Python: 103 tests pass against a freshly built macOS arm64 CPython 3.10+ ABI3 wheel installed into an isolated target directory (executed on CPython 3.13), including compatibility, diagnostic-policy, adversarial-input, source-location regressions and fourteen rendered visual-reference pages spanning ten cases. The final multi-OS/architecture wheel matrix remains a CI gate.
+- Python: 103 tests pass against a freshly built macOS arm64 CPython 3.10+ ABI3 wheel installed into an isolated target directory (executed on CPython 3.13), including compatibility, diagnostic-policy, adversarial-input, source-location regressions and fourteen rendered visual-reference pages spanning ten cases.
 - `cargo fmt --all --check` and `cargo clippy --locked --all-targets -- -D warnings` pass locally.
 - `maturin sdist` builds the source archive; its `PKG-INFO` includes the project homepage, source and documentation URLs.
-- The published alpha commit passed the seven-target Linux, macOS and Windows wheel matrix and installed-wheel ABI3 tests on CPython 3.10–3.14. The post-alpha box-model commit has additionally passed a clean macOS arm64 wheel test; its full matrix remains a final-candidate gate.
+- Release candidate `53c5696` passed all seven Linux, macOS and Windows wheel builds, the deterministic PDF SHA256 gate on every target (including QEMU-backed PyPA manylinux/musllinux containers), and installed-wheel ABI3 tests on CPython 3.10–3.14. See [CI run 37344178988](https://github.com/Otakunavi/serpentype/actions/runs/37344178988).
 - Repeated whole-document layouts produce byte-identical PDF output in the deterministic regression test; checked-in visual references cover trim/crop geometry, first/left/right/blank pages, counters/running/fixed content, repeated headers, rowspans/nested tables, font fallback/shaping/WOFF2, typography/paint/links, paragraph pagination, layout modes and raster/vector image resources. PDF structure-only features are covered by pypdf assertions.
 - Diagnostic filters, callbacks, typed strict errors, mapped source-token locations and the guarded Python FFI have installed-wheel tests. All four libFuzzer targets compile and complete local smoke runs; coverage-guided sanitizer runs are configured in scheduled/manual nightly CI.
 - An independent-process benchmark records throughput and confirms the bounded resource LRU remains within its byte cap.
@@ -41,6 +41,6 @@ The positioning, Flex and Grid slice was measured against that retained resource
 
 ## Release blockers
 
-The remaining blockers are tracked as individual unchecked items in the [release checklist](release-checklist-0.2.0.md). Completed items are retained there so each implementation block visibly reduces the open count. Partial capability labels are boundaries for callers and are not used as the progress counter. External full-matrix CI, release-tag signing and publication require the final candidate commit and authorized GitHub release credentials.
+The two remaining blockers are tracked in the [release checklist](release-checklist-0.2.0.md): publishing SBOM/provenance/SHA256 manifests for the final release assets, and creating/verifying the signed `v0.2.0` tag. Full candidate CI is green. Publication is wired to the signed tag and GitHub release; signing requires an available local signing key.
 
 The release should be tagged only after the capability matrix, mandatory CI fixtures, performance gates and distribution artifacts are complete. The tested Rust toolchain and declared MSRV are 1.98.1.

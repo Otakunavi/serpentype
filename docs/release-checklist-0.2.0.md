@@ -2,7 +2,7 @@
 
 This is the canonical progress tracker for the final 0.2.0 release. A checkbox is closed only when the implementation, mandatory Rust and installed-wheel Python tests, capability entry, and relevant documentation are present. Broad capability groups may remain `partial` while their individual checkboxes close.
 
-Current snapshot: **69 closed, 4 open**.
+Current snapshot: **71 closed, 2 open**.
 
 ## Text and fonts
 
@@ -77,7 +77,7 @@ Current snapshot: **69 closed, 4 open**.
 - [x] Export title, author, subject, keywords and document language.
 - [x] Export attachments and configurable creation/modification timestamps.
 - [x] Produce byte-identical repeated output on the same tested platform.
-- [ ] Verify deterministic object IDs, subsets and compression across every release platform (native Linux/macOS/Windows SHA256 gate added; final full wheel matrix still required).
+- [x] Verify deterministic object IDs, subsets and compression across every release platform (the same PDF SHA256 passed on native Linux x86_64, macOS x86_64/arm64 and Windows x86_64, plus manylinux aarch64 and both musllinux targets in native-ABI PyPA containers; CI run [37344178988](https://github.com/Otakunavi/serpentype/actions/runs/37344178988)).
 
 ## Diagnostics, safety and observability
 
@@ -96,7 +96,7 @@ Current snapshot: **69 closed, 4 open**.
 - [x] Add regression fixtures for every rendered capability: checked visual references cover trim/crop geometry, first/left/right/blank pages, counters/running/fixed content, table continuation/rowspans/nesting, font fallback/shaping/WOFF2, typography/paint/links, paragraph pagination, Flex/Grid/positioning/clipping, and raster/SVG. PDF metadata, attachments, outlines and annotations are covered by structural PDF assertions rather than pixel snapshots.
 - [x] Add property tests and fuzz targets for HTML, CSS, fonts, SVG, raster formats, table fragmentation and PDF serialization.
 - [x] Add multi-process throughput and bounded-cache stress measurements to the benchmark gate.
-- [ ] Run the full wheel matrix against the final candidate commit with no mandatory skips.
+- [x] Run the full wheel matrix against the final candidate commit with no mandatory skips (all seven wheels built; the deterministic PDF fingerprint passed on each; installed-wheel ABI3 tests passed on CPython 3.10–3.14; CI run [37344178988](https://github.com/Otakunavi/serpentype/actions/runs/37344178988), candidate `53c5696`).
 - [ ] Generate and publish SBOM, build provenance and SHA256 manifests for the final artifacts.
 - [x] Finish changelog, migration notes, capability matrix and final release notes.
 - [ ] Create and verify the signed final `v0.2.0` tag.
