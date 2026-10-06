@@ -1,6 +1,6 @@
-# Capability matrix for the 0.2.0 release candidate
+# Capability matrix for the 0.2.1 release
 
-`serpentype.capabilities()` returns the machine readable matrix. `Renderer.supports(name)` is true for `full` and `partial`; callers should inspect the level before depending on complete CSS behavior. Package version 0.2.0 is the release candidate; cross-platform CI passed and signing/publication gates are tracked in the release checklist.
+`serpentype.capabilities()` returns the machine readable matrix. `Renderer.supports(name)` is true for `full` and `partial`; callers should inspect the level before depending on complete CSS behavior. The WeasyPrint-shaped API preserves common call forms, not rendering equivalence; see [the compatibility limits](weasyprint_compat.md).
 
 | Capability | Level | Tested behavior and boundary |
 | --- | --- | --- |
