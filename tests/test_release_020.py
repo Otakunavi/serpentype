@@ -844,6 +844,16 @@ class Release020Tests(unittest.TestCase):
             self.assertEqual(caught.exception.source, str(source))
             self.assertEqual((caught.exception.line, caught.exception.column), (1, 4))
 
+    def test_compat_html_render_and_write_pdf_accept_render_limits(self):
+        html = serpentype.HTML(string=(
+            "<p>first</p><p style='break-before:page'>second</p>"
+        ))
+        limits = serpentype.RenderLimits(max_pages=1)
+        with self.assertRaises(serpentype.RenderLimitError):
+            html.render(limits=limits)
+        with self.assertRaises(serpentype.RenderLimitError):
+            html.write_pdf(limits=limits)
+
     def test_compat_css_woff2_font_face(self):
         font = Path(__file__).parent / "fixtures" / "SourceSans3-Regular.otf.woff2"
         sheet = serpentype.CSS(string=f"@font-face {{ font-family: WebFont; src: url('{font}') }} "

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — 2026-10-06
+
+- Pass optional `RenderLimits` through the WeasyPrint-shaped `HTML.render()` and `HTML.write_pdf()` methods, so compatibility callers can configure the page and resource bounds.
+- Record the October 2026 production-template comparison: Serpentype is not a drop-in WeasyPrint renderer; landscape table sizing and malformed nested-table markup need fixture-based review, and long-document page limits must be selected for the workload.
+- Keep the WeasyPrint backend as the production default until the affected templates pass visual golden comparisons.
+
 ## 0.2.0 — 2026-10-05
 
 - Promote RustyBuzz shaping and Unicode bidi to the default production path while retaining the `experimental_shaping` argument as a compatibility no-op. Missing-glyph errors now locate numeric/common named character references and accept a source filename.

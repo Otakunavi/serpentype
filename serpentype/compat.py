@@ -245,7 +245,8 @@ class HTML:
             if url_fetcher is not None else None
         )
 
-    def render(self, *, stylesheets=None, font_config=None, presentational_hints=False):
+    def render(self, *, stylesheets=None, font_config=None, presentational_hints=False,
+               limits=None):
         sheets = tuple(stylesheets or ())
         if any(not isinstance(sheet, CSS) for sheet in sheets):
             raise TypeError("stylesheets must contain CSS objects")
@@ -270,15 +271,16 @@ class HTML:
                                     self.resource_loader)
         prepared = Renderer(fonts=config.registry, base_dir=str(base_dir),
                             presentational_hints=presentational_hints,
-                            source_name=self._source_name).layout(
+                            source_name=self._source_name, limits=limits).layout(
             html, css_text
         )
         return Document(prepared)
 
     def write_pdf(self, target=None, *, stylesheets=None, font_config=None,
-                  presentational_hints=False):
+                  presentational_hints=False, limits=None):
         return self.render(
             stylesheets=stylesheets,
             font_config=font_config,
             presentational_hints=presentational_hints,
+            limits=limits,
         ).write_pdf(target)
