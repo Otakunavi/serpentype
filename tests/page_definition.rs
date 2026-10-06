@@ -87,6 +87,20 @@ fn page_orientation_still_rotates_non_landscape_keyword_pages() {
 }
 
 #[test]
+fn margin_box_font_shorthand_sets_size_and_family_without_warning() {
+    let sheet = serpentype::css::parse(
+        r#"@page { @bottom-right { content: "Page"; font: 8pt "Times Newer Roman" } }"#,
+        false,
+    )
+    .unwrap();
+    assert!(sheet.warnings.is_empty(), "{:?}", sheet.warnings);
+    let boxes = sheet.margin_boxes_for(None, 0, false);
+    let footer = boxes.get("@bottom-right").unwrap();
+    assert_eq!(footer.font_size, 8.0);
+    assert_eq!(footer.family, ["Times Newer Roman"]);
+}
+
+#[test]
 fn named_first_page_margin_box_uses_css_cascade() {
     let css = r#"
         @page { size: 150pt 150pt; margin: 20pt;

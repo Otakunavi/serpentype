@@ -375,6 +375,24 @@ impl Default for MarginBox {
         }
     }
 }
+
+fn margin_box_font(value: &str) -> Option<(f32, Vec<String>)> {
+    let value = value.trim();
+    let size_end = value.find(char::is_whitespace)?;
+    let size = length(&value[..size_end])?;
+    let family_text = value[size_end..].trim();
+    if family_text.is_empty() {
+        return None;
+    }
+    let families = family_text
+        .split(',')
+        .map(|family| family.trim().trim_matches(['\'', '"']).trim().to_owned())
+        .collect::<Vec<_>>();
+    families
+        .iter()
+        .all(|family| !family.is_empty())
+        .then_some((size, families))
+}
 impl Default for PageStyle {
     fn default() -> Self {
         Self {
@@ -480,6 +498,7 @@ pub struct Style {
     pub grid_row_span: usize,
     pub row_gap: f32,
     pub column_gap: f32,
+    pub column_count: usize,
     pub table_layout: String,
     pub border_collapse: String,
     pub border_spacing: [f32; 2],
@@ -580,6 +599,7 @@ impl Default for Style {
             grid_row_span: 1,
             row_gap: 0.0,
             column_gap: 0.0,
+            column_count: 1,
             table_layout: "auto".into(),
             border_collapse: "separate".into(),
             border_spacing: [0.0; 2],
@@ -773,6 +793,7 @@ impl Sheet {
                 let value = value_without_important(raw);
                 let valid = match property.as_str() {
                     "content" | "font-family" => true,
+                    "font" => margin_box_font(value).is_some(),
                     "font-size" => length(value).is_some(),
                     "color" => color(value).is_some(),
                     _ => false,
@@ -802,6 +823,12 @@ impl Sheet {
                 "font-size" => {
                     if let Some(size) = length(value) {
                         box_style.font_size = size;
+                    }
+                }
+                "font" => {
+                    if let Some((size, family)) = margin_box_font(value) {
+                        box_style.font_size = size;
+                        box_style.family = family;
                     }
                 }
                 "font-family" => {
@@ -945,7 +972,7 @@ fn valid_selector(s: &str) -> bool {
             c.is_ascii_alphanumeric()
                 || matches!(
                     c,
-                    '-' | '_' | '.' | '#' | '[' | ']' | '=' | '"' | '\'' | ' ' | '>'
+                    '-' | '_' | '.' | '#' | '[' | ']' | '=' | '"' | '\'' | ' ' | '>' | '*'
                 )
         })
 }
@@ -1140,6 +1167,18 @@ fn parse_margin_box(body: &str, warnings: &mut Vec<Diagnostic>) -> MarginBox {
         let value = value_without_important(&raw);
         match key.as_str() {
             "content" => box_style.content = value.into(),
+            "font" => {
+                if let Some((size, family)) = margin_box_font(value) {
+                    box_style.font_size = size;
+                    box_style.family = family;
+                } else {
+                    unsupported(
+                        warnings,
+                        "css-value",
+                        format!("invalid margin box font: {value}"),
+                    );
+                }
+            }
             "font-size" => {
                 if let Some(v) = length(value) {
                     box_style.font_size = v;
@@ -1369,7 +1408,7 @@ pub fn selector_matches(selector: &str, tag: &str, id: Option<&str>, classes: &s
     let mut remaining = selector;
     let tag_end = remaining.find(['.', '#']).unwrap_or(remaining.len());
     let wanted_tag = &remaining[..tag_end];
-    if !wanted_tag.is_empty() && wanted_tag != tag {
+    if !wanted_tag.is_empty() && wanted_tag != "*" && wanted_tag != tag {
         return false;
     }
     remaining = &remaining[tag_end..];
@@ -1744,6 +1783,19 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
                 bad = true;
             }
         }
+        // Transforms are centered by default in the PDF painter, so the
+        // explicit CSS default does not alter geometry.
+        "transform-origin" if matches!(v, "center" | "50% 50%") => {}
+        // These identity declarations have no effect on the vector display
+        // list. Non-identity filters and origins continue to be diagnosed.
+        "filter" if v == "none" => {}
+        "filter" if v.starts_with("blur(") && v.ends_with(')') => {
+            let radius = &v[5..v.len() - 1];
+            if computed_length(radius, style.font_size) != Some(0.0) {
+                bad = true;
+            }
+        }
+        "outline" if v == "none" => {}
         "top" | "right" | "bottom" | "left" => {
             let idx = match key {
                 "top" => 0,
@@ -1929,6 +1981,17 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
                     style.row_gap = n;
                 } else {
                     style.column_gap = n;
+                }
+            } else {
+                bad = true;
+            }
+        }
+        "column-count" => {
+            if let Ok(count) = v.parse::<usize>() {
+                if (1..=16).contains(&count) {
+                    style.column_count = count;
+                } else {
+                    bad = true;
                 }
             } else {
                 bad = true;

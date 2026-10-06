@@ -29,6 +29,87 @@ fn text_position(doc: &serpentype::layout::PreparedDocument, target: char) -> Op
         })
 }
 
+#[test]
+fn named_landscape_page_expands_an_auto_width_ancestor_frame() {
+    let html = "<body><h1>Cover</h1><section class='wide'><table><tr>\
+        <td>A1</td><td>B2</td><td>C3</td><td>D4</td><td>E5</td><td>F6</td>\
+        </tr></table></section></body>";
+    let css = "@page { size:A4; margin:15mm } @page wide { size:A4 landscape; margin:12mm } \
+        table { width:100%; table-layout:fixed } td { border:1px solid black } \
+        .wide { page:wide; break-before:page }";
+    let doc = renderer().layout(html, css).unwrap();
+    assert_eq!(doc.pages.len(), 2);
+    assert!(doc.pages[1].style.width > doc.pages[1].style.height);
+    let x_for = |target| {
+        doc.pages[1]
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Text { ch, x, .. } if *ch == target => Some(*x),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert!(x_for('F') - x_for('A') > 600.0);
+}
+
+#[test]
+fn table_nested_in_inline_spans_keeps_table_layout_and_borders() {
+    let html = "<div><span><span><table><tbody><tr><td>LEFT</td><td>RIGHT</td></tr>\
+        <tr><td>LOWER</td><td>CELLS</td></tr></tbody></table></span></span></div>";
+    let css = "@page { size:300pt 220pt; margin:15pt } \
+        table { width:100%; border-collapse:collapse } \
+        td { border:1pt solid black; padding:3pt }";
+    let doc = renderer().layout(html, css).unwrap();
+    let text = doc
+        .pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .filter_map(|item| match item {
+            Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect::<String>();
+    for expected in ["LEFT", "RIGHT", "LOWER", "CELLS"] {
+        assert!(
+            text.contains(expected),
+            "missing table cell text {expected}"
+        );
+    }
+    let border_rects = doc
+        .pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .filter(|item| matches!(item, Item::Rect { .. }))
+        .count();
+    assert!(
+        border_rects >= 8,
+        "expected painted table borders, found {border_rects}"
+    );
+}
+
+#[test]
+fn inline_multicolumn_text_uses_balanced_side_by_side_columns() {
+    let html = "<div class='columns'>LEFTCOLUMN words repeat across the page. \
+        RIGHTCOLUMN words repeat across the page. LEFTCOLUMN words repeat across the page. \
+        RIGHTCOLUMN words repeat across the page. LEFTCOLUMN words repeat across the page. \
+        RIGHTCOLUMN words repeat across the page. LEFTCOLUMN words repeat across the page. \
+        RIGHTCOLUMN words repeat across the page.</div>";
+    let css = "@page { size:180pt 600pt; margin:10pt } \
+        .columns { column-count:2; column-gap:10pt }";
+    let doc = renderer().layout(html, css).unwrap();
+    assert_eq!(doc.pages.len(), 1);
+    let mut lines = std::collections::HashMap::<i32, (f32, f32)>::new();
+    for item in &doc.pages[0].items {
+        if let Item::Text { x, y, .. } = item {
+            let entry = lines.entry((*y * 10.0).round() as i32).or_insert((*x, *x));
+            entry.0 = entry.0.min(*x);
+            entry.1 = entry.1.max(*x);
+        }
+    }
+    assert!(lines.values().any(|(min_x, max_x)| max_x - min_x > 60.0));
+}
+
 fn all_text_positions(
     doc: &serpentype::layout::PreparedDocument,
     target: char,

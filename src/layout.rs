@@ -2414,6 +2414,7 @@ struct Flow {
     pending_break: bool,
     pending_break_side: Option<String>,
     frame: Option<(f32, f32)>,
+    responsive_frame_insets: Option<(f32, f32)>,
     center_children: bool,
     paint_visible: bool,
     containing_blocks: Vec<ContainingBlock>,
@@ -2917,6 +2918,7 @@ impl Flow {
             pending_break: false,
             pending_break_side: None,
             frame: None,
+            responsive_frame_insets: None,
             center_children: false,
             paint_visible: true,
             containing_blocks: vec![],
@@ -2943,12 +2945,21 @@ impl Flow {
     fn page_has_content(&self) -> bool {
         self.page_content
     }
+    fn sync_page_frame(&mut self) {
+        if let Some((left, right)) = self.responsive_frame_insets {
+            self.frame = Some((
+                self.page.margin[3] + left,
+                self.page.width - self.page.margin[1] - self.page.margin[3] - left - right,
+            ));
+        }
+    }
     fn new_page(&mut self) -> Result<()> {
         cancelled(self.cancel.as_deref())?;
         if self.pages.len() >= self.limits.max_pages {
             return Err(Error("render limit exceeded: max_pages".into()));
         }
         self.page = self.style_for(self.page_name.as_deref(), self.pages.len(), false);
+        self.sync_page_frame();
         self.pages.push(Page {
             items: vec![],
             style: self.page.clone(),
@@ -2982,6 +2993,7 @@ impl Flow {
             self.new_page()?;
         } else {
             self.page = self.style_for(name, self.pages.len() - 1, false);
+            self.sync_page_frame();
             let page = self.pages.last_mut().expect("initial page");
             page.style = self.page.clone();
             page.name = self.page_name.clone();
@@ -3519,10 +3531,24 @@ impl Flow {
         self.y += borders[0] + padding[0];
         let content_start = self.y;
         let old_frame = self.frame;
+        let old_responsive_frame_insets = self.responsive_frame_insets;
         self.frame = Some((
             self.content_x() + margins[3] + borders[3] + padding[3],
             inner_width,
         ));
+        self.responsive_frame_insets = if style.width.is_none()
+            && style
+                .width_percent
+                .is_none_or(|percent| (percent - 1.0).abs() <= EPS)
+        {
+            let (parent_left, parent_right) = old_responsive_frame_insets.unwrap_or((0.0, 0.0));
+            Some((
+                parent_left + margins[3] + borders[3] + padding[3],
+                parent_right + margins[1] + borders[1] + padding[1],
+            ))
+        } else {
+            None
+        };
         let establishes_containing_block = style.position != "static";
         if establishes_containing_block {
             self.containing_blocks.push(ContainingBlock {
@@ -3537,64 +3563,17 @@ impl Flow {
         let mut group = Vec::new();
         let mut pending_margin = 0.0;
         let mut first_block_pending = style.margin_top_consumed || collapse_first;
-        for child in &node.children {
-            if child.tag != "#text" && matches!(child.style.position.as_str(), "absolute" | "fixed")
-            {
-                self.node(child)?;
-                continue;
-            }
-            if matches!(
-                child.tag.as_str(),
-                "#text" | "span" | "strong" | "b" | "em" | "i" | "u" | "a" | "sup" | "sub" | "br"
-            ) {
-                group.push(child.clone());
-            } else {
-                if group.iter().any(|c| !c.plain_text().trim().is_empty()) {
-                    let mut inline = node.clone();
-                    inline.children = std::mem::take(&mut group);
-                    inline.style.margin = [0.0; 4];
-                    inline.style.margin_percent = [None; 4];
-                    inline.style.padding = [0.0; 4];
-                    inline.style.padding_percent = [None; 4];
-                    inline.style.border_width = 0.0;
-                    inline.style.border_widths = [0.0; 4];
-                    inline.style.background = None;
-                    inline.style.width = None;
-                    inline.style.width_percent = None;
-                    inline.style.break_before = false;
-                    inline.style.break_after = false;
-                    self.paragraph(&inline)?;
-                }
-                group.clear();
-                let raw_child_margins =
-                    resolved_edges(child.style.margin, child.style.margin_percent, inner_width);
-                let child_margins = [
-                    collapsible_node_margin(child, inner_width, true),
-                    raw_child_margins[1],
-                    collapsible_node_margin(child, inner_width, false),
-                    raw_child_margins[3],
-                ];
-                let child_top = if first_block_pending {
-                    first_block_pending = false;
-                    0.0
-                } else {
-                    child_margins[0]
-                };
-                self.y += collapse_margin(pending_margin, child_top);
-                let mut child = child.clone();
-                child.style.margin[0] = 0.0;
-                child.style.margin[2] = 0.0;
-                child.style.margin_percent[0] = None;
-                child.style.margin_percent[2] = None;
-                child.style.margin_top_consumed = true;
-                child.style.margin_bottom_consumed = true;
-                self.node(&child)?;
-                pending_margin = child_margins[2];
-            }
-        }
-        if group.iter().any(|c| !c.plain_text().trim().is_empty()) {
+        let children = node
+            .children
+            .iter()
+            .flat_map(Self::split_inline_blocks)
+            .collect::<Vec<_>>();
+        let inline_only = children
+            .iter()
+            .all(|child| child.tag == "#text" || child.style.display == "inline");
+        if style.column_count > 1 && inline_only {
             let mut inline = node.clone();
-            inline.children = group;
+            inline.children = children;
             inline.style.margin = [0.0; 4];
             inline.style.margin_percent = [None; 4];
             inline.style.padding = [0.0; 4];
@@ -3606,7 +3585,99 @@ impl Flow {
             inline.style.width_percent = None;
             inline.style.break_before = false;
             inline.style.break_after = false;
-            self.paragraph(&inline)?;
+            self.inline_columns(&inline, inner_width, content_start)?;
+        } else {
+            if style.column_count > 1 {
+                self.warnings.push(
+                    Diagnostic::new(
+                        "css-property",
+                        "column-count is supported only for inline-only block content",
+                    )
+                    .property("column-count", &style.column_count.to_string()),
+                );
+            }
+            for child in &children {
+                if child.tag != "#text"
+                    && matches!(child.style.position.as_str(), "absolute" | "fixed")
+                {
+                    self.node(child)?;
+                    continue;
+                }
+                if matches!(
+                    child.tag.as_str(),
+                    "#text"
+                        | "span"
+                        | "strong"
+                        | "b"
+                        | "em"
+                        | "i"
+                        | "u"
+                        | "a"
+                        | "sup"
+                        | "sub"
+                        | "br"
+                ) {
+                    group.push(child.clone());
+                } else {
+                    if group.iter().any(|c| !c.plain_text().trim().is_empty()) {
+                        let mut inline = node.clone();
+                        inline.children = std::mem::take(&mut group);
+                        inline.style.margin = [0.0; 4];
+                        inline.style.margin_percent = [None; 4];
+                        inline.style.padding = [0.0; 4];
+                        inline.style.padding_percent = [None; 4];
+                        inline.style.border_width = 0.0;
+                        inline.style.border_widths = [0.0; 4];
+                        inline.style.background = None;
+                        inline.style.width = None;
+                        inline.style.width_percent = None;
+                        inline.style.break_before = false;
+                        inline.style.break_after = false;
+                        self.paragraph(&inline)?;
+                    }
+                    group.clear();
+                    let raw_child_margins =
+                        resolved_edges(child.style.margin, child.style.margin_percent, inner_width);
+                    let child_margins = [
+                        collapsible_node_margin(child, inner_width, true),
+                        raw_child_margins[1],
+                        collapsible_node_margin(child, inner_width, false),
+                        raw_child_margins[3],
+                    ];
+                    let child_top = if first_block_pending {
+                        first_block_pending = false;
+                        0.0
+                    } else {
+                        child_margins[0]
+                    };
+                    self.y += collapse_margin(pending_margin, child_top);
+                    let mut child = child.clone();
+                    child.style.margin[0] = 0.0;
+                    child.style.margin[2] = 0.0;
+                    child.style.margin_percent[0] = None;
+                    child.style.margin_percent[2] = None;
+                    child.style.margin_top_consumed = true;
+                    child.style.margin_bottom_consumed = true;
+                    self.node(&child)?;
+                    pending_margin = child_margins[2];
+                }
+            }
+            if group.iter().any(|c| !c.plain_text().trim().is_empty()) {
+                let mut inline = node.clone();
+                inline.children = group;
+                inline.style.margin = [0.0; 4];
+                inline.style.margin_percent = [None; 4];
+                inline.style.padding = [0.0; 4];
+                inline.style.padding_percent = [None; 4];
+                inline.style.border_width = 0.0;
+                inline.style.border_widths = [0.0; 4];
+                inline.style.background = None;
+                inline.style.width = None;
+                inline.style.width_percent = None;
+                inline.style.break_before = false;
+                inline.style.break_after = false;
+                self.paragraph(&inline)?;
+            }
         }
         if establishes_containing_block {
             self.containing_blocks.pop();
@@ -3627,6 +3698,7 @@ impl Flow {
             margins[2]
         };
         self.frame = old_frame;
+        self.responsive_frame_insets = old_responsive_frame_insets;
         let natural_content = (self.y - content_start).max(0.0);
         let vertical_edges = borders[0] + borders[2] + padding[0] + padding[2];
         let natural_height = natural_content + vertical_edges;
@@ -3705,6 +3777,117 @@ impl Flow {
         }
         self.finish(&node.style);
         Ok(())
+    }
+    fn inline_columns(&mut self, node: &Node, width: f32, start_y: f32) -> Result<()> {
+        let count = node.style.column_count;
+        let gap = node.style.column_gap;
+        let column_width = (width - gap * count.saturating_sub(1) as f32) / count as f32;
+        if column_width <= 0.0 {
+            return Err(Error("column gap leaves no usable column width".into()));
+        }
+        let lines = lines_for(
+            node,
+            column_width,
+            node.style.text_indent,
+            &self.fonts,
+            self.cancel.as_deref(),
+            self.experimental_shaping,
+            &self.shaping_ns,
+        )?;
+        if lines.is_empty() {
+            return Ok(());
+        }
+        let lines_per_column = lines.len().div_ceil(count);
+        let x = self.content_x();
+        let mut start_y = start_y;
+        let largest_column_height = (0..count)
+            .map(|column| {
+                let first = column * lines_per_column;
+                let last = (first + lines_per_column).min(lines.len());
+                lines[first..last]
+                    .iter()
+                    .map(|line| line.height)
+                    .sum::<f32>()
+            })
+            .fold(0.0f32, f32::max);
+        if largest_column_height <= self.full_height() + EPS
+            && start_y + largest_column_height > self.limit() + EPS
+            && self.page_has_content()
+        {
+            self.new_page()?;
+            start_y = self.page.margin[0];
+        }
+        let mut final_y = start_y;
+        for column in 0..count {
+            let first = column * lines_per_column;
+            let last = (first + lines_per_column).min(lines.len());
+            if first == last {
+                break;
+            }
+            let mut y = start_y;
+            for (line_index, line) in lines[first..last].iter().enumerate() {
+                if y + line.height > self.limit() + EPS {
+                    if self.page_has_content() {
+                        self.new_page()?;
+                        start_y = self.page.margin[0];
+                        y = start_y;
+                    } else {
+                        return Err(Error(
+                            "multi-column text exceeds page content height".into(),
+                        ));
+                    }
+                }
+                self.draw_line(
+                    line,
+                    x + column as f32 * (column_width + gap),
+                    y,
+                    column_width,
+                    &node.style.text_align,
+                    line_index + 1 == last - first,
+                );
+                y += line.height;
+            }
+            final_y = y;
+        }
+        self.y = final_y;
+        Ok(())
+    }
+    fn split_inline_blocks(node: &Node) -> Vec<Node> {
+        if node.style.display != "inline" {
+            return vec![node.clone()];
+        }
+        let mut result = Vec::new();
+        let mut inline_segment = node.clone();
+        inline_segment.children.clear();
+        for child in &node.children {
+            let pieces = if child.style.display == "inline" && Self::has_block_descendant(child) {
+                Self::split_inline_blocks(child)
+            } else {
+                vec![child.clone()]
+            };
+            for piece in pieces {
+                if piece.tag == "#text" || piece.style.display == "inline" {
+                    inline_segment.children.push(piece);
+                } else {
+                    if !inline_segment.children.is_empty() {
+                        result.push(inline_segment);
+                        inline_segment = node.clone();
+                        inline_segment.children.clear();
+                    }
+                    result.push(piece);
+                }
+            }
+        }
+        if !inline_segment.children.is_empty() {
+            result.push(inline_segment);
+        }
+        result
+    }
+    fn has_block_descendant(node: &Node) -> bool {
+        node.children.iter().any(|child| {
+            (child.tag != "#text" && child.style.display != "inline")
+                || Self::has_block_descendant(child)
+        })
     }
     fn container_geometry(&self, style: &Style, kind: &str) -> Result<ContainerGeometry> {
         let reference = self.content_width();
