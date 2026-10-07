@@ -149,12 +149,14 @@ fn defaults(tag: &str, style: &mut Style) {
         "h1" => {
             style.font_size = 24.0;
             style.line_height = 28.8;
+            style.line_height_factor = Some(1.2);
             style.weight = 700;
             style.margin = [12.0, 0.0, 12.0, 0.0]
         }
         "h2" => {
             style.font_size = 18.0;
             style.line_height = 21.6;
+            style.line_height_factor = Some(1.2);
             style.weight = 700;
             style.margin = [9.0, 0.0, 9.0, 0.0]
         }

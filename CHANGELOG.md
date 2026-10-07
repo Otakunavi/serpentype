@@ -1,7 +1,10 @@
 # Changelog
 
-## 0.3.0 — 2026-10-06
+## 0.3.0 — 2026-10-07
 
+- Preserve inline and inline-block display on block HTML tags, empty inline-block placeholders and empty `<br>` line boxes instead of dropping them during flow splitting.
+- Compute inherited unitless `line-height` against each element's font size, including inline runs, and center font metrics within the resulting line box.
+- Account for half-width borders in collapsed table-cell content and fragment geometry; the supplied 19-fixture pack now matches WeasyPrint 64.1 page counts with the same bundled font.
 - Recompute auto-width block frames when page size changes, so tables inside nested full-width containers use the named page's landscape content width.
 - Promote block descendants out of nested inline wrappers during flow layout; production-shaped tables inside spans now retain column, row and border layout.
 - Parse the common `font` shorthand in page-margin boxes and avoid warnings for identity `transform-origin`, `filter: none`/`blur(0)`, `outline: none`, and inert empty positioned spans.

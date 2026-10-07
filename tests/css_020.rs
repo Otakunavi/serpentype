@@ -1345,3 +1345,74 @@ fn first_and_left_page_selectors_apply_to_their_pages() {
     assert!((doc.pages[0].style.width - 100.0).abs() < 0.01);
     assert!((doc.pages[1].style.width - 150.0).abs() < 0.01);
 }
+
+#[test]
+fn block_html_tags_with_inline_display_stay_in_the_surrounding_line() {
+    let doc = renderer()
+        .layout(
+            "<div><span>A </span><div style='display:inline'><span>REG-2026</span></div><span> Z</span></div>",
+            "@page { size:200pt 100pt; margin:10pt } div { margin:0; font-size:10pt; line-height:12pt }",
+        )
+        .unwrap();
+    let ay = text_position(&doc, 'A').unwrap().1;
+    let reg_y = text_position(&doc, 'R').unwrap().1;
+    let zy = text_position(&doc, 'Z').unwrap().1;
+    assert!(
+        (reg_y - ay).abs() < 0.1,
+        "inline div moved to another line: {ay} {reg_y}"
+    );
+    assert!(
+        (zy - ay).abs() < 0.1,
+        "content after inline div moved to another line: {ay} {zy}"
+    );
+}
+
+#[test]
+fn block_html_tags_with_inline_block_display_stay_in_the_surrounding_line() {
+    let doc = renderer()
+        .layout(
+            "<div><span>A </span><div style='display:inline-block'><span>REG-2026</span></div><span> Z</span></div>",
+            "@page { size:200pt 100pt; margin:10pt } div { margin:0; font-size:10pt; line-height:12pt }",
+        )
+        .unwrap();
+    let ay = text_position(&doc, 'A').unwrap().1;
+    let zy = text_position(&doc, 'Z').unwrap().1;
+    assert!(
+        (zy - ay).abs() < 0.1,
+        "content after inline-block div moved to another line: {ay} {zy}"
+    );
+}
+
+#[test]
+fn unitless_line_height_scales_with_inherited_font_size() {
+    let doc = renderer()
+        .layout(
+            "<div style='font-size:12pt; line-height:1.5'><span style='font-size:20pt'>A<br>B</span></div>",
+            "@page { size:200pt 200pt; margin:10pt }",
+        )
+        .unwrap();
+    let ay = text_position(&doc, 'A').unwrap().1;
+    let by = text_position(&doc, 'B').unwrap().1;
+    assert!(
+        (by - ay - 30.0).abs() < 0.1,
+        "expected 30pt line advance, got {}",
+        by - ay
+    );
+}
+
+#[test]
+fn empty_block_with_br_preserves_its_line_box() {
+    let doc = renderer()
+        .layout(
+            "<div>A</div><div><br></div><div>B</div>",
+            "@page { size:200pt 200pt; margin:10pt } div { margin:0; font-size:10pt; line-height:12pt }",
+        )
+        .unwrap();
+    let ay = text_position(&doc, 'A').unwrap().1;
+    let by = text_position(&doc, 'B').unwrap().1;
+    assert!(
+        (by - ay - 24.0).abs() < 0.1,
+        "expected one blank line, got {}pt",
+        by - ay
+    );
+}

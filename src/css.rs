@@ -429,6 +429,7 @@ pub struct Style {
     pub font_stretch: f32,
     pub font_size: f32,
     pub line_height: f32,
+    pub line_height_factor: Option<f32>,
     pub text_align: String,
     pub text_indent: f32,
     pub overflow_wrap: String,
@@ -530,6 +531,7 @@ impl Default for Style {
             font_stretch: 100.0,
             font_size: 12.0,
             line_height: 14.4,
+            line_height_factor: Some(1.2),
             text_align: "left".into(),
             text_indent: 0.0,
             overflow_wrap: "break-word".into(),
@@ -622,7 +624,10 @@ impl Style {
             font_style: parent.font_style.clone(),
             font_stretch: parent.font_stretch,
             font_size: parent.font_size,
-            line_height: parent.line_height,
+            line_height: parent
+                .line_height_factor
+                .map_or(parent.line_height, |factor| parent.font_size * factor),
+            line_height_factor: parent.line_height_factor,
             text_align: parent.text_align.clone(),
             overflow_wrap: parent.overflow_wrap.clone(),
             word_break: parent.word_break.clone(),
@@ -2061,16 +2066,20 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
         "font-size" => {
             if let Some(n) = computed_length(v, style.font_size).filter(|n| *n > 0.0) {
                 style.font_size = n;
-                style.line_height = n * 1.2
+                style.line_height = style
+                    .line_height_factor
+                    .map_or(style.line_height, |factor| n * factor);
             } else {
                 bad = true
             }
         }
         "line-height" => {
             if let Some(n) = computed_length(v, style.font_size).filter(|n| *n > 0.0) {
-                style.line_height = n
+                style.line_height = n;
+                style.line_height_factor = None;
             } else if let Some(n) = finite_f32(v).filter(|n| *n > 0.0) {
-                style.line_height = style.font_size * n
+                style.line_height = style.font_size * n;
+                style.line_height_factor = Some(n);
             } else {
                 bad = true
             }

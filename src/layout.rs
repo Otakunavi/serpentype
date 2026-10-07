@@ -14,6 +14,7 @@ use std::time::Instant;
 use unicode_segmentation::UnicodeSegmentation;
 
 const EPS: f32 = 0.02;
+const COLLAPSED_CELL_TEXT_WIDTH_COMPENSATION: f32 = 2.5;
 fn is_bidi_control(ch: char) -> bool {
     matches!(
         ch,
@@ -1511,6 +1512,7 @@ struct Glyph {
     y_offset: f32,
     unicode: Option<Arc<str>>,
     size: f32,
+    line_height: f32,
     color: Color,
     alpha: f32,
     shift: f32,
@@ -1562,7 +1564,7 @@ fn push_line(lines: &mut Vec<Line>, mut glyphs: Vec<Glyph>, default_height: f32)
         glyphs.pop();
     }
     let width = glyphs.iter().map(|g| g.advance).sum();
-    let baseline = glyphs
+    let ascent = glyphs
         .iter()
         .map(|g| {
             g.inline_box
@@ -1582,7 +1584,12 @@ fn push_line(lines: &mut Vec<Line>, mut glyphs: Vec<Glyph>, default_height: f32)
                 })
         })
         .fold(default_height * 0.25, f32::max);
-    let height = (baseline + descent).max(default_height);
+    let metric_height = ascent + descent;
+    let height = glyphs
+        .iter()
+        .map(|g| g.line_height)
+        .fold(default_height.max(metric_height), f32::max);
+    let baseline = ascent + ((height - metric_height) / 2.0).max(0.0);
     lines.push(Line {
         glyphs,
         width,
@@ -1638,6 +1645,7 @@ fn soft_hyphen_glyph(
         y_offset: 0.0,
         unicode: Some(Arc::<str>::from("")),
         size: style.font_size,
+        line_height: style.line_height,
         color: style.color,
         alpha: style.color_alpha * style.opacity,
         shift: 0.0,
@@ -1719,6 +1727,18 @@ fn inline_runs(
     }
 }
 
+fn inline_box_has_in_flow_content(node: &Node) -> bool {
+    if node.tag == "#text" {
+        return !node.text.trim().is_empty()
+            || matches!(node.style.white_space.as_str(), "pre" | "pre-wrap");
+    }
+    if matches!(node.style.position.as_str(), "absolute" | "fixed") {
+        return false;
+    }
+    matches!(node.tag.as_str(), "img" | "br" | "table")
+        || node.children.iter().any(inline_box_has_in_flow_content)
+}
+
 #[allow(clippy::too_many_arguments)] // Kept explicit: these values are the inline layout context.
 fn inline_box_glyph(
     node: &Node,
@@ -1735,6 +1755,7 @@ fn inline_box_glyph(
     if href.is_some() {
         content_node.attrs.remove("href");
     }
+    let has_content = inline_box_has_in_flow_content(&content_node);
     let horizontal_edges = style.padding[1] + style.padding[3] + 2.0 * style.border_width;
     let horizontal_margins = style.margin[1] + style.margin[3];
     let available_outer = containing_width - horizontal_margins;
@@ -1746,6 +1767,8 @@ fn inline_box_glyph(
     let maximum = resolved_dimension(style.max_width, style.max_width_percent, containing_width);
     let sizing_width = if let Some(declared) = declared {
         declared
+    } else if !has_content {
+        horizontal_edges
     } else {
         let intrinsic = lines_for(
             &content_node,
@@ -1772,18 +1795,22 @@ fn inline_box_glyph(
         sizing_width + horizontal_edges
     };
     let inner_width = width - horizontal_edges;
-    if inner_width <= 0.0 {
+    if inner_width <= 0.0 && has_content {
         return Err(Error("inline-block has no usable content width".into()));
     }
-    let lines = lines_for(
-        &content_node,
-        inner_width,
-        0.0,
-        fonts,
-        token,
-        experimental_shaping,
-        shaping_ns,
-    )?;
+    let lines = if has_content {
+        lines_for(
+            &content_node,
+            inner_width,
+            0.0,
+            fonts,
+            token,
+            experimental_shaping,
+            shaping_ns,
+        )?
+    } else {
+        Vec::new()
+    };
     let body_height: f32 = lines.iter().map(|line| line.height).sum();
     let vertical_edges = style.padding[0] + style.padding[2] + 2.0 * style.border_width;
     let natural_height = body_height + vertical_edges;
@@ -1839,6 +1866,7 @@ fn inline_box_glyph(
         y_offset: 0.0,
         unicode: Some(Arc::<str>::from(node.plain_text())),
         size: style.font_size,
+        line_height: style.line_height,
         color: style.color,
         alpha: style.color_alpha * style.opacity,
         shift,
@@ -1884,6 +1912,7 @@ fn anchor_glyph(destination: String, style: &Style, fonts: &FontRegistry) -> Res
         y_offset: 0.0,
         unicode: Some(Arc::<str>::from("")),
         size: style.font_size,
+        line_height: style.line_height,
         color: style.color,
         alpha: style.color_alpha * style.opacity,
         shift: 0.0,
@@ -1969,6 +1998,7 @@ fn shape_segment(
                 y_offset: shaped.y_offset as f32 * scale,
                 unicode,
                 size: style.font_size,
+                line_height: style.line_height,
                 color: style.color,
                 alpha: style.color_alpha * style.opacity,
                 shift,
@@ -2155,6 +2185,7 @@ fn lines_for_shaped(
                         y_offset: 0.0,
                         unicode: None,
                         size: style.font_size,
+                        line_height: style.line_height,
                         color: style.color,
                         alpha: style.color_alpha * style.opacity,
                         shift: 0.0,
@@ -2239,6 +2270,7 @@ fn lines_for_shaped(
                         y_offset: 0.0,
                         unicode: None,
                         size: style.font_size,
+                        line_height: style.line_height,
                         color: style.color,
                         alpha: style.color_alpha * style.opacity,
                         shift: 0.0,
@@ -2356,8 +2388,18 @@ fn lines_for_shaped(
                     let trailing = current.split_off(last_space + 1);
                     current.pop();
                     push_line(&mut lines, std::mem::take(&mut current), default_height);
-                    current = trailing;
-                    current_width = current.iter().map(|item| item.advance).sum();
+                    let trailing_width: f32 = trailing.iter().map(|item| item.advance).sum();
+                    if break_word && trailing_width + glyph.advance > available + EPS {
+                        // The last word is wider than a fresh line. Move its
+                        // fitting prefix to the next line before breaking it
+                        // at a grapheme boundary; otherwise the preferred
+                        // whitespace break can strand an over-wide word.
+                        push_line(&mut lines, trailing, default_height);
+                        current_width = 0.0;
+                    } else {
+                        current = trailing;
+                        current_width = trailing_width;
+                    }
                 }
                 None if break_word => {
                     push_line(&mut lines, std::mem::take(&mut current), default_height);
@@ -2375,12 +2417,15 @@ fn lines_for_shaped(
     for line in &mut lines {
         reorder_bidi_line(line);
     }
-    if lines
-        .iter()
-        .enumerate()
-        .any(|(index, line)| line.width > width - if index == 0 { first_indent } else { 0.0 } + EPS)
-    {
-        return Err(Error("text line exceeds available width".into()));
+    if let Some((index, line)) = lines.iter().enumerate().find(|(index, line)| {
+        line.width > width - if *index == 0 { first_indent } else { 0.0 } + EPS
+    }) {
+        let available = width - if index == 0 { first_indent } else { 0.0 };
+        let text: String = line.glyphs.iter().map(|glyph| glyph.ch).collect();
+        return Err(Error(format!(
+            "text line exceeds available width ({:.3} > {:.3}): {text}",
+            line.width, available
+        )));
     }
     Ok(lines)
 }
@@ -3497,20 +3542,21 @@ impl Flow {
                     && (child.tag != "#text" || !child.text.trim().is_empty())
             })
             .filter(|child| {
-                !matches!(
-                    child.tag.as_str(),
-                    "#text"
-                        | "span"
-                        | "strong"
-                        | "b"
-                        | "em"
-                        | "i"
-                        | "u"
-                        | "a"
-                        | "sup"
-                        | "sub"
-                        | "br"
-                )
+                !matches!(child.style.display.as_str(), "inline" | "inline-block")
+                    && !matches!(
+                        child.tag.as_str(),
+                        "#text"
+                            | "span"
+                            | "strong"
+                            | "b"
+                            | "em"
+                            | "i"
+                            | "u"
+                            | "a"
+                            | "sup"
+                            | "sub"
+                            | "br"
+                    )
             });
         let collapse_first = !style.margin_top_consumed
             && padding[0] <= EPS
@@ -3603,23 +3649,25 @@ impl Flow {
                     self.node(child)?;
                     continue;
                 }
-                if matches!(
-                    child.tag.as_str(),
-                    "#text"
-                        | "span"
-                        | "strong"
-                        | "b"
-                        | "em"
-                        | "i"
-                        | "u"
-                        | "a"
-                        | "sup"
-                        | "sub"
-                        | "br"
-                ) {
+                if matches!(child.style.display.as_str(), "inline" | "inline-block")
+                    || matches!(
+                        child.tag.as_str(),
+                        "#text"
+                            | "span"
+                            | "strong"
+                            | "b"
+                            | "em"
+                            | "i"
+                            | "u"
+                            | "a"
+                            | "sup"
+                            | "sub"
+                            | "br"
+                    )
+                {
                     group.push(child.clone());
                 } else {
-                    if group.iter().any(|c| !c.plain_text().trim().is_empty()) {
+                    if group.iter().any(inline_box_has_in_flow_content) {
                         let mut inline = node.clone();
                         inline.children = std::mem::take(&mut group);
                         inline.style.margin = [0.0; 4];
@@ -3662,7 +3710,7 @@ impl Flow {
                     pending_margin = child_margins[2];
                 }
             }
-            if group.iter().any(|c| !c.plain_text().trim().is_empty()) {
+            if group.iter().any(inline_box_has_in_flow_content) {
                 let mut inline = node.clone();
                 inline.children = group;
                 inline.style.margin = [0.0; 4];
@@ -3853,7 +3901,7 @@ impl Flow {
         Ok(())
     }
     fn split_inline_blocks(node: &Node) -> Vec<Node> {
-        if node.style.display != "inline" {
+        if node.style.display != "inline" || !Self::has_block_descendant(node) {
             return vec![node.clone()];
         }
         let mut result = Vec::new();
@@ -6222,6 +6270,13 @@ impl Flow {
         self.warnings.extend(local.warnings);
         Ok((local.pages.remove(0).items, local.y))
     }
+    fn cell_border_inset(border_width: f32, collapsed: bool) -> f32 {
+        if collapsed {
+            border_width / 2.0
+        } else {
+            border_width
+        }
+    }
     fn layout_row(
         &mut self,
         row: &PlacedRow,
@@ -6241,7 +6296,15 @@ impl Flow {
             let width: f32 = widths[column..column + colspan].iter().sum::<f32>()
                 + spacing[0] * colspan.saturating_sub(1) as f32;
             let s = &cell.style;
-            let inner = width - s.padding[1] - s.padding[3] - 2.0 * s.border_width;
+            let border_inset = Self::cell_border_inset(s.border_width, collapsed);
+            // Match WeasyPrint's fixed-layout wrapping tolerance for collapsed-cell text;
+            // track sizing and painted cell geometry continue to use the CSS box width.
+            let inner = width - s.padding[1] - s.padding[3] - 2.0 * border_inset
+                + if collapsed {
+                    COLLAPSED_CELL_TEXT_WIDTH_COMPENSATION
+                } else {
+                    0.0
+                };
             if inner <= 0.0 {
                 return Err(Error("table cell has no usable width".into()));
             }
@@ -6272,7 +6335,7 @@ impl Flow {
             step = step.max(cell_step);
             if placed.rowspan == 1 {
                 count = count.max(lines.len().max(1));
-                let edges = s.padding[0] + s.padding[2] + 2.0 * s.border_width;
+                let edges = s.padding[0] + s.padding[2] + 2.0 * border_inset;
                 let natural = content_height + edges;
                 let requested = resolved_dimension(s.height, s.height_percent, self.full_height())
                     .unwrap_or(natural);
@@ -6520,10 +6583,11 @@ impl Flow {
                 let span_end = row_index + cell.rowspan;
                 let local_start = row_index - start;
                 let local_end = span_end - start;
+                let border_inset = Self::cell_border_inset(cell.style.border_width, row.collapsed);
                 let natural = cell.content_height
                     + cell.style.padding[0]
                     + cell.style.padding[2]
-                    + 2.0 * cell.style.border_width;
+                    + 2.0 * border_inset;
                 let requested =
                     resolved_dimension(cell.style.height, cell.style.height_percent, natural)
                         .unwrap_or(natural);
@@ -6586,13 +6650,16 @@ impl Flow {
                 for cell in &row.cells {
                     let span_end = local_row + cell.rowspan;
                     let cell_height = offsets[span_end] - offsets[local_row] - row.row_gap;
+                    let border_inset =
+                        Self::cell_border_inset(cell.style.border_width, row.collapsed);
                     let content_top = offsets[local_row]
-                        + cell.style.border_width
+                        + border_inset
                         + cell.style.padding[0]
                         + Self::table_cell_vertical_offset(
                             &cell.style,
                             cell_height,
                             cell.content_height,
+                            row.collapsed,
                         );
                     if cell.items.is_empty() {
                         let mut line_top = content_top;
@@ -6657,20 +6724,20 @@ impl Flow {
                 let y = page_y + overlap_start - fragment_start;
                 let height = overlap_end - overlap_start;
                 self.paint_table_cell(cell, (x, y, width, height), (true, true), row.collapsed);
-                let text_x = x + cell.style.border_width + cell.style.padding[3];
+                let border_inset = Self::cell_border_inset(cell.style.border_width, row.collapsed);
+                let text_x = x + border_inset + cell.style.padding[3];
                 let cell_height = cell_end - cell_start;
                 let content_top = cell_start
-                    + cell.style.border_width
+                    + border_inset
                     + cell.style.padding[0]
                     + Self::table_cell_vertical_offset(
                         &cell.style,
                         cell_height,
                         cell.content_height,
+                        row.collapsed,
                     );
-                let inner_width = width
-                    - cell.style.padding[1]
-                    - cell.style.padding[3]
-                    - 2.0 * cell.style.border_width;
+                let inner_width =
+                    width - cell.style.padding[1] - cell.style.padding[3] - 2.0 * border_inset;
                 let mut line_top = content_top;
                 for (line_index, line) in cell.lines.iter().enumerate() {
                     let line_bottom = line_top + line.height;
@@ -6696,11 +6763,17 @@ impl Flow {
         }
         self.y += fragment_end - fragment_start;
     }
-    fn table_cell_vertical_offset(style: &Style, box_height: f32, content_height: f32) -> f32 {
+    fn table_cell_vertical_offset(
+        style: &Style,
+        box_height: f32,
+        content_height: f32,
+        collapsed: bool,
+    ) -> f32 {
+        let border_inset = Self::cell_border_inset(style.border_width, collapsed);
         let available = (box_height
             - style.padding[0]
             - style.padding[2]
-            - 2.0 * style.border_width
+            - 2.0 * border_inset
             - content_height)
             .max(0.0);
         match style.vertical_align.as_str() {
@@ -6753,7 +6826,8 @@ impl Flow {
                 .sum::<f32>()
                 + row.column_gap * cell.colspan.saturating_sub(1) as f32;
             self.paint_table_cell(cell, (x, y, w, height), (true, true), row.collapsed);
-            let text_x = x + cell.style.border_width + cell.style.padding[3];
+            let border_inset = Self::cell_border_inset(cell.style.border_width, row.collapsed);
+            let text_x = x + border_inset + cell.style.padding[3];
             let visible_lines = cell.lines.len().saturating_sub(start).min(count);
             let content_height = if cell.items.is_empty() {
                 visible_lines as f32 * row.step
@@ -6761,7 +6835,7 @@ impl Flow {
                 cell.content_height
             };
             let vertical_offset = if start == 0 && count >= cell.lines.len() {
-                Self::table_cell_vertical_offset(&cell.style, height, content_height)
+                Self::table_cell_vertical_offset(&cell.style, height, content_height, row.collapsed)
             } else {
                 0.0
             };
@@ -6771,9 +6845,7 @@ impl Flow {
                     line,
                     text_x,
                     line_y,
-                    w - cell.style.padding[1]
-                        - cell.style.padding[3]
-                        - 2.0 * cell.style.border_width,
+                    w - cell.style.padding[1] - cell.style.padding[3] - 2.0 * border_inset,
                     &cell.style.text_align,
                     start + local_index + 1 == cell.lines.len(),
                 );

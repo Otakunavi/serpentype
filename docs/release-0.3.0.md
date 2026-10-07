@@ -1,17 +1,21 @@
 # Serpentype 0.3.0
 
-Serpentype 0.3.0 fixes layout defects exposed by the supplied compatibility fixture pack:
+Serpentype 0.3.0 fixes layout defects found in the supplied compatibility fixture pack:
 
-- Auto-width ancestor frames now follow named-page dimensions, including landscape pages.
-- Tables nested inside inline spans retain their table layout, cell borders and column structure.
-- Page-margin `font` shorthand is supported. Identity CSS declarations no longer emit unsupported-feature diagnostics.
-- Inline-only `column-count` content is laid out in balanced columns; unsupported block descendants are diagnosed.
-- Universal CSS selectors are supported so a reset stylesheet can override inline normal declarations when explicitly marked `!important`.
+- Auto-width ancestor frames follow named-page dimensions, including landscape pages.
+- Tables nested inside inline spans retain their columns and borders.
+- Block HTML tags with `display: inline` or `inline-block` remain in the inline flow; empty inline-block placeholders and empty `<br>` line boxes are preserved.
+- Unitless `line-height` inheritance scales with the computed font size, and collapsed table cells account for half-width borders in their layout and fragments.
+- Page-margin `font` shorthand, universal CSS selectors, inline-only `column-count`, and identity CSS declarations are handled as described in the capability matrix.
 
-## Compatibility findings
+## Fixture verification
 
-The 19-fixture pack completed in four spawned processes in both the default configuration and with `max_pages=1000`. The 2000-row document now renders in 287 pages and stays under the default 500-page limit; the pack's earlier default-limit failure is no longer expected after the landscape-width fix.
+The 19-fixture pack completed with four spawned workers: 19/19 Serpentype renders succeeded, with no failures, overflow, missing glyphs, unsupported-feature reports or diagnostics. The 2000-row table renders in 287 pages under both default limits and `max_pages=1000`.
 
-For a fair renderer comparison, the pack's `common.css` must force its bundled `Fixture Sans` font on all elements. Its original `html, body` rule does not override the fixture templates' inline font-family declarations in WeasyPrint. With the shared font forced, 11 of 19 fixture pairs have matching page counts. Eight production-template pairs still differ by one or two pages. Serpentype is not a drop-in WeasyPrint replacement; check page counts and render output for each production template before deployment.
+For a fair comparison, the fixture's `common.css` was extended with a universal rule forcing its bundled `Fixture Sans` font for both engines. Against the bundled WeasyPrint 64.1 baseline, all 19 page counts now match. Page orientation and named landscape content width also match.
 
-The local compatibility run used WeasyPrint 70.0 and Serpentype 0.3.0 on macOS arm64 / CPython 3.13. The bundled baselines use WeasyPrint 64.1, so they are useful references rather than a cross-version release gate.
+This is not pixel or pagination equivalence. Visual review and extracted text show different row-to-page assignments in the second tables of the appendix and notice-registration production templates, and some text line breaks/order differ. The fixtures therefore do not justify switching production rendering without reviewing those templates individually. WeasyPrint remains the production default.
+
+The verification run used macOS arm64, CPython 3.13, Serpentype 0.3.0 and WeasyPrint 64.1. The common-font override is needed because the production snapshots contain inline font-family declarations that otherwise prevent a controlled comparison.
+
+The local regression suites pass: `cargo test --locked --no-default-features` and `python -m pytest -q` (104 tests and 35 subtests).
