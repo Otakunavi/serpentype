@@ -30,6 +30,37 @@ fn text_x(document: &serpentype::layout::PreparedDocument, target: char) -> f32 
         .unwrap()
 }
 
+fn text_y(document: &serpentype::layout::PreparedDocument, target: char) -> f32 {
+    document
+        .pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .find_map(|item| match item {
+            Item::Text { ch, y, .. } if *ch == target => Some(*y),
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn html_table_cells_middle_align_by_default_and_headers_keep_start_alignment() {
+    let html = "<table><tr><th>H</th><th>J</th></tr>\
+                <tr><td>A</td><td>B<br>C<br>D</td></tr></table>";
+    let css = "@page { size:200pt 180pt; margin:10pt } \
+        table { width:120pt; table-layout:fixed; border-collapse:collapse } \
+        th, td { padding:0; border:none; font-size:10pt; line-height:12pt }";
+    let doc = renderer().layout(html, css).unwrap();
+
+    assert!(
+        text_x(&doc, 'H') < 15.0,
+        "the default <th> text should remain start-aligned"
+    );
+    assert!(
+        (text_y(&doc, 'A') - text_y(&doc, 'C')).abs() < 0.1,
+        "a short <td> should align to the middle line of a taller row"
+    );
+}
+
 #[test]
 fn colspan_aligns_the_following_cell_with_its_column() {
     let html = "<table><tr><td colspan='2'>H</td><td>E</td></tr>\

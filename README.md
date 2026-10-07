@@ -1,8 +1,8 @@
-# Serpentype 0.3.0
+# Serpentype 0.4.0
 
 > **AI-generated software:** Serpentype was generated with AI assistance. It is provided as-is; use it at your own risk. Review and validate its output before relying on it, especially for legal, financial, regulatory, or production documents.
 
-This is the 0.3.0 release. The [capability matrix](docs/capabilities.md) identifies supported, partial and experimental features. See the [0.3.0 release notes](docs/release-0.3.0.md) and [WeasyPrint compatibility limits](docs/weasyprint_compat.md).
+This is the 0.4.0 release. The [capability matrix](docs/capabilities.md) identifies supported, partial and experimental features. See the [0.4.0 release notes](docs/release-0.4.0.md) and [WeasyPrint compatibility limits](docs/weasyprint_compat.md).
 
 Serpentype is a Rust document layout engine with a Python API. It accepts a **controlled** HTML/CSS subset, calculates page breaks, then exports the prepared pages as a vector/text PDF. No browser, system renderer, or system font is used by Serpentype. A prebuilt platform wheel needs only Python ≥3.10.
 

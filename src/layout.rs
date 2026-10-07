@@ -14,7 +14,6 @@ use std::time::Instant;
 use unicode_segmentation::UnicodeSegmentation;
 
 const EPS: f32 = 0.02;
-const COLLAPSED_CELL_TEXT_WIDTH_COMPENSATION: f32 = 2.5;
 fn is_bidi_control(ch: char) -> bool {
     matches!(
         ch,
@@ -2378,7 +2377,12 @@ fn lines_for_shaped(
         } else {
             width
         };
-        if current_width + glyph.advance > available + EPS && !current.is_empty() && can_wrap {
+        let collapsible_space = glyph.ch == ' ' && !glyph.preserve_space;
+        if !collapsible_space
+            && current_width + glyph.advance > available + EPS
+            && !current.is_empty()
+            && can_wrap
+        {
             match last_break_opportunity(&current) {
                 Some((_, true)) => {
                     current_width = break_at_soft_hyphen(&mut current, &mut lines, default_height)
@@ -3772,8 +3776,16 @@ impl Flow {
         } else {
             natural_height.max(requested_outer)
         };
-        self.y = box_y + box_height + outer_bottom;
-        if self.pages.len() - 1 != page_index {
+        let fragmented = self.pages.len() - 1 != page_index;
+        self.y = if fragmented {
+            // Children may have moved the flow cursor to a later page. Their
+            // final-page position is already absolute within that page, so do
+            // not add the container's first-page origin a second time.
+            self.y + borders[2] + padding[2] + outer_bottom
+        } else {
+            box_y + box_height + outer_bottom
+        };
+        if fragmented {
             if style.overflow == "hidden" {
                 return Err(Error(
                     "overflow:hidden block cannot fragment across pages".into(),
@@ -3929,6 +3941,19 @@ impl Flow {
         if !inline_segment.children.is_empty() {
             result.push(inline_segment);
         }
+        if result
+            .last()
+            .is_some_and(|piece| piece.style.display != "inline")
+        {
+            result.push(Node {
+                tag: "br".into(),
+                attrs: Default::default(),
+                style: node.style.clone(),
+                text: String::new(),
+                children: vec![],
+                source_offset: node.source_offset,
+            });
+        }
         result
     }
     fn has_block_descendant(node: &Node) -> bool {
@@ -4082,19 +4107,46 @@ impl Flow {
         let fallback = ((width - node.style.column_gap * children.len().saturating_sub(1) as f32)
             / children.len() as f32)
             .max(EPS);
-        let bases: Vec<f32> = children
-            .iter()
-            .map(|child| {
-                resolved_dimension(
-                    child.style.flex_basis,
-                    child.style.flex_basis_percent,
-                    width,
-                )
-                .or_else(|| resolved_dimension(child.style.width, child.style.width_percent, width))
-                .unwrap_or(fallback)
-                .max(EPS)
-            })
-            .collect();
+        let mut bases = Vec::with_capacity(children.len());
+        for child in children {
+            let explicit = resolved_dimension(
+                child.style.flex_basis,
+                child.style.flex_basis_percent,
+                width,
+            )
+            .or_else(|| resolved_dimension(child.style.width, child.style.width_percent, width));
+            let intrinsic = if explicit.is_none()
+                && matches!(child.style.display.as_str(), "inline" | "inline-block")
+            {
+                let font = self.fonts.resolve_with_stretch(
+                    &child.style.family,
+                    child.style.weight,
+                    &child.style.font_style,
+                    child.style.font_stretch,
+                    ' ',
+                )?;
+                let text_width = child
+                    .plain_text()
+                    .split('\n')
+                    .map(|line| font.width(line, child.style.font_size))
+                    .collect::<Result<Vec<_>>>()?
+                    .into_iter()
+                    .fold(0.0, f32::max);
+                let inline_edges = if child.style.display == "inline-block" {
+                    child.style.padding[1] + child.style.padding[3] + 2.0 * child.style.border_width
+                } else {
+                    0.0
+                };
+                text_width + inline_edges
+            } else {
+                0.0
+            };
+            bases.push(
+                explicit
+                    .unwrap_or(if intrinsic > EPS { intrinsic } else { fallback })
+                    .max(EPS),
+            );
+        }
         let mut lines: Vec<Vec<usize>> = vec![Vec::new()];
         let mut occupied = 0.0;
         for (index, basis) in bases.iter().enumerate() {
@@ -6297,14 +6349,7 @@ impl Flow {
                 + spacing[0] * colspan.saturating_sub(1) as f32;
             let s = &cell.style;
             let border_inset = Self::cell_border_inset(s.border_width, collapsed);
-            // Match WeasyPrint's fixed-layout wrapping tolerance for collapsed-cell text;
-            // track sizing and painted cell geometry continue to use the CSS box width.
-            let inner = width - s.padding[1] - s.padding[3] - 2.0 * border_inset
-                + if collapsed {
-                    COLLAPSED_CELL_TEXT_WIDTH_COMPENSATION
-                } else {
-                    0.0
-                };
+            let inner = width - s.padding[1] - s.padding[3] - 2.0 * border_inset;
             if inner <= 0.0 {
                 return Err(Error("table cell has no usable width".into()));
             }
