@@ -24,3 +24,13 @@ fn css_units_and_selector_cascade() {
         serpentype::css::Color(1.0, 0.0, 0.0)
     );
 }
+
+#[test]
+fn universal_selector_matches_elements_and_has_zero_specificity() {
+    let sheet = serpentype::css::parse("* { color:red }", false).unwrap();
+    assert!(sheet.warnings.is_empty());
+    assert!(serpentype::css::selector_matches("*", "div", None, "card"));
+    assert!(serpentype::css::selector_matches(
+        "*.card", "section", None, "card"
+    ));
+}

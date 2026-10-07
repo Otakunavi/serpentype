@@ -149,12 +149,14 @@ fn defaults(tag: &str, style: &mut Style) {
         "h1" => {
             style.font_size = 24.0;
             style.line_height = 28.8;
+            style.line_height_factor = Some(1.2);
             style.weight = 700;
             style.margin = [12.0, 0.0, 12.0, 0.0]
         }
         "h2" => {
             style.font_size = 18.0;
             style.line_height = 21.6;
+            style.line_height_factor = Some(1.2);
             style.weight = 700;
             style.margin = [9.0, 0.0, 9.0, 0.0]
         }
@@ -210,6 +212,21 @@ fn numeric_hint(value: Option<&str>) -> Option<f32> {
         .ok()
         .filter(|number| number.is_finite() && *number >= 0.0)
         .map(|number| number * 0.75)
+}
+
+fn empty_dom_subtree(dom: &NodeRef) -> bool {
+    dom.children().all(|child| {
+        if let Some(text) = child.as_text() {
+            text.borrow().trim().is_empty()
+        } else if child
+            .as_element()
+            .is_some_and(|element| element.name.local.as_ref() == "img")
+        {
+            false
+        } else {
+            empty_dom_subtree(&child)
+        }
+    })
 }
 
 fn apply_presentational_hints(
@@ -370,6 +387,14 @@ fn convert(
             tag.as_str(),
             "span" | "strong" | "b" | "em" | "i" | "u" | "a" | "sup" | "sub" | "br"
         )
+        && !(style.height == Some(0.0)
+            && style.color_alpha <= f32::EPSILON
+            && style.background.is_none()
+            && style
+                .border_widths
+                .iter()
+                .all(|width| *width <= f32::EPSILON)
+            && empty_dom_subtree(dom))
     {
         warnings.push(
             Diagnostic::new(
@@ -397,6 +422,7 @@ fn convert(
         warnings.push(diagnostic);
     }
     if style.break_inside_avoid
+        && style.display == "block"
         && matches!(
             tag.as_str(),
             "div" | "section" | "article" | "body" | "span" | "td" | "th"
