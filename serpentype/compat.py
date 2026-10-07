@@ -146,9 +146,43 @@ class FontConfiguration:
         self.registry = FontRegistry()
         regular = str(files("serpentype").joinpath("assets", "NotoSans-Regular.ttf"))
         bold = str(files("serpentype").joinpath("assets", "NotoSans-Bold.ttf"))
-        for family in ("Noto Sans", "serif", "sans-serif", "Times Newer Roman", "Inter"):
+        self.registry.register_file(regular, family="Noto Sans")
+        self.registry.register_file(bold, family="Noto Sans", weight=700)
+        system_times = Path("/System/Library/Fonts/Supplemental")
+        times_faces = (
+            (system_times / "Times New Roman.ttf", 400, "normal"),
+            (system_times / "Times New Roman Bold.ttf", 700, "normal"),
+            (system_times / "Times New Roman Italic.ttf", 400, "italic"),
+            (system_times / "Times New Roman Bold Italic.ttf", 700, "italic"),
+        )
+        if all(path.is_file() for path, _, _ in times_faces):
+            for family in ("serif", "Times Newer Roman"):
+                for path, weight, style in times_faces:
+                    self.registry.register_file(
+                        str(path), family=family, weight=weight, style=style
+                    )
+        else:
+            for family in ("serif", "Times Newer Roman"):
+                self.registry.register_file(regular, family=family)
+                self.registry.register_file(bold, family=family, weight=700)
+        for family in ("sans-serif",):
             self.registry.register_file(regular, family=family)
             self.registry.register_file(bold, family=family, weight=700)
+        system_verdana = Path("/System/Library/Fonts/Supplemental")
+        verdana_faces = (
+            (system_verdana / "Verdana.ttf", 400, "normal"),
+            (system_verdana / "Verdana Bold.ttf", 700, "normal"),
+            (system_verdana / "Verdana Italic.ttf", 400, "italic"),
+            (system_verdana / "Verdana Bold Italic.ttf", 700, "italic"),
+        )
+        if all(path.is_file() for path, _, _ in verdana_faces):
+            for path, weight, style in verdana_faces:
+                self.registry.register_file(
+                    str(path), family="Inter", weight=weight, style=style
+                )
+        else:
+            self.registry.register_file(regular, family="Inter")
+            self.registry.register_file(bold, family="Inter", weight=700)
 
 
 class CSS:
@@ -271,7 +305,8 @@ class HTML:
                                     self.resource_loader)
         prepared = Renderer(fonts=config.registry, base_dir=str(base_dir),
                             presentational_hints=presentational_hints,
-                            source_name=self._source_name, limits=limits).layout(
+                            source_name=self._source_name, limits=limits,
+                            use_font_bbox_for_line_height=True).layout(
             html, css_text
         )
         return Document(prepared)

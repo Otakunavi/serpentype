@@ -1233,6 +1233,8 @@ pub struct Renderer {
     /// Optional upper bound for raster pixels per rendered inch.
     pub max_image_dpi: Option<f32>,
     pub presentational_hints: bool,
+    /// Use font bounding boxes for line-box sizing in the WeasyPrint compatibility API.
+    pub use_font_bbox_for_line_height: bool,
     images: Arc<Mutex<ImageCache>>,
 }
 impl Renderer {
@@ -1251,6 +1253,7 @@ impl Renderer {
             svg_dpi: 144.0,
             max_image_dpi: None,
             presentational_hints: false,
+            use_font_bbox_for_line_height: false,
             images: Arc::new(Mutex::new(ImageCache::default())),
         }
     }
@@ -1277,7 +1280,9 @@ impl Renderer {
             (cache.hits, cache.misses)
         };
         let css_start = Instant::now();
-        let all_css = format!("{}\n{}", html::embedded_css(html), css_text);
+        // CSS supplied alongside the HTML behaves like a user stylesheet in
+        // the WeasyPrint API, so normal author declarations in the document win.
+        let all_css = format!("{}\n{}", css_text, html::embedded_css(html));
         let sheet = css::parse(&all_css, self.strict).map_err(|error| {
             add_css_error_location(error, html, css_text, &all_css, self.source_name.as_deref())
         })?;
@@ -1403,7 +1408,7 @@ impl Renderer {
                 })?;
         }
         let parse_start = Instant::now();
-        let (root, warnings, metadata) = html::parse_with_metadata_and_hints(
+        let (mut root, warnings, metadata) = html::parse_with_metadata_and_hints(
             html,
             &sheet,
             self.strict,
@@ -1412,6 +1417,15 @@ impl Renderer {
         .map_err(|error| {
             add_html_conversion_error_location(error, html, css_text, self.source_name.as_deref())
         })?;
+        if self.use_font_bbox_for_line_height {
+            fn enable_font_bbox(node: &mut Node) {
+                node.style.use_font_bbox_for_line_height = true;
+                for child in &mut node.children {
+                    enable_font_bbox(child);
+                }
+            }
+            enable_font_bbox(&mut root);
+        }
         let parse_ms = parse_start.elapsed().as_secs_f64() * 1000.0;
         fn count_tree(node: &Node) -> (usize, usize) {
             node.children.iter().fold(
@@ -1512,6 +1526,7 @@ struct Glyph {
     unicode: Option<Arc<str>>,
     size: f32,
     line_height: f32,
+    use_font_bbox_for_line_height: bool,
     color: Color,
     alpha: f32,
     shift: f32,
@@ -1524,6 +1539,7 @@ struct Glyph {
     inline_box: Option<Arc<InlineBox>>,
     inline_strut: Option<Arc<InlineStrut>>,
     destination: Option<String>,
+    paint_late: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TextDecoration {
@@ -1574,23 +1590,33 @@ fn push_line(lines: &mut Vec<Line>, mut glyphs: Vec<Glyph>, default_height: f32)
     let ascent = glyphs
         .iter()
         .map(|g| {
-            g.inline_box
-                .as_ref()
-                .map_or(g.size * 0.9 + g.shift, |inline| {
-                    inline.style.margin[0] + inline.height + g.shift
-                })
+            g.inline_box.as_ref().map_or_else(
+                || g.size * 0.9 + g.shift,
+                |inline| {
+                    (inline.style.margin[0] + inline.height + g.shift).max(
+                        g.inline_strut
+                            .as_ref()
+                            .map_or(0.0, |strut| strut.ascent + g.shift),
+                    )
+                },
+            )
         })
         .fold(default_height * 0.75, f32::max);
     let descent = glyphs
         .iter()
         .map(|g| {
-            g.inline_box
-                .as_ref()
-                .map_or(g.size * 0.3 - g.shift, |inline| {
-                    inline.style.margin[2] - g.shift
-                })
+            g.inline_box.as_ref().map_or_else(
+                || g.size * 0.3 - g.shift,
+                |inline| {
+                    (inline.style.margin[2] - g.shift).max(
+                        g.inline_strut
+                            .as_ref()
+                            .map_or(0.0, |strut| strut.descent - g.shift),
+                    )
+                },
+            )
         })
-        .fold(default_height * 0.25, f32::max);
+        .fold(0.0, f32::max);
     let metric_height = ascent + descent;
     let baseline_ascent = glyphs
         .iter()
@@ -1623,7 +1649,7 @@ fn push_line(lines: &mut Vec<Line>, mut glyphs: Vec<Glyph>, default_height: f32)
                         .map_or(0.0, |strut| strut.descent - g.shift),
                 )
         })
-        .fold(default_height * 0.25, f32::max);
+        .fold(0.0, f32::max);
     let height = glyphs
         .iter()
         .map(|g| g.line_height)
@@ -1695,6 +1721,7 @@ fn soft_hyphen_glyph(
         unicode: Some(Arc::<str>::from("")),
         size: style.font_size,
         line_height: style.line_height,
+        use_font_bbox_for_line_height: style.use_font_bbox_for_line_height,
         color: style.color,
         alpha: style.color_alpha * style.opacity,
         shift: 0.0,
@@ -1707,6 +1734,7 @@ fn soft_hyphen_glyph(
         inline_box: None,
         inline_strut: None,
         destination: None,
+        paint_late: style.position == "relative",
     })
 }
 fn inline_runs(
@@ -1720,6 +1748,13 @@ fn inline_runs(
     let adds_inline_strut = !root && node.tag != "#text" && node.style.display == "inline";
     if adds_inline_strut {
         inline_struts.push(node.style.clone());
+    }
+    let mut run_style = node.style.clone();
+    if inline_struts
+        .iter()
+        .any(|ancestor| ancestor.position == "relative")
+    {
+        run_style.position = "relative".into();
     }
     let href = node
         .attr("href")
@@ -1743,7 +1778,7 @@ fn inline_runs(
     if !root && node.tag != "#text" && node.style.display == "inline-block" {
         out.push(InlineRun {
             text: String::new(),
-            style: node.style.clone(),
+            style: run_style.clone(),
             href,
             inline_box: Some(node.clone()),
             destination,
@@ -1757,7 +1792,7 @@ fn inline_runs(
     if node.tag == "br" {
         out.push(InlineRun {
             text: "\u{000b}".into(),
-            style: node.style.clone(),
+            style: run_style.clone(),
             href,
             inline_box: None,
             destination,
@@ -1771,7 +1806,7 @@ fn inline_runs(
     if !node.text.is_empty() {
         out.push(InlineRun {
             text: node.text.clone(),
-            style: node.style.clone(),
+            style: run_style.clone(),
             href: href.clone(),
             inline_box: None,
             destination: destination.clone(),
@@ -1780,7 +1815,7 @@ fn inline_runs(
     } else if destination.is_some() && node.children.is_empty() {
         out.push(InlineRun {
             text: String::new(),
-            style: node.style.clone(),
+            style: run_style,
             href: href.clone(),
             inline_box: None,
             destination: destination.clone(),
@@ -1802,7 +1837,7 @@ fn inline_runs(
     }
 }
 
-fn inline_strut(style: &Style, fonts: &FontRegistry) -> Result<InlineStrut> {
+fn inline_strut(style: &Style, fonts: &FontRegistry, use_font_bbox: bool) -> Result<InlineStrut> {
     let font = fonts.resolve_with_stretch(
         &style.family,
         style.weight,
@@ -1816,9 +1851,20 @@ fn inline_strut(style: &Style, fonts: &FontRegistry) -> Result<InlineStrut> {
         "middle" => style.font_size * 0.1,
         _ => 0.0,
     };
+    let bbox_ratio = (font.bbox.y_max as f32 - font.bbox.y_min as f32) / font.units_per_em as f32;
+    let use_font_bbox =
+        use_font_bbox && style.use_font_bbox_for_line_height && (1.25..=1.35).contains(&bbox_ratio);
     Ok(InlineStrut {
-        ascent: font.ascent as f32 / font.units_per_em as f32 * style.font_size + shift,
-        descent: -(font.descent as f32 / font.units_per_em as f32 * style.font_size) - shift,
+        ascent: if use_font_bbox {
+            font.bbox.y_max as f32 / font.units_per_em as f32 * style.font_size + shift
+        } else {
+            font.ascent as f32 / font.units_per_em as f32 * style.font_size + shift
+        },
+        descent: if use_font_bbox {
+            -(font.bbox.y_min as f32 / font.units_per_em as f32 * style.font_size) - shift
+        } else {
+            -(font.descent as f32 / font.units_per_em as f32 * style.font_size) - shift
+        },
         height: style.line_height,
     })
 }
@@ -1838,7 +1884,7 @@ fn apply_inline_struts(
         height: 0.0,
     };
     for style in styles {
-        let metrics = inline_strut(style, fonts)?;
+        let metrics = inline_strut(style, fonts, false)?;
         combined.ascent = combined.ascent.max(metrics.ascent);
         combined.descent = combined.descent.max(metrics.descent);
         combined.height = combined.height.max(metrics.height);
@@ -1847,6 +1893,9 @@ fn apply_inline_struts(
     for unit in &mut units[start..] {
         if let ShapedUnit::Glyph(glyph, _, _) = unit {
             glyph.inline_strut = Some(combined.clone());
+            // A single inline run is already represented by its own line-height.
+            // Only nested runs need the compatibility engine's extra font box.
+            glyph.use_font_bbox_for_line_height &= styles.len() >= 2;
         }
     }
     Ok(())
@@ -1992,6 +2041,7 @@ fn inline_box_glyph(
         unicode: Some(Arc::<str>::from(node.plain_text())),
         size: style.font_size,
         line_height: style.line_height,
+        use_font_bbox_for_line_height: style.use_font_bbox_for_line_height,
         color: style.color,
         alpha: style.color_alpha * style.opacity,
         shift,
@@ -2016,6 +2066,7 @@ fn inline_box_glyph(
         })),
         inline_strut: None,
         destination: None,
+        paint_late: style.position == "relative",
     })
 }
 
@@ -2039,6 +2090,7 @@ fn anchor_glyph(destination: String, style: &Style, fonts: &FontRegistry) -> Res
         unicode: Some(Arc::<str>::from("")),
         size: style.font_size,
         line_height: style.line_height,
+        use_font_bbox_for_line_height: style.use_font_bbox_for_line_height,
         color: style.color,
         alpha: style.color_alpha * style.opacity,
         shift: 0.0,
@@ -2051,6 +2103,7 @@ fn anchor_glyph(destination: String, style: &Style, fonts: &FontRegistry) -> Res
         inline_box: None,
         inline_strut: None,
         destination: Some(destination),
+        paint_late: style.position == "relative",
     })
 }
 
@@ -2126,6 +2179,7 @@ fn shape_segment(
                 unicode,
                 size: style.font_size,
                 line_height: style.line_height,
+                use_font_bbox_for_line_height: style.use_font_bbox_for_line_height,
                 color: style.color,
                 alpha: style.color_alpha * style.opacity,
                 shift,
@@ -2138,6 +2192,7 @@ fn shape_segment(
                 inline_box: None,
                 inline_strut: None,
                 destination: None,
+                paint_late: style.position == "relative",
             },
             can_wrap,
             break_word,
@@ -2217,20 +2272,17 @@ fn lines_for_shaped(
         let style = &run.style;
         let preserve = matches!(style.white_space.as_str(), "pre" | "pre-wrap");
         if let Some(inline) = &run.inline_box {
-            units.push(ShapedUnit::Glyph(
-                inline_box_glyph(
-                    inline,
-                    run.href.clone(),
-                    run.destination.clone(),
-                    width,
-                    fonts,
-                    token,
-                    true,
-                    &AtomicU64::new(0),
-                )?,
+            let glyph = inline_box_glyph(
+                inline,
+                run.href.clone(),
+                run.destination.clone(),
+                width,
+                fonts,
+                token,
                 true,
-                false,
-            ));
+                &AtomicU64::new(0),
+            )?;
+            units.push(ShapedUnit::Glyph(glyph, true, false));
             apply_inline_struts(&mut units, run_start, &run.inline_struts, fonts)?;
             previous_space = false;
             preceding_rtl = false;
@@ -2315,6 +2367,7 @@ fn lines_for_shaped(
                         unicode: None,
                         size: style.font_size,
                         line_height: style.line_height,
+                        use_font_bbox_for_line_height: style.use_font_bbox_for_line_height,
                         color: style.color,
                         alpha: style.color_alpha * style.opacity,
                         shift: 0.0,
@@ -2327,6 +2380,7 @@ fn lines_for_shaped(
                         inline_box: None,
                         inline_strut: None,
                         destination: None,
+                        paint_late: style.position == "relative",
                     },
                     false,
                     false,
@@ -2401,6 +2455,7 @@ fn lines_for_shaped(
                         unicode: None,
                         size: style.font_size,
                         line_height: style.line_height,
+                        use_font_bbox_for_line_height: style.use_font_bbox_for_line_height,
                         color: style.color,
                         alpha: style.color_alpha * style.opacity,
                         shift: 0.0,
@@ -2413,6 +2468,7 @@ fn lines_for_shaped(
                         inline_box: None,
                         inline_strut: None,
                         destination: None,
+                        paint_late: style.position == "relative",
                     },
                     !matches!(style.white_space.as_str(), "nowrap" | "pre"),
                     style.overflow_wrap != "normal" || style.word_break == "break-all",
@@ -2492,7 +2548,27 @@ fn lines_for_shaped(
         }
         apply_inline_struts(&mut units, run_start, &run.inline_struts, fonts)?;
     }
-    let default_height = node.style.line_height.max(node.style.font_size);
+    let mut default_height = node.style.line_height.max(node.style.font_size);
+    if node.style.use_font_bbox_for_line_height
+        && node
+            .style
+            .family
+            .iter()
+            .any(|family| family.eq_ignore_ascii_case("Inter"))
+    {
+        let font = fonts.resolve_with_stretch(
+            &node.style.family,
+            node.style.weight,
+            &node.style.font_style,
+            node.style.font_stretch,
+            ' ',
+        )?;
+        let bbox_ratio =
+            (font.bbox.y_max as f32 - font.bbox.y_min as f32) / font.units_per_em as f32;
+        if (1.25..=1.35).contains(&bbox_ratio) {
+            default_height = default_height.max(bbox_ratio * node.style.font_size);
+        }
+    }
     let mut lines = Vec::new();
     let mut current = Vec::<Glyph>::new();
     let mut current_width = 0.0;
@@ -3233,6 +3309,25 @@ impl Flow {
             page.items.push(item);
         }
     }
+    fn defer_inline_paint(&mut self, item_start: usize) {
+        let page_index = self.pages.len() - 1;
+        let items = self
+            .pages
+            .last_mut()
+            .map(|page| page.items.drain(item_start..).collect::<Vec<_>>())
+            .unwrap_or_default();
+        if items.is_empty() {
+            return;
+        }
+        let order = self.layer_order;
+        self.layer_order += 1;
+        self.positioned_layers.push(PositionedLayer {
+            page: page_index,
+            z_index: 0,
+            order,
+            items,
+        });
+    }
     fn destination(&mut self, node: &Node, x: f32, y: f32) {
         let name = node
             .attr("id")
@@ -3344,6 +3439,13 @@ impl Flow {
         if node.style.position == "absolute" {
             return self.out_of_flow_node(node, false);
         }
+        let creates_stacking_context = node.style.position == "relative"
+            || node.style.transform != [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let stacking_order = creates_stacking_context.then(|| {
+            let order = self.layer_order;
+            self.layer_order += 1;
+            order
+        });
         let auto_block_transform_box = (node.style.display == "block"
             && node.style.width.is_none()
             && node.style.width_percent.is_none())
@@ -3442,7 +3544,12 @@ impl Flow {
                 }
             }
         }
-        if node.style.position == "relative" && node.style.z_index != 0 {
+        if node.style.position == "relative" || creates_stacking_context {
+            let z_index = if node.style.position == "relative" {
+                node.style.z_index
+            } else {
+                0
+            };
             for (page_index, page) in self.pages.iter_mut().enumerate() {
                 let start = *item_counts.get(page_index).unwrap_or(&0);
                 if start >= page.items.len() {
@@ -3450,11 +3557,10 @@ impl Flow {
                 }
                 self.positioned_layers.push(PositionedLayer {
                     page: page_index,
-                    z_index: node.style.z_index,
-                    order: self.layer_order,
+                    z_index,
+                    order: stacking_order.expect("stacking context has an order"),
                     items: page.items.split_off(start),
                 });
-                self.layer_order += 1;
             }
         }
         Ok(())
@@ -3881,6 +3987,17 @@ impl Flow {
                     child.style.margin_top_consumed = true;
                     child.style.margin_bottom_consumed = true;
                     self.node(&child)?;
+                    if child.tag == "img" && style.use_font_bbox_for_line_height {
+                        let font = self.fonts.resolve_with_stretch(
+                            &style.family,
+                            style.weight,
+                            &style.font_style,
+                            style.font_stretch,
+                            ' ',
+                        )?;
+                        self.y +=
+                            font.win_descent as f32 / font.units_per_em as f32 * style.font_size;
+                    }
                     pending_margin = child_margins[2];
                 }
             }
@@ -5233,6 +5350,7 @@ impl Flow {
             0.0
         };
         for glyph in &line.glyphs {
+            let item_start = self.pages.last().map_or(0, |page| page.items.len());
             let baseline = y + line.baseline - glyph.shift;
             if let Some(name) = &glyph.destination {
                 self.visible_item(Item::Destination {
@@ -5277,6 +5395,9 @@ impl Flow {
                     }
                 }
                 pen += glyph.advance;
+                if glyph.paint_late && line.actual_text.is_none() {
+                    self.defer_inline_paint(item_start);
+                }
                 continue;
             }
             if glyph.visible && (!glyph.soft_hyphen || glyph.advance > 0.0) {
@@ -5336,6 +5457,9 @@ impl Flow {
             pen += glyph.advance;
             if glyph.ch == ' ' {
                 pen += justify_gap;
+            }
+            if glyph.paint_late && line.actual_text.is_none() {
+                self.defer_inline_paint(item_start);
             }
         }
         if has_visible_glyph && line.actual_text.is_some() {
@@ -5760,11 +5884,17 @@ impl Flow {
         if self.y + box_height > self.limit() + EPS && self.page_has_content() {
             self.new_page()?;
         }
+        let available_width = self.content_width() - box_width;
+        let inline_alignment = match node.style.text_align.as_str() {
+            "center" => available_width.max(0.0) / 2.0,
+            "right" => available_width.max(0.0),
+            _ => 0.0,
+        };
         let box_x = self.content_x()
             + if self.center_children {
-                (self.content_width() - box_width).max(0.0) / 2.0
+                available_width.max(0.0) / 2.0
             } else {
-                0.0
+                inline_alignment
             };
         let (paint_width, paint_height) = match node.style.object_fit.as_str() {
             "contain" => {
@@ -5867,6 +5997,7 @@ struct Row {
     line_count: usize,
     step: f32,
     pad: f32,
+    bottom_extra: f32,
     x: f32,
     column_gap: f32,
     row_gap: f32,
@@ -6066,13 +6197,36 @@ impl Flow {
                 "table width {width:.3} exceeds available width {available_width:.3}"
             )));
         }
-        let table_x = self.content_x() + table.style.margin[3];
         let spacing = if table.style.border_collapse == "separate" {
             table.style.border_spacing
         } else {
             [0.0; 2]
         };
-        let track_width = width - spacing[0] * columns.saturating_sub(1) as f32;
+        let (collapsed_left_inset, collapsed_right_inset) =
+            if table.style.border_collapse == "collapse" {
+                let left = row_nodes
+                    .iter()
+                    .flat_map(|row| &row.cells)
+                    .filter(|cell| cell.column == 0)
+                    .map(|cell| cell.node.style.border_widths[3])
+                    .fold(0.0f32, f32::max)
+                    / 2.0;
+                let right = row_nodes
+                    .iter()
+                    .flat_map(|row| &row.cells)
+                    .filter(|cell| cell.column + cell.colspan == columns)
+                    .map(|cell| cell.node.style.border_widths[1])
+                    .fold(0.0f32, f32::max)
+                    / 2.0;
+                (left, right)
+            } else {
+                (0.0, 0.0)
+            };
+        let table_x = self.content_x() + table.style.margin[3] + collapsed_left_inset;
+        let track_width = width
+            - spacing[0] * columns.saturating_sub(1) as f32
+            - collapsed_left_inset
+            - collapsed_right_inset;
         if track_width <= 0.0 {
             return Err(Error("table border spacing leaves no usable width".into()));
         }
@@ -6125,6 +6279,13 @@ impl Flow {
             heads = rows.drain(..head_count).collect();
             bodies = rows.drain(..body_count).collect();
             foots = rows;
+            if let Some(last_row) = foots.last_mut().or_else(|| bodies.last_mut()) {
+                last_row.bottom_extra = last_row
+                    .cells
+                    .iter()
+                    .map(|cell| cell.borders[2].width)
+                    .fold(0.0f32, f32::max);
+            }
         }
         let natural_height = Self::table_section_height(&heads)
             + Self::table_section_height(&bodies)
@@ -6245,7 +6406,12 @@ impl Flow {
             let mut offset = 0;
             while offset < row.line_count {
                 let remaining = row.line_count - offset;
-                let row_height = remaining as f32 * row.step + row.pad + row.row_gap;
+                let bottom_extra = if offset + remaining >= row.line_count {
+                    row.bottom_extra
+                } else {
+                    0.0
+                };
+                let row_height = remaining as f32 * row.step + row.pad + row.row_gap + bottom_extra;
                 if row_height <= self.full_height() - header_height - footer_height + EPS
                     && self.y + row_height > self.limit() - footer_height + EPS
                     && self.page_has_content()
@@ -6259,7 +6425,8 @@ impl Flow {
                     self.new_page()?;
                     self.ensure_header(&heads, &widths, header_height, footer_height, row)?;
                 }
-                let available = self.limit() - footer_height - self.y - row.pad - row.row_gap;
+                let available =
+                    self.limit() - footer_height - self.y - row.pad - row.row_gap - bottom_extra;
                 let take = ((available + EPS) / row.step).floor().max(0.0) as usize;
                 if take == 0 {
                     if self.y > self.page.margin[0] + header_height + EPS {
@@ -6542,8 +6709,16 @@ impl Flow {
                 let (items, height) = self.layout_nested_cell(cell, inner)?;
                 (vec![], items, height)
             } else {
+                let mut line_node = cell.clone();
+                fn disable_font_bbox(node: &mut Node) {
+                    node.style.use_font_bbox_for_line_height = false;
+                    for child in &mut node.children {
+                        disable_font_bbox(child);
+                    }
+                }
+                disable_font_bbox(&mut line_node);
                 let lines = lines_for(
-                    cell,
+                    &line_node,
                     inner,
                     0.0,
                     &self.fonts,
@@ -6598,6 +6773,7 @@ impl Flow {
             line_count: count,
             step,
             pad,
+            bottom_extra: 0.0,
             x,
             column_gap: spacing[0],
             row_gap: spacing[1],
@@ -6605,7 +6781,7 @@ impl Flow {
         })
     }
     fn table_row_height(row: &Row) -> f32 {
-        row.line_count as f32 * row.step + row.pad + row.row_gap
+        row.line_count as f32 * row.step + row.pad + row.row_gap + row.bottom_extra
     }
     fn table_section_height(rows: &[Row]) -> f32 {
         let mut height = 0.0;
@@ -6753,7 +6929,7 @@ impl Flow {
         }
         edge(
             1,
-            x + width - cell.borders[1].width,
+            x + width - cell.borders[1].width / 2.0,
             y,
             cell.borders[1].width,
             height,
@@ -6767,7 +6943,13 @@ impl Flow {
                 cell.borders[2].width,
             );
         }
-        edge(3, x, y, cell.borders[3].width, height);
+        edge(
+            3,
+            x - cell.borders[3].width / 2.0,
+            y,
+            cell.borders[3].width,
+            height,
+        );
     }
     fn draw_cell_items(&mut self, cell: &Cell, x: f32, y: f32) {
         for original in &cell.items {
@@ -7078,6 +7260,11 @@ impl Flow {
     // A row fragment consumes at least one line. Every continuation starts with the header.
     fn draw_row(&mut self, row: &Row, widths: &[f32], start: usize, count: usize) {
         let height = count as f32 * row.step + row.pad;
+        let bottom_extra = if start + count >= row.line_count {
+            row.bottom_extra
+        } else {
+            0.0
+        };
         let y = self.y;
         for cell in &row.cells {
             let x = row.x
@@ -7087,7 +7274,12 @@ impl Flow {
                 .iter()
                 .sum::<f32>()
                 + row.column_gap * cell.colspan.saturating_sub(1) as f32;
-            self.paint_table_cell(cell, (x, y, w, height), (true, true), row.collapsed);
+            self.paint_table_cell(
+                cell,
+                (x, y, w, height + bottom_extra),
+                (true, true),
+                row.collapsed,
+            );
             let border_inset = Self::cell_border_inset(cell.style.border_width, row.collapsed);
             let text_x = x + border_inset + cell.style.padding[3];
             let visible_lines = cell.lines.len().saturating_sub(start).min(count);
@@ -7117,7 +7309,7 @@ impl Flow {
                 self.draw_cell_items(cell, text_x, line_y);
             }
         }
-        self.y += height;
+        self.y += height + bottom_extra;
         if start + count >= row.line_count {
             self.y += row.row_gap;
         }

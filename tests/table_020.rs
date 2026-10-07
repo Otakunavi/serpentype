@@ -166,6 +166,41 @@ fn collapsed_table_ignores_border_spacing() {
 }
 
 #[test]
+fn collapsed_table_outer_borders_are_centered_on_half_insets() {
+    let doc = renderer()
+        .layout(
+            "<table><tr><td>X</td></tr></table>",
+            "@page { size:200pt 120pt; margin:0 } html,body { margin:0; padding:0 } \
+             table { width:100pt; border-collapse:collapse } \
+             td { border:12pt solid #000; padding:0 }",
+        )
+        .unwrap();
+    let text_x = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::Text { ch: 'X', x, .. } => Some(*x),
+            _ => None,
+        })
+        .unwrap();
+    let left_border_x = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::Rect {
+                x,
+                fill: Some(Color(0.0, 0.0, 0.0)),
+                ..
+            } if *x < 1.0 => Some(*x),
+            _ => None,
+        })
+        .unwrap();
+
+    assert!((text_x - 12.0).abs() < 0.05);
+    assert!(left_border_x.abs() < 0.05);
+}
+
+#[test]
 fn collapsed_table_page_fragment_draws_its_bottom_border() {
     let rows = (0..12)
         .map(|index| format!("<tr><td>R{index:02}</td></tr>"))

@@ -430,6 +430,7 @@ pub struct Style {
     pub font_size: f32,
     pub line_height: f32,
     pub line_height_factor: Option<f32>,
+    pub use_font_bbox_for_line_height: bool,
     pub text_align: String,
     pub text_indent: f32,
     pub overflow_wrap: String,
@@ -532,6 +533,7 @@ impl Default for Style {
             font_size: 12.0,
             line_height: 14.4,
             line_height_factor: Some(1.2),
+            use_font_bbox_for_line_height: false,
             text_align: "left".into(),
             text_indent: 0.0,
             overflow_wrap: "break-word".into(),
@@ -628,6 +630,7 @@ impl Style {
                 .line_height_factor
                 .map_or(parent.line_height, |factor| parent.font_size * factor),
             line_height_factor: parent.line_height_factor,
+            use_font_bbox_for_line_height: parent.use_font_bbox_for_line_height,
             text_align: parent.text_align.clone(),
             overflow_wrap: parent.overflow_wrap.clone(),
             word_break: parent.word_break.clone(),

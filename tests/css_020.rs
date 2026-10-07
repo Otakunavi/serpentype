@@ -54,6 +54,29 @@ fn named_landscape_page_expands_an_auto_width_ancestor_frame() {
 }
 
 #[test]
+fn embedded_author_styles_override_external_user_styles() {
+    let doc = renderer()
+        .layout(
+            "<style>p { font-size:20pt }</style><p>Author rule</p>",
+            "p { font-size:10pt }",
+        )
+        .unwrap();
+    let size = doc
+        .pages
+        .iter()
+        .flat_map(|page| &page.items)
+        .find_map(|item| match item {
+            Item::Text { ch: 'A', size, .. } => Some(*size),
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        (size - 20.0).abs() < 0.01,
+        "expected author size 20pt, got {size}"
+    );
+}
+
+#[test]
 fn table_nested_in_inline_spans_keeps_table_layout_and_borders() {
     let html = "<div><span><span><table><tbody><tr><td>LEFT</td><td>RIGHT</td></tr>\
         <tr><td>LOWER</td><td>CELLS</td></tr></tbody></table></span></span></div>";
@@ -317,6 +340,87 @@ fn translate_scale_and_rotate_reach_the_pdf_and_transform_links() {
 }
 
 #[test]
+fn transformed_block_is_painted_after_normal_flow_content() {
+    let doc = renderer()
+        .layout(
+            "<p>A</p><p class='transformed'>B</p><p>C</p>",
+            "p { margin:0 } .transformed { transform:rotate(1deg) }",
+        )
+        .unwrap();
+    let text = doc.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect::<String>();
+
+    assert_eq!(text, "ACB");
+}
+
+#[test]
+fn relative_block_is_painted_after_normal_flow_content() {
+    let doc = renderer()
+        .layout(
+            "<p>A</p><p class='relative'>B</p><p>C</p>",
+            "p { margin:0 } .relative { position:relative }",
+        )
+        .unwrap();
+    let text = doc.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect::<String>();
+
+    assert_eq!(text, "ACB");
+}
+
+#[test]
+fn relative_block_precedes_its_absolute_child_in_paint_order() {
+    let doc = renderer()
+        .layout(
+            "<p>A</p><div class='relative'>B<div class='absolute'>X</div></div><p>C</p>",
+            "p { margin:0 } .relative { position:relative } \
+             .absolute { position:absolute; top:0; left:0 }",
+        )
+        .unwrap();
+    let text = doc.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect::<String>();
+
+    assert_eq!(text, "ACBX");
+}
+
+#[test]
+fn relative_inline_run_is_painted_after_later_flow_content() {
+    let doc = renderer()
+        .layout(
+            "<p>A<span class='relative'>B</span>C</p><p>D</p>",
+            "p { margin:0 } .relative { display:inline-block; position:relative }",
+        )
+        .unwrap();
+    let text = doc.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect::<String>();
+
+    assert_eq!(text, "ACDB");
+}
+
+#[test]
 fn flex_wrap_reverse_growth_alignment_and_percentage_basis_are_applied() {
     let doc = renderer()
         .layout(
@@ -502,6 +606,29 @@ fn object_fit_and_position_control_replaced_image_geometry() {
         .items
         .iter()
         .any(|item| matches!(item, Item::BeginClip { .. })));
+}
+
+#[test]
+fn inline_images_follow_the_inherited_text_alignment() {
+    let doc = renderer()
+        .layout(
+            "<div><img src='tests/fixtures/blue.png' style='width:20px'></div>",
+            "@page { size:200pt 200pt; margin:0 } div { text-align:center }",
+        )
+        .unwrap();
+    let image_x = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::Image { x, .. } => Some(*x),
+            _ => None,
+        })
+        .unwrap();
+
+    assert!(
+        (image_x - 92.5).abs() < 0.02,
+        "centered inline image should be centered in the containing block: {image_x}"
+    );
 }
 
 #[test]
@@ -1476,6 +1603,29 @@ fn glyph_baselines_use_font_vertical_metrics_without_expanding_css_line_height()
     assert!(
         (b - a - 12.0).abs() < 0.05,
         "line height changed: {a} -> {b}"
+    );
+}
+
+#[test]
+fn headings_inherit_unitless_body_line_height() {
+    let doc = renderer()
+        .layout(
+            "<h1>A</h1><p>B</p>",
+            "@page { size:200pt 160pt; margin:0 } \
+             body { font-size:10pt; line-height:1.25 } \
+             h1 { margin:0; font-size:16pt } p { margin:0 }",
+        )
+        .unwrap();
+    let face = ttf_parser::Face::parse(include_bytes!("../serpentype/assets/NotoSans-Bold.ttf"), 0)
+        .unwrap();
+    let ascent = face.ascender() as f32 / face.units_per_em() as f32 * 16.0;
+    let descent = -(face.descender() as f32 / face.units_per_em() as f32 * 16.0);
+    let expected = ascent + (20.0 - ascent - descent) / 2.0;
+    let actual = text_position(&doc, 'A').unwrap().1;
+
+    assert!(
+        (actual - expected).abs() < 0.05,
+        "heading did not inherit the unitless 1.25 line-height: {actual} != {expected}"
     );
 }
 

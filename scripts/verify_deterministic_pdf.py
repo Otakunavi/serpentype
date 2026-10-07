@@ -6,7 +6,7 @@ import hashlib
 import serpentype
 
 
-EXPECTED_SHA256 = "a8356d1a9a03a38c5dd1c970f1c74955c7f8c753fda18db330092d8daf38bfba"
+EXPECTED_SHA256 = "64750613774dc2e9ebaf383ab97993ecb717bd96b9cc5b26ef321593aa6b4e00"
 
 fonts = serpentype.FontRegistry()
 fonts.register_file(serpentype.bundled_font_path(), family="Noto Sans")

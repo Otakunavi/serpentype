@@ -12,6 +12,8 @@ pub struct FontData {
     pub units_per_em: u16,
     pub ascent: i16,
     pub descent: i16,
+    /// OS/2 usWinDescent used for baseline-aligned replaced elements.
+    pub win_descent: u16,
     pub bbox: ttf_parser::Rect,
     pub weight_axis: Option<(f32, f32, f32)>,
     pub width_axis: Option<(f32, f32, f32)>,
@@ -299,6 +301,12 @@ impl FontRegistry {
             let units_per_em = face.units_per_em();
             let ascent = face.ascender();
             let descent = face.descender();
+            let win_descent = face
+                .raw_face()
+                .table(ttf_parser::Tag::from_bytes(b"OS/2"))
+                .and_then(|os2| os2.get(80..82))
+                .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
+                .unwrap_or_else(|| descent.unsigned_abs());
             let bbox = face.global_bounding_box();
             let is_variable = face.is_variable();
             let weight_axis = face
@@ -317,6 +325,7 @@ impl FontRegistry {
                 units_per_em,
                 ascent,
                 descent,
+                win_descent,
                 bbox,
                 weight_axis,
                 width_axis,
@@ -565,6 +574,7 @@ impl FontRegistry {
             units_per_em: found.data.units_per_em,
             ascent: face.ascender(),
             descent: face.descender(),
+            win_descent: found.data.win_descent,
             bbox: face.global_bounding_box(),
             weight_axis: found.data.weight_axis,
             width_axis: found.data.width_axis,
