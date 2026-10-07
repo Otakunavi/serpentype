@@ -1701,24 +1701,27 @@ fn soft_hyphen_glyph(
     href: Option<Arc<str>>,
     preserve_space: bool,
 ) -> Result<Glyph> {
+    // A selected soft hyphen is represented by U+2010 HYPHEN in PDF text.
+    // Keeping the glyph and ToUnicode mapping aligned avoids extracting a
+    // different character from renderers which preserve the manual hyphen.
     let font = fonts.resolve_with_stretch(
         &style.family,
         style.weight,
         &style.font_style,
         style.font_stretch,
-        '-',
+        '‐',
     )?;
-    let (id, units) = font.glyph('-')?;
+    let (id, units) = font.glyph('‐')?;
     let natural_advance = units as f32 * style.font_size / font.units_per_em as f32;
     Ok(Glyph {
-        ch: '-',
+        ch: '‐',
         id,
         font,
         advance: 0.0,
         natural_advance,
         x_offset: 0.0,
         y_offset: 0.0,
-        unicode: Some(Arc::<str>::from("")),
+        unicode: Some(Arc::<str>::from("‐")),
         size: style.font_size,
         line_height: style.line_height,
         use_font_bbox_for_line_height: style.use_font_bbox_for_line_height,
@@ -2997,7 +3000,15 @@ impl Flow {
         };
         let align = ["left", "center", "right"][slot];
         let count = occupied.iter().filter(|&&value| value).count();
-        let (x, w) = if count == 3 || (count == 2 && occupied[1]) {
+        let (x, w) = if slot == 1 && (occupied[0] || occupied[2]) {
+            // Keep the center box on the page's center axis while bounding
+            // its content to the middle third when side boxes are present.
+            (page.margin[3] + span / 3.0, span / 3.0)
+        } else if slot == 1 {
+            // The center margin box remains centered on the page even when a
+            // left or right neighbor is populated.
+            (page.margin[3], span)
+        } else if count == 3 || (count == 2 && occupied[1]) {
             // A populated center box needs its own non-overlapping column.
             let w = span / count as f32;
             let rank = occupied[..slot].iter().filter(|&&value| value).count();
@@ -3603,11 +3614,34 @@ impl Flow {
                     width + horizontal
                 }
             });
+        let shrink_to_fit = if declared_width.is_none() && inset[1].is_some() && inset[3].is_none()
+        {
+            let intrinsic = lines_for(
+                node,
+                1_000_000.0,
+                0.0,
+                &self.fonts,
+                self.cancel.as_deref(),
+                self.experimental_shaping,
+                &self.shaping_ns,
+            )?
+            .iter()
+            .map(|line| line.width)
+            .fold(0.0, f32::max);
+            let intrinsic = if node.style.box_sizing == "border-box" {
+                intrinsic + horizontal
+            } else {
+                intrinsic
+            };
+            (intrinsic + 4.0).min(block.w).max(horizontal + EPS)
+        } else {
+            block.w
+        };
         let width = declared_width
             .or_else(|| match (inset[3], inset[1]) {
                 (Some(left), Some(right)) => Some((block.w - left - right).max(EPS)),
                 (Some(left), None) => Some((block.w - left).max(EPS)),
-                (None, Some(right)) => Some((block.w - right).max(EPS)),
+                (None, Some(right)) => Some((block.w - right).min(shrink_to_fit).max(EPS)),
                 _ => None,
             })
             .unwrap_or(block.w);
@@ -3634,6 +3668,7 @@ impl Flow {
 
         let page_index = self.pages.len() - 1;
         let start = self.pages[page_index].items.len();
+        let first_positioned_layer = self.positioned_layers.len();
         let saved_y = self.y;
         let saved_frame = self.frame;
         let saved_page_content = self.page_content;
@@ -3669,6 +3704,21 @@ impl Flow {
             } else {
                 "absolute positioned box cannot fragment across pages".into()
             }));
+        }
+        // An auto-height out-of-flow box still has a used height after layout.
+        // Resolve a bottom inset against that height instead of falling back
+        // to the top edge of the containing block.
+        if inset[2].is_some() && height.is_none() {
+            let dy = block.y + block.h - inset[2].unwrap() - self.y;
+            for item in &mut self.pages[page_index].items[start..] {
+                translate_item(item, 0.0, dy);
+            }
+            for layer in &mut self.positioned_layers[first_positioned_layer..] {
+                for item in &mut layer.items {
+                    translate_item(item, 0.0, dy);
+                }
+            }
+            self.y += dy;
         }
         let mut items = self.pages[page_index].items.split_off(start);
         if block.clip && !items.is_empty() {
@@ -5362,6 +5412,19 @@ impl Flow {
             if let Some(inline) = &glyph.inline_box {
                 let box_x = pen + inline.style.margin[3];
                 let box_y = baseline - inline.height;
+                let transformed = inline.style.transform != [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+                if transformed {
+                    let origin_x = box_x + inline.width / 2.0;
+                    let origin_y = box_y + inline.height / 2.0;
+                    let matrix = affine_multiply(
+                        [1.0, 0.0, 0.0, 1.0, origin_x, origin_y],
+                        affine_multiply(
+                            inline.style.transform,
+                            [1.0, 0.0, 0.0, 1.0, -origin_x, -origin_y],
+                        ),
+                    );
+                    self.visible_item(Item::BeginTransform(matrix));
+                }
                 if let Some(name) = &inline.destination {
                     self.visible_item(Item::Destination {
                         name: name.clone(),
@@ -5393,6 +5456,9 @@ impl Flow {
                             target: target.to_string(),
                         });
                     }
+                }
+                if transformed {
+                    self.visible_item(Item::EndTransform);
                 }
                 pen += glyph.advance;
                 if glyph.paint_late && line.actual_text.is_none() {
@@ -6521,32 +6587,45 @@ impl Flow {
                     }
                 } else if !fixed {
                     let text = cell.plain_text();
-                    let longest = if matches!(cell.style.white_space.as_str(), "nowrap" | "pre") {
-                        text.lines()
-                            .map(|line| line.chars().count())
-                            .max()
-                            .unwrap_or(0)
-                    } else if cell.style.overflow_wrap == "anywhere"
-                        || cell.style.word_break == "break-all"
-                    {
-                        usize::from(!text.is_empty())
-                    } else {
-                        text.split(|character: char| {
-                            character.is_whitespace() || character == '\u{00ad}'
-                        })
-                        .map(|word| word.chars().count())
-                        .max()
-                        .unwrap_or(0)
-                    }
-                    .min(80);
-                    let minimum = (longest as f32 * cell.style.font_size * 0.55
-                        + cell.style.padding[1]
+                    let font = self.fonts.resolve_with_stretch(
+                        &cell.style.family,
+                        cell.style.weight,
+                        &cell.style.font_style,
+                        cell.style.font_stretch,
+                        ' ',
+                    )?;
+                    let fallback_measure =
+                        |value: &str| value.chars().count() as f32 * cell.style.font_size * 0.55;
+                    let measure = |value: &str| {
+                        font.width(value, cell.style.font_size)
+                            .unwrap_or_else(|_| fallback_measure(value))
+                    };
+                    let preferred = text.lines().map(measure).fold(0.0, f32::max);
+                    let minimum_content =
+                        if matches!(cell.style.white_space.as_str(), "nowrap" | "pre") {
+                            preferred
+                        } else if cell.style.overflow_wrap == "anywhere"
+                            || cell.style.word_break == "break-all"
+                        {
+                            text.chars()
+                                .map(|ch| measure(&ch.to_string()))
+                                .fold(0.0, f32::max)
+                        } else {
+                            text.split(|character: char| {
+                                character.is_whitespace() || character == '\u{00ad}'
+                            })
+                            .map(measure)
+                            .fold(0.0, f32::max)
+                        };
+                    let horizontal_edges = cell.style.padding[1]
                         + cell.style.padding[3]
-                        + 2.0 * cell.style.border_width)
-                        / span as f32;
+                        + 2.0 * cell.style.border_width;
+                    let minimum = (minimum_content + horizontal_edges) / span as f32;
+                    let preferred = (preferred + horizontal_edges) / span as f32;
                     for i in column..column + span {
+                        minimums[i] = minimums[i].max(minimum);
                         if !explicit[i] {
-                            desired[i] = desired[i].max(minimum).clamp(minimums[i], maximums[i]);
+                            desired[i] = desired[i].max(preferred).clamp(minimums[i], maximums[i]);
                         }
                     }
                 }
@@ -6578,7 +6657,7 @@ impl Flow {
                 "table minimum column widths exceed available width".into(),
             ));
         }
-        for _ in 0..columns.saturating_mul(2).max(1) {
+        for _ in 0..columns.saturating_mul(4).max(1) {
             let sum: f32 = desired.iter().sum();
             let delta = total - sum;
             if delta.abs() <= EPS {
@@ -6596,8 +6675,12 @@ impl Flow {
             if adjustable.is_empty() {
                 break;
             }
-            let share = delta / adjustable.len() as f32;
+            let weight_sum = adjustable
+                .iter()
+                .map(|index| desired[*index].max(1.0))
+                .sum::<f32>();
             for index in adjustable {
+                let share = delta * desired[index].max(1.0) / weight_sum;
                 desired[index] = (desired[index] + share).clamp(minimums[index], maximums[index]);
             }
         }

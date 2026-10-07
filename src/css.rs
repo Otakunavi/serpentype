@@ -370,7 +370,7 @@ impl Default for MarginBox {
         Self {
             content: String::new(),
             family: vec!["Noto Sans".into()],
-            font_size: 8.0,
+            font_size: 10.0,
             color: Color(0.0, 0.0, 0.0),
         }
     }
@@ -531,8 +531,11 @@ impl Default for Style {
             font_style: "normal".into(),
             font_stretch: 100.0,
             font_size: 12.0,
-            line_height: 14.4,
-            line_height_factor: Some(1.2),
+            line_height: 16.32,
+            // CSS `normal` follows the bundled Noto Sans vertical metrics
+            // (about 1.36em), which matches the line boxes used by the
+            // reference renderer more closely than the old 1.2em shortcut.
+            line_height_factor: Some(1.36),
             use_font_bbox_for_line_height: false,
             text_align: "left".into(),
             text_indent: 0.0,

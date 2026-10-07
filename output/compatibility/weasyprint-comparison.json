@@ -1,0 +1,5433 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-07T18:27:54.674473+00:00",
+  "environment": {
+    "serpentype_version": "0.8.0",
+    "git_tag": "v0.7.0",
+    "git_dirty": true,
+    "python": "3.13.3",
+    "platform": "macOS-15.6-arm64-arm-64bit-Mach-O",
+    "weasyprint_version": "64.1",
+    "poppler_pdftotext_version": "26.05.0",
+    "pdftotext_path": "/Users/mini/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/poppler/poppler/bin/pdftotext",
+    "font_assets": {
+      "noto_sans_regular_sha256": "b85c38ecea8a7cfb39c24e395a4007474fa5a4fc864f6ee33309eb4948d232d5",
+      "noto_sans_bold_sha256": "c976e4b1b99edc88775377fcc21692ca4bfa46b6d6ca6522bfda505b28ff9d6a",
+      "noto_emoji_sha256": "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551"
+    }
+  },
+  "method": {
+    "font_policy": "same bundled Noto Sans Regular/Bold and Noto Emoji faces in both renderers",
+    "layout_extraction": "Poppler pdftotext -bbox-layout",
+    "bbox_alignment": "text-identical lines paired in page order; coordinates centered within each page; absolute coordinate deltas measured in PDF points",
+    "distribution_percentile": "p95 uses the nearest-rank lower index floor(0.95 * (n - 1))",
+    "unicode_normalization": "U+00AD is treated as invisible; selected manual breaks compare by their painted hyphen glyph",
+    "no_raster_comparison": true
+  },
+  "documents": {
+    "visual_release_reference": {
+      "source": {
+        "html_sha256": "d3adcab245980b988cdd6848179b7d45c38a9159e9ac4ef880e46128b21ff83d",
+        "css_sha256": "e5d24833fbe6f64b77ec47ecf3ea1d8dabd1ab23a8883f9f7da56120686a7314"
+      },
+      "resources": {},
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "594cefda416ee3a7ec4ad0a681ccb0c0a9212d6aeeb0a532eb764295b41b99e8",
+          "extracted_layout_sha256": "4f750e993203d703a13d478b9b9058dca225683d3bccbee8b7ad33c9fcff3255",
+          "bytes": 15310,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "THDQIZ+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "RWSLTT+STF2                          CID TrueType      Identity-H       yes yes yes     11  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "fb29a77b6f8b84ef2f7004830e70bf7848162d60db74f5baa1f571afeb333145",
+          "extracted_layout_sha256": "633f0cb666617e8d02b1fe8d6429657fdd1ed4c967af29cbc8d6265dffcdb63c",
+          "bytes": 9746,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     15  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     19  0",
+                "ESSOFH+Times-New                     CID TrueType      Identity-H       yes yes yes     23  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 1,
+        "weasyprint": 1,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 15,
+        "weasyprint_words": 15,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 7,
+        "weasyprint_lines": 7,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 0.2759541785714304,
+        "median": 0.08264899999998931,
+        "p95": 0.8912029999999902,
+        "max": 1.0800000000000125,
+        "sample_count": 28
+      },
+      "matched_lines": 7,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 268.0,
+              "height": 198.0
+            },
+            "weasyprint": {
+              "width": 268.0,
+              "height": 198.0
+            }
+          },
+          "text": {
+            "serpentype_words": 15,
+            "weasyprint_words": 15,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 7,
+            "weasyprint_lines": 7,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 7,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.2759541785714304,
+            "median": 0.08264899999998931,
+            "p95": 0.8912029999999902,
+            "max": 1.0800000000000125,
+            "sample_count": 28
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Release",
+                "preview",
+                "Text",
+                "shaping,",
+                "pagination,",
+                "and",
+                "trusted",
+                "output.",
+                "Pages",
+                "3",
+                "Format",
+                "PDF",
+                "Serpentype",
+                "•",
+                "1"
+              ],
+              "lines": [
+                "Release preview",
+                "Text shaping, pagination, and trusted output.",
+                "Pages",
+                "3",
+                "Format",
+                "PDF",
+                "Serpentype • 1"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Release preview",
+                  "bbox": [
+                    24.0,
+                    23.982,
+                    169.764,
+                    48.498
+                  ]
+                },
+                {
+                  "text": "Text shaping, pagination, and trusted output.",
+                  "bbox": [
+                    24.0,
+                    58.47,
+                    237.31,
+                    72.09
+                  ]
+                },
+                {
+                  "text": "Pages",
+                  "bbox": [
+                    29.6,
+                    91.671,
+                    55.016,
+                    103.929
+                  ]
+                },
+                {
+                  "text": "3",
+                  "bbox": [
+                    155.14,
+                    91.671,
+                    160.288,
+                    103.929
+                  ]
+                },
+                {
+                  "text": "Format",
+                  "bbox": [
+                    29.6,
+                    114.511,
+                    60.146,
+                    126.769
+                  ]
+                },
+                {
+                  "text": "PDF",
+                  "bbox": [
+                    155.14,
+                    114.511,
+                    171.826,
+                    126.769
+                  ]
+                },
+                {
+                  "text": "Serpentype • 1",
+                  "bbox": [
+                    99.795,
+                    177.19,
+                    168.205,
+                    190.81
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Release",
+                "preview",
+                "Text",
+                "shaping,",
+                "pagination,",
+                "and",
+                "trusted",
+                "output.",
+                "Pages",
+                "3",
+                "Format",
+                "PDF",
+                "Serpentype",
+                "•",
+                "1"
+              ],
+              "lines": [
+                "Release preview",
+                "Text shaping, pagination, and trusted output.",
+                "Pages",
+                "3",
+                "Format",
+                "PDF",
+                "Serpentype • 1"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Release preview",
+                  "bbox": [
+                    24.0,
+                    24.000188,
+                    168.684,
+                    48.516188
+                  ]
+                },
+                {
+                  "text": "Text shaping, pagination, and trusted output.",
+                  "bbox": [
+                    24.0,
+                    58.516315,
+                    236.404817,
+                    72.135983
+                  ]
+                },
+                {
+                  "text": "Pages",
+                  "bbox": [
+                    29.6,
+                    91.735836,
+                    55.016,
+                    103.993836
+                  ]
+                },
+                {
+                  "text": "3",
+                  "bbox": [
+                    155.86723,
+                    91.735836,
+                    161.01523,
+                    103.993836
+                  ]
+                },
+                {
+                  "text": "Format",
+                  "bbox": [
+                    29.6,
+                    114.593649,
+                    60.146,
+                    126.851649
+                  ]
+                },
+                {
+                  "text": "PDF",
+                  "bbox": [
+                    155.86723,
+                    114.593649,
+                    172.55323,
+                    126.851649
+                  ]
+                },
+                {
+                  "text": "Serpentype • 1",
+                  "bbox": [
+                    98.908203,
+                    177.356829,
+                    169.096203,
+                    190.640829
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 268.0,
+            "height_pt": 198.0
+          },
+          "weasyprint": {
+            "width_pt": 268.0,
+            "height_pt": 198.0
+          }
+        }
+      ]
+    },
+    "visual_layout_reference": {
+      "source": {
+        "html_sha256": "bb831825a517d3ac929f7dcee88f9889aee0ff9541de75127ea9215f39f15a83",
+        "css_sha256": "97e2cb8bb2c64c5f1081ea10668a1ecb0f340a8e7a89ffdafde0916f4ac24467"
+      },
+      "resources": {},
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "c6e0d699a7df1a6b4b635fc5e43837cca4761a7c2c2d29b73d1195ed162009b5",
+          "extracted_layout_sha256": "841dd0da695a1040a0f2bc3e49f7b049b0b095624500b858ef7a7631bd02493f",
+          "bytes": 19709,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "DCRBAB+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "BKPEBW+STF2                          CID TrueType      Identity-H       yes yes yes     11  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "5f3bd47ae3c04026192715cbe9dcf2bf1985b78a768ddfd148130e5ef8c47c9c",
+          "extracted_layout_sha256": "3ae4b543db9c1f201396b1da3d9e693f1f8626cd1afd0af98a6ffe7de6c50b7a",
+          "bytes": 9724,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     17  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     21  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 1,
+        "weasyprint": 1,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 46,
+        "weasyprint_words": 46,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 21,
+        "weasyprint_lines": 21,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 1.6944399047619045,
+        "median": 0.0772010000000023,
+        "p95": 5.264891999999975,
+        "max": 10.237034999999992,
+        "sample_count": 84
+      },
+      "matched_lines": 21,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 330.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 330.0
+            }
+          },
+          "text": {
+            "serpentype_words": 46,
+            "weasyprint_words": 46,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 21,
+            "weasyprint_lines": 21,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 21,
+          "line_bbox_centered_delta_pt": {
+            "mean": 1.6944399047619045,
+            "median": 0.0772010000000023,
+            "p95": 5.264891999999975,
+            "max": 10.237034999999992,
+            "sample_count": 84
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Layout",
+                "regression",
+                "Normal",
+                "flow",
+                "remains",
+                "here.",
+                "Layer",
+                "Flex",
+                "One",
+                "Two",
+                "Three",
+                "Grid",
+                "A",
+                "B",
+                "C",
+                "D",
+                "Clipped",
+                "content",
+                "stays",
+                "inside",
+                "its",
+                "rounded",
+                "box.",
+                "Rotated",
+                "painting",
+                "stays",
+                "out",
+                "of",
+                "norm",
+                "al",
+                "flow.",
+                "Border-box",
+                "sizing",
+                "Inline",
+                "atomic",
+                "box",
+                "Text",
+                "before",
+                "compact",
+                "inline",
+                "content",
+                "wraps",
+                "and",
+                "after",
+                "the",
+                "box."
+              ],
+              "lines": [
+                "Layout regression",
+                "Normal flow remains here.",
+                "Layer",
+                "Flex",
+                "One",
+                "Two",
+                "Three",
+                "Grid",
+                "A",
+                "B",
+                "C",
+                "D",
+                "Clipped content stays inside its rounded box.",
+                "Rotated painting stays out of norm",
+                "al flow.",
+                "Border-box sizing",
+                "Inline atomic box",
+                "Text before",
+                "compact inline",
+                "content wraps",
+                "and after the box."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Layout regression",
+                  "bbox": [
+                    16.0,
+                    15.984,
+                    160.096,
+                    37.776
+                  ]
+                },
+                {
+                  "text": "Normal flow remains here.",
+                  "bbox": [
+                    21.0,
+                    50.752,
+                    121.48,
+                    61.648
+                  ]
+                },
+                {
+                  "text": "Layer",
+                  "bbox": [
+                    218.230983,
+                    57.878144,
+                    236.191126,
+                    68.466366
+                  ]
+                },
+                {
+                  "text": "Flex",
+                  "bbox": [
+                    16.0,
+                    89.75,
+                    36.23,
+                    103.37
+                  ]
+                },
+                {
+                  "text": "One",
+                  "bbox": [
+                    21.5,
+                    112.852,
+                    37.204,
+                    123.748
+                  ]
+                },
+                {
+                  "text": "Two",
+                  "bbox": [
+                    105.833,
+                    112.852,
+                    121.409,
+                    123.748
+                  ]
+                },
+                {
+                  "text": "Three",
+                  "bbox": [
+                    190.167,
+                    112.852,
+                    211.887,
+                    123.748
+                  ]
+                },
+                {
+                  "text": "Grid",
+                  "bbox": [
+                    16.0,
+                    139.35,
+                    37.16,
+                    152.97
+                  ]
+                },
+                {
+                  "text": "A",
+                  "bbox": [
+                    19.5,
+                    160.453,
+                    23.973,
+                    169.987
+                  ]
+                },
+                {
+                  "text": "B",
+                  "bbox": [
+                    145.5,
+                    160.453,
+                    150.05,
+                    169.987
+                  ]
+                },
+                {
+                  "text": "C",
+                  "bbox": [
+                    19.5,
+                    180.973,
+                    23.924,
+                    190.507
+                  ]
+                },
+                {
+                  "text": "D",
+                  "bbox": [
+                    145.5,
+                    180.973,
+                    150.61,
+                    190.507
+                  ]
+                },
+                {
+                  "text": "Clipped content stays inside its rounded box.",
+                  "bbox": [
+                    19.0,
+                    202.992,
+                    187.552,
+                    213.888
+                  ]
+                },
+                {
+                  "text": "Rotated painting stays out of norm",
+                  "bbox": [
+                    19.947102,
+                    225.589025,
+                    134.586244,
+                    238.498179
+                  ]
+                },
+                {
+                  "text": "al flow.",
+                  "bbox": [
+                    134.586244,
+                    229.592254,
+                    157.952006,
+                    239.389848
+                  ]
+                },
+                {
+                  "text": "Border-box sizing",
+                  "bbox": [
+                    20.0,
+                    245.514,
+                    69.734,
+                    253.686
+                  ]
+                },
+                {
+                  "text": "Inline atomic box",
+                  "bbox": [
+                    16.0,
+                    267.51,
+                    103.12,
+                    281.13
+                  ]
+                },
+                {
+                  "text": "Text before",
+                  "bbox": [
+                    16.0,
+                    298.396,
+                    59.0,
+                    309.292
+                  ]
+                },
+                {
+                  "text": "compact inline",
+                  "bbox": [
+                    63.9,
+                    288.362,
+                    105.126,
+                    296.534
+                  ]
+                },
+                {
+                  "text": "content wraps",
+                  "bbox": [
+                    63.9,
+                    295.562,
+                    104.226,
+                    303.734
+                  ]
+                },
+                {
+                  "text": "and after the box.",
+                  "bbox": [
+                    117.68,
+                    298.396,
+                    184.696,
+                    309.292
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Layout",
+                "regression",
+                "Normal",
+                "flow",
+                "remains",
+                "here.",
+                "Layer",
+                "Flex",
+                "One",
+                "Two",
+                "Three",
+                "Grid",
+                "A",
+                "B",
+                "C",
+                "D",
+                "Clipped",
+                "content",
+                "stays",
+                "inside",
+                "its",
+                "rounded",
+                "box.",
+                "Rotated",
+                "painting",
+                "stays",
+                "out",
+                "of",
+                "norm",
+                "al",
+                "flow.",
+                "Border-box",
+                "sizing",
+                "Inline",
+                "atomic",
+                "box",
+                "Text",
+                "before",
+                "compact",
+                "inline",
+                "content",
+                "wraps",
+                "and",
+                "after",
+                "the",
+                "box."
+              ],
+              "lines": [
+                "Layout regression",
+                "Normal flow remains here.",
+                "Layer",
+                "Flex",
+                "One",
+                "Two",
+                "Three",
+                "Grid",
+                "A",
+                "B",
+                "C",
+                "D",
+                "Clipped content stays inside its rounded box.",
+                "Rotated painting stays out of norm",
+                "al flow.",
+                "Border-box sizing",
+                "Inline atomic box",
+                "Text before",
+                "compact inline",
+                "content wraps",
+                "and after the box."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Layout regression",
+                  "bbox": [
+                    16.0,
+                    15.999777,
+                    159.485812,
+                    37.791444
+                  ]
+                },
+                {
+                  "text": "Normal flow remains here.",
+                  "bbox": [
+                    21.0,
+                    50.792027,
+                    121.017899,
+                    61.687363
+                  ]
+                },
+                {
+                  "text": "Layer",
+                  "bbox": [
+                    222.230817,
+                    53.916592,
+                    240.190333,
+                    64.504445
+                  ]
+                },
+                {
+                  "text": "Flex",
+                  "bbox": [
+                    16.0,
+                    89.791706,
+                    36.039511,
+                    103.411374
+                  ]
+                },
+                {
+                  "text": "One",
+                  "bbox": [
+                    21.5,
+                    112.911412,
+                    37.203042,
+                    123.806748
+                  ]
+                },
+                {
+                  "text": "Two",
+                  "bbox": [
+                    104.166667,
+                    112.911412,
+                    119.589726,
+                    123.806748
+                  ]
+                },
+                {
+                  "text": "Three",
+                  "bbox": [
+                    186.833333,
+                    112.911412,
+                    208.400018,
+                    123.806748
+                  ]
+                },
+                {
+                  "text": "Grid",
+                  "bbox": [
+                    16.0,
+                    139.411091,
+                    37.159483,
+                    153.030759
+                  ]
+                },
+                {
+                  "text": "A",
+                  "bbox": [
+                    19.5,
+                    160.530201,
+                    23.972844,
+                    170.063868
+                  ]
+                },
+                {
+                  "text": "B",
+                  "bbox": [
+                    145.5,
+                    160.530201,
+                    150.049841,
+                    170.063868
+                  ]
+                },
+                {
+                  "text": "C",
+                  "bbox": [
+                    19.5,
+                    181.063404,
+                    23.923846,
+                    190.597071
+                  ]
+                },
+                {
+                  "text": "D",
+                  "bbox": [
+                    145.5,
+                    181.063404,
+                    150.609822,
+                    190.597071
+                  ]
+                },
+                {
+                  "text": "Clipped content stays inside its rounded box.",
+                  "bbox": [
+                    19.0,
+                    198.030797,
+                    187.237737,
+                    208.926133
+                  ]
+                },
+                {
+                  "text": "Rotated painting stays out of norm",
+                  "bbox": [
+                    19.947268,
+                    220.626363,
+                    134.582415,
+                    233.535067
+                  ]
+                },
+                {
+                  "text": "al flow.",
+                  "bbox": [
+                    134.582415,
+                    224.629453,
+                    157.541623,
+                    234.426705
+                  ]
+                },
+                {
+                  "text": "Border-box sizing",
+                  "bbox": [
+                    20.0,
+                    240.563539,
+                    69.494,
+                    248.735539
+                  ]
+                },
+                {
+                  "text": "Inline atomic box",
+                  "bbox": [
+                    16.0,
+                    262.563679,
+                    102.917879,
+                    276.183347
+                  ]
+                },
+                {
+                  "text": "Text before",
+                  "bbox": [
+                    16.0,
+                    288.15963,
+                    58.133429,
+                    299.054965
+                  ]
+                },
+                {
+                  "text": "compact inline",
+                  "bbox": [
+                    63.89873,
+                    283.297109,
+                    105.12473,
+                    291.469109
+                  ]
+                },
+                {
+                  "text": "content wraps",
+                  "bbox": [
+                    63.89873,
+                    290.297108,
+                    104.10473,
+                    298.469108
+                  ]
+                },
+                {
+                  "text": "and after the box.",
+                  "bbox": [
+                    117.678604,
+                    288.15963,
+                    184.538525,
+                    299.054965
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 330.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 330.0
+          }
+        }
+      ]
+    },
+    "visual_resources_reference": {
+      "source": {
+        "html_sha256": "182b406d4a61ecfeba158571a4800eb1b1156c87b6fe4f80923a0ac12231bc66",
+        "css_sha256": "480ffb85e95bab73b11ee571067ab1ca6bc969341ef98bb49f54783c3f1e5a4c"
+      },
+      "resources": {
+        "alpha.png": "3553ccbccf0c3a8b9ffc9580a6cecc899172c7a300e7003d27e686a006c2ca34",
+        "visual_vector.svg": "0507337656ce532839c31c3c04462d9413083206ab250e6733225b7e923e4ff1"
+      },
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "5c5a44ea4d442f58d2a6e68298ea985213db59d8f91817b8034c68fa485c1d17",
+          "extracted_layout_sha256": "966110131368b9d8def5e8bf794c6aaae805337fcebf839a980c1687ea9a748d",
+          "bytes": 17031,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "NOBKEV+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "ACWFTT+STF2                          CID TrueType      Identity-H       yes yes yes     11  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [
+                "1     0 image       2     2  rgb     3   8  image  no        13  0     2     2   17B 142%",
+                "1     1 smask       2     2  gray    1   8  image  no        13  0     2     2   12B 300%"
+              ],
+              "count": 2
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "95e608f49df30ce96692e0b468fc94e9edd53a91da75417346f9a12732dae36f",
+          "extracted_layout_sha256": "1e4a078b04ab383e301022d040bc0743b8c8f15c337777af91199d2d1e9cf47b",
+          "bytes": 8121,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     16  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     20  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [
+                "1     0 image       2     2  rgb     3   8  image  yes       22  0     2     2   19B 158%",
+                "1     1 smask       2     2  gray    1   8  image  yes       22  0     2     2   14B 350%"
+              ],
+              "count": 2
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 2,
+        "weasyprint": 2,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 14,
+        "weasyprint_words": 14,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 3,
+        "weasyprint_lines": 3,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 0.15048441666666434,
+        "median": 0.014912000000002479,
+        "p95": 0.46744999999998527,
+        "max": 0.9000000000000057,
+        "sample_count": 12
+      },
+      "matched_lines": 3,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 190.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 190.0
+            }
+          },
+          "text": {
+            "serpentype_words": 9,
+            "weasyprint_words": 9,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 2,
+            "weasyprint_lines": 2,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 2,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.16530850000000008,
+            "median": 0.03779100000000568,
+            "p95": 0.3163979999999924,
+            "max": 0.9000000000000057,
+            "sample_count": 8
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Resource",
+                "regression",
+                "Embedded",
+                "raster",
+                "alpha",
+                "and",
+                "preserved",
+                "vector",
+                "artwork."
+              ],
+              "lines": [
+                "Resource regression",
+                "Embedded raster alpha and preserved vector artwork."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Resource regression",
+                  "bbox": [
+                    18.0,
+                    17.985,
+                    170.115,
+                    38.415
+                  ]
+                },
+                {
+                  "text": "Embedded raster alpha and preserved vector artwork.",
+                  "bbox": [
+                    18.0,
+                    46.392,
+                    221.552,
+                    57.288
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Resource",
+                "regression",
+                "Embedded",
+                "raster",
+                "alpha",
+                "and",
+                "preserved",
+                "vector",
+                "artwork."
+              ],
+              "lines": [
+                "Resource regression",
+                "Embedded raster alpha and preserved vector artwork."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Resource regression",
+                  "bbox": [
+                    18.0,
+                    17.999912,
+                    169.215,
+                    38.429912
+                  ]
+                },
+                {
+                  "text": "Embedded raster alpha and preserved vector artwork.",
+                  "bbox": [
+                    18.0,
+                    46.430455,
+                    221.235602,
+                    57.325791
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "page": 2,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 190.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 190.0
+            }
+          },
+          "text": {
+            "serpentype_words": 5,
+            "weasyprint_words": 5,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 1,
+            "weasyprint_lines": 1,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 1,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.12083624999999287,
+            "median": 0.008279999999999177,
+            "p95": 0.008279999999999177,
+            "max": 0.46744999999998527,
+            "sample_count": 4
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Images",
+                "use",
+                "independent",
+                "replaced-element",
+                "boxes."
+              ],
+              "lines": [
+                "Images use independent replaced-element boxes."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Images use independent replaced-element boxes.",
+                  "bbox": [
+                    18.0,
+                    17.992,
+                    206.16,
+                    28.888
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Images",
+                "use",
+                "independent",
+                "replaced-element",
+                "boxes."
+              ],
+              "lines": [
+                "Images use independent replaced-element boxes."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Images use independent replaced-element boxes.",
+                  "bbox": [
+                    18.0,
+                    18.00028,
+                    205.69255,
+                    28.895615
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          }
+        },
+        {
+          "page": 2,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          }
+        }
+      ]
+    },
+    "visual_table_reference": {
+      "source": {
+        "html_sha256": "d3862ef9b53d6ee818139abd1ceca1f634c57cf582fa1eced4673d1ff10482e8",
+        "css_sha256": "c1b97f88f905a528cdb5a72d7433be74ae67ad83e0b90430d32bb05f294822ea"
+      },
+      "resources": {},
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "418348a531fbf91bd39983ec00134c7e2eac3eac73724eeed5b33b59f058292b",
+          "extracted_layout_sha256": "81e9c112051e809937884395ce86ed610a06a37053281c16f32c4ccc483aa7af",
+          "bytes": 18736,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "MUMXON+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "PUZOKQ+STF2                          CID TrueType      Identity-H       yes yes yes     11  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "a2f41fb98201a8f8f2cb945c765ae4578678c1bf0899a246f6cd3516f309146d",
+          "extracted_layout_sha256": "25591c02a783abdbed54330a5dbe6858ba41cd27002466d316ca2ebc4a7df542",
+          "bytes": 11625,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     17  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     21  0",
+                "ESSOFH+Times-New                     CID TrueType      Identity-H       yes yes yes     25  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 2,
+        "weasyprint": 2,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 49,
+        "weasyprint_words": 49,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 36,
+        "weasyprint_lines": 36,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 0.1818608819444445,
+        "median": 0.09956099999999424,
+        "p95": 0.3005850000000123,
+        "max": 3.3820670000000064,
+        "sample_count": 144
+      },
+      "matched_lines": 36,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 180.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 180.0
+            }
+          },
+          "text": {
+            "serpentype_words": 28,
+            "weasyprint_words": 28,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 20,
+            "weasyprint_lines": 20,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 20,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.17937686249999976,
+            "median": 0.09826499999999783,
+            "p95": 0.3005850000000123,
+            "max": 3.3820670000000064,
+            "sample_count": 80
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Repeated",
+                "table",
+                "header",
+                "Item",
+                "Description",
+                "Qty",
+                "01",
+                "First",
+                "transaction",
+                "2",
+                "02",
+                "Second",
+                "transaction",
+                "4",
+                "03",
+                "Third",
+                "transaction",
+                "1",
+                "04",
+                "Fourth",
+                "transaction",
+                "3",
+                "05",
+                "Fifth",
+                "transaction",
+                "2",
+                "Page",
+                "1"
+              ],
+              "lines": [
+                "Repeated table header",
+                "Item",
+                "Description",
+                "Qty",
+                "01",
+                "First transaction",
+                "2",
+                "02",
+                "Second transaction",
+                "4",
+                "03",
+                "Third transaction",
+                "1",
+                "04",
+                "Fourth transaction",
+                "3",
+                "05",
+                "Fifth transaction",
+                "2",
+                "Page 1"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Repeated table header",
+                  "bbox": [
+                    14.0,
+                    13.987,
+                    161.602,
+                    31.693
+                  ]
+                },
+                {
+                  "text": "Item",
+                  "bbox": [
+                    18.3,
+                    43.673,
+                    35.072,
+                    53.207
+                  ]
+                },
+                {
+                  "text": "Description",
+                  "bbox": [
+                    102.1,
+                    43.673,
+                    142.343,
+                    53.207
+                  ]
+                },
+                {
+                  "text": "Qty",
+                  "bbox": [
+                    185.9,
+                    43.673,
+                    198.493,
+                    53.207
+                  ]
+                },
+                {
+                  "text": "01",
+                  "bbox": [
+                    18.6,
+                    62.793,
+                    26.608,
+                    72.327
+                  ]
+                },
+                {
+                  "text": "First transaction",
+                  "bbox": [
+                    102.4,
+                    62.793,
+                    155.635,
+                    72.327
+                  ]
+                },
+                {
+                  "text": "2",
+                  "bbox": [
+                    186.2,
+                    62.793,
+                    190.204,
+                    72.327
+                  ]
+                },
+                {
+                  "text": "02",
+                  "bbox": [
+                    18.6,
+                    82.913,
+                    26.608,
+                    92.447
+                  ]
+                },
+                {
+                  "text": "Second transaction",
+                  "bbox": [
+                    102.4,
+                    82.913,
+                    165.442,
+                    92.447
+                  ]
+                },
+                {
+                  "text": "4",
+                  "bbox": [
+                    186.2,
+                    82.913,
+                    190.204,
+                    92.447
+                  ]
+                },
+                {
+                  "text": "03",
+                  "bbox": [
+                    18.6,
+                    103.033,
+                    26.608,
+                    112.567
+                  ]
+                },
+                {
+                  "text": "Third transaction",
+                  "bbox": [
+                    102.4,
+                    103.033,
+                    158.645,
+                    112.567
+                  ]
+                },
+                {
+                  "text": "1",
+                  "bbox": [
+                    186.2,
+                    103.033,
+                    190.204,
+                    112.567
+                  ]
+                },
+                {
+                  "text": "04",
+                  "bbox": [
+                    18.6,
+                    123.153,
+                    26.608,
+                    132.687
+                  ]
+                },
+                {
+                  "text": "Fourth transaction",
+                  "bbox": [
+                    102.4,
+                    123.153,
+                    163.363,
+                    132.687
+                  ]
+                },
+                {
+                  "text": "3",
+                  "bbox": [
+                    186.2,
+                    123.153,
+                    190.204,
+                    132.687
+                  ]
+                },
+                {
+                  "text": "05",
+                  "bbox": [
+                    18.6,
+                    143.273,
+                    26.608,
+                    152.807
+                  ]
+                },
+                {
+                  "text": "Fifth transaction",
+                  "bbox": [
+                    102.4,
+                    143.273,
+                    156.125,
+                    152.807
+                  ]
+                },
+                {
+                  "text": "2",
+                  "bbox": [
+                    186.2,
+                    143.273,
+                    190.204,
+                    152.807
+                  ]
+                },
+                {
+                  "text": "Page 1",
+                  "bbox": [
+                    243.761,
+                    168.233,
+                    266.0,
+                    177.767
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Repeated",
+                "table",
+                "header",
+                "Item",
+                "Description",
+                "Qty",
+                "01",
+                "First",
+                "transaction",
+                "2",
+                "02",
+                "Second",
+                "transaction",
+                "4",
+                "03",
+                "Third",
+                "transaction",
+                "1",
+                "04",
+                "Fourth",
+                "transaction",
+                "3",
+                "05",
+                "Fifth",
+                "transaction",
+                "2",
+                "Page",
+                "1"
+              ],
+              "lines": [
+                "Repeated table header",
+                "Item",
+                "Description",
+                "Qty",
+                "01",
+                "First transaction",
+                "2",
+                "02",
+                "Second transaction",
+                "4",
+                "03",
+                "Third transaction",
+                "1",
+                "04",
+                "Fourth transaction",
+                "3",
+                "05",
+                "Fifth transaction",
+                "2",
+                "Page 1"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Repeated table header",
+                  "bbox": [
+                    14.0,
+                    14.000234,
+                    161.59923,
+                    31.705902
+                  ]
+                },
+                {
+                  "text": "Item",
+                  "bbox": [
+                    18.0,
+                    43.705249,
+                    34.771415,
+                    53.238917
+                  ]
+                },
+                {
+                  "text": "Description",
+                  "bbox": [
+                    102.0,
+                    43.705249,
+                    142.241597,
+                    53.238917
+                  ]
+                },
+                {
+                  "text": "Qty",
+                  "bbox": [
+                    186.0,
+                    43.705249,
+                    198.592561,
+                    53.238917
+                  ]
+                },
+                {
+                  "text": "01",
+                  "bbox": [
+                    18.3,
+                    62.838453,
+                    26.307721,
+                    72.37212
+                  ]
+                },
+                {
+                  "text": "First transaction",
+                  "bbox": [
+                    102.3,
+                    62.838453,
+                    155.400149,
+                    72.37212
+                  ]
+                },
+                {
+                  "text": "2",
+                  "bbox": [
+                    186.3,
+                    62.838453,
+                    190.30386,
+                    72.37212
+                  ]
+                },
+                {
+                  "text": "02",
+                  "bbox": [
+                    18.3,
+                    82.971655,
+                    26.307721,
+                    92.505323
+                  ]
+                },
+                {
+                  "text": "Second transaction",
+                  "bbox": [
+                    102.3,
+                    82.971655,
+                    165.206807,
+                    92.505323
+                  ]
+                },
+                {
+                  "text": "4",
+                  "bbox": [
+                    186.3,
+                    82.971655,
+                    190.30386,
+                    92.505323
+                  ]
+                },
+                {
+                  "text": "03",
+                  "bbox": [
+                    18.3,
+                    103.104858,
+                    26.307721,
+                    112.638526
+                  ]
+                },
+                {
+                  "text": "Third transaction",
+                  "bbox": [
+                    102.3,
+                    103.104858,
+                    158.277049,
+                    112.638526
+                  ]
+                },
+                {
+                  "text": "1",
+                  "bbox": [
+                    186.3,
+                    103.104858,
+                    190.30386,
+                    112.638526
+                  ]
+                },
+                {
+                  "text": "04",
+                  "bbox": [
+                    18.3,
+                    123.238062,
+                    26.307721,
+                    132.771729
+                  ]
+                },
+                {
+                  "text": "Fourth transaction",
+                  "bbox": [
+                    102.3,
+                    123.238062,
+                    163.12788,
+                    132.771729
+                  ]
+                },
+                {
+                  "text": "3",
+                  "bbox": [
+                    186.3,
+                    123.238062,
+                    190.30386,
+                    132.771729
+                  ]
+                },
+                {
+                  "text": "05",
+                  "bbox": [
+                    18.3,
+                    143.371265,
+                    26.307721,
+                    152.904933
+                  ]
+                },
+                {
+                  "text": "Fifth transaction",
+                  "bbox": [
+                    102.3,
+                    143.371265,
+                    155.890132,
+                    152.904933
+                  ]
+                },
+                {
+                  "text": "2",
+                  "bbox": [
+                    186.3,
+                    143.371265,
+                    190.30386,
+                    152.904933
+                  ]
+                },
+                {
+                  "text": "Page 1",
+                  "bbox": [
+                    247.143067,
+                    169.124911,
+                    266.000409,
+                    176.873641
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "page": 2,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 180.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 180.0
+            }
+          },
+          "text": {
+            "serpentype_words": 21,
+            "weasyprint_words": 21,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 16,
+            "weasyprint_lines": 16,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 16,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.18496590625000042,
+            "median": 0.0998599999999783,
+            "p95": 0.3005850000000123,
+            "max": 3.3820670000000064,
+            "sample_count": 64
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Item",
+                "Description",
+                "Qty",
+                "06",
+                "Sixth",
+                "transaction",
+                "5",
+                "07",
+                "Seventh",
+                "transaction",
+                "1",
+                "08",
+                "Eighth",
+                "transaction",
+                "2",
+                "09",
+                "Ninth",
+                "transaction",
+                "4",
+                "Page",
+                "2"
+              ],
+              "lines": [
+                "Item",
+                "Description",
+                "Qty",
+                "06",
+                "Sixth transaction",
+                "5",
+                "07",
+                "Seventh transaction",
+                "1",
+                "08",
+                "Eighth transaction",
+                "2",
+                "09",
+                "Ninth transaction",
+                "4",
+                "Page 2"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Item",
+                  "bbox": [
+                    18.3,
+                    17.993,
+                    35.072,
+                    27.527
+                  ]
+                },
+                {
+                  "text": "Description",
+                  "bbox": [
+                    102.1,
+                    17.993,
+                    142.343,
+                    27.527
+                  ]
+                },
+                {
+                  "text": "Qty",
+                  "bbox": [
+                    185.9,
+                    17.993,
+                    198.493,
+                    27.527
+                  ]
+                },
+                {
+                  "text": "06",
+                  "bbox": [
+                    18.6,
+                    37.113,
+                    26.608,
+                    46.647
+                  ]
+                },
+                {
+                  "text": "Sixth transaction",
+                  "bbox": [
+                    102.4,
+                    37.113,
+                    157.63,
+                    46.647
+                  ]
+                },
+                {
+                  "text": "5",
+                  "bbox": [
+                    186.2,
+                    37.113,
+                    190.204,
+                    46.647
+                  ]
+                },
+                {
+                  "text": "07",
+                  "bbox": [
+                    18.6,
+                    57.233,
+                    26.608,
+                    66.767
+                  ]
+                },
+                {
+                  "text": "Seventh transaction",
+                  "bbox": [
+                    102.4,
+                    57.233,
+                    167.899,
+                    66.767
+                  ]
+                },
+                {
+                  "text": "1",
+                  "bbox": [
+                    186.2,
+                    57.233,
+                    190.204,
+                    66.767
+                  ]
+                },
+                {
+                  "text": "08",
+                  "bbox": [
+                    18.6,
+                    77.353,
+                    26.608,
+                    86.887
+                  ]
+                },
+                {
+                  "text": "Eighth transaction",
+                  "bbox": [
+                    102.4,
+                    77.353,
+                    162.607,
+                    86.887
+                  ]
+                },
+                {
+                  "text": "2",
+                  "bbox": [
+                    186.2,
+                    77.353,
+                    190.204,
+                    86.887
+                  ]
+                },
+                {
+                  "text": "09",
+                  "bbox": [
+                    18.6,
+                    97.473,
+                    26.608,
+                    107.007
+                  ]
+                },
+                {
+                  "text": "Ninth transaction",
+                  "bbox": [
+                    102.4,
+                    97.473,
+                    159.73,
+                    107.007
+                  ]
+                },
+                {
+                  "text": "4",
+                  "bbox": [
+                    186.2,
+                    97.473,
+                    190.204,
+                    107.007
+                  ]
+                },
+                {
+                  "text": "Page 2",
+                  "bbox": [
+                    243.761,
+                    168.233,
+                    266.0,
+                    177.767
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Item",
+                "Description",
+                "Qty",
+                "06",
+                "Sixth",
+                "transaction",
+                "5",
+                "07",
+                "Seventh",
+                "transaction",
+                "1",
+                "08",
+                "Eighth",
+                "transaction",
+                "2",
+                "09",
+                "Ninth",
+                "transaction",
+                "4",
+                "Page",
+                "2"
+              ],
+              "lines": [
+                "Item",
+                "Description",
+                "Qty",
+                "06",
+                "Sixth transaction",
+                "5",
+                "07",
+                "Seventh transaction",
+                "1",
+                "08",
+                "Eighth transaction",
+                "2",
+                "09",
+                "Ninth transaction",
+                "4",
+                "Page 2"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Item",
+                  "bbox": [
+                    18.0,
+                    17.999682,
+                    34.771415,
+                    27.53335
+                  ]
+                },
+                {
+                  "text": "Description",
+                  "bbox": [
+                    102.0,
+                    17.999682,
+                    142.241597,
+                    27.53335
+                  ]
+                },
+                {
+                  "text": "Qty",
+                  "bbox": [
+                    186.0,
+                    17.999682,
+                    198.592561,
+                    27.53335
+                  ]
+                },
+                {
+                  "text": "06",
+                  "bbox": [
+                    18.3,
+                    37.132886,
+                    26.307721,
+                    46.666554
+                  ]
+                },
+                {
+                  "text": "Sixth transaction",
+                  "bbox": [
+                    102.3,
+                    37.132886,
+                    157.395079,
+                    46.666554
+                  ]
+                },
+                {
+                  "text": "5",
+                  "bbox": [
+                    186.3,
+                    37.132886,
+                    190.30386,
+                    46.666554
+                  ]
+                },
+                {
+                  "text": "07",
+                  "bbox": [
+                    18.3,
+                    57.266089,
+                    26.307721,
+                    66.799757
+                  ]
+                },
+                {
+                  "text": "Seventh transaction",
+                  "bbox": [
+                    102.3,
+                    57.266089,
+                    167.523726,
+                    66.799757
+                  ]
+                },
+                {
+                  "text": "1",
+                  "bbox": [
+                    186.3,
+                    57.266089,
+                    190.30386,
+                    66.799757
+                  ]
+                },
+                {
+                  "text": "08",
+                  "bbox": [
+                    18.3,
+                    77.399292,
+                    26.307721,
+                    86.93296
+                  ]
+                },
+                {
+                  "text": "Eighth transaction",
+                  "bbox": [
+                    102.3,
+                    77.399292,
+                    162.371906,
+                    86.93296
+                  ]
+                },
+                {
+                  "text": "2",
+                  "bbox": [
+                    186.3,
+                    77.399292,
+                    190.30386,
+                    86.93296
+                  ]
+                },
+                {
+                  "text": "09",
+                  "bbox": [
+                    18.3,
+                    97.532495,
+                    26.307721,
+                    107.066163
+                  ]
+                },
+                {
+                  "text": "Ninth transaction",
+                  "bbox": [
+                    102.3,
+                    97.532495,
+                    159.495006,
+                    107.066163
+                  ]
+                },
+                {
+                  "text": "4",
+                  "bbox": [
+                    186.3,
+                    97.532495,
+                    190.30386,
+                    107.066163
+                  ]
+                },
+                {
+                  "text": "Page 2",
+                  "bbox": [
+                    247.143067,
+                    169.124911,
+                    266.000409,
+                    176.873641
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 180.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 180.0
+          }
+        },
+        {
+          "page": 2,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 180.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 180.0
+          }
+        }
+      ]
+    },
+    "visual_table_features_reference": {
+      "source": {
+        "html_sha256": "0d9c5f0c47d15ce2d0f0b1d46b7702e2b84732e27e727133ff8a7a6a72902854",
+        "css_sha256": "7d6ceb09dcb8d198cbb138fcb623dc00e5e1698d57464000d996a104eafbc155"
+      },
+      "resources": {},
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "7fc2345e3a1368fa17e130c3c51713b5daf69c8a889a8aecf408072e05429f3f",
+          "extracted_layout_sha256": "cd9201f717862f6f187f0a0da1fe7ef2797b0afc1a8a60c9075596530e15090a",
+          "bytes": 17167,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "COXPCD+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "OCBLJM+STF2                          CID TrueType      Identity-H       yes yes yes     11  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "56de26ee5413c4bb2d86f1883703eb828343b7df4fb380218ef6ef13fb836cfb",
+          "extracted_layout_sha256": "a7d3da7dc4fb922de077f5cb3d70c0616a6c09409451fc9857d1482e02a1766c",
+          "bytes": 8758,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     14  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     18  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 1,
+        "weasyprint": 1,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 25,
+        "weasyprint_words": 25,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 16,
+        "weasyprint_lines": 16,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 2.4229355312499967,
+        "median": 0.6083569999999838,
+        "p95": 11.992801999999983,
+        "max": 11.993359999999996,
+        "sample_count": 64
+      },
+      "matched_lines": 16,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 300.0,
+              "height": 220.0
+            },
+            "weasyprint": {
+              "width": 300.0,
+              "height": 220.0
+            }
+          },
+          "text": {
+            "serpentype_words": 25,
+            "weasyprint_words": 25,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 16,
+            "weasyprint_lines": 16,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 16,
+          "line_bbox_centered_delta_pt": {
+            "mean": 2.4229355312499967,
+            "median": 0.6083569999999838,
+            "p95": 11.992801999999983,
+            "max": 11.993359999999996,
+            "sample_count": 64
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Connected",
+                "and",
+                "nested",
+                "table",
+                "cells",
+                "Region",
+                "Transaction",
+                "Total",
+                "Invoice",
+                "104",
+                "42",
+                "Invoice",
+                "105",
+                "18",
+                "North",
+                "Nested",
+                "detail",
+                "Included",
+                "Tax",
+                "line",
+                "7.50",
+                "West",
+                "Invoice",
+                "106",
+                "23"
+              ],
+              "lines": [
+                "Connected and nested table cells",
+                "Region",
+                "Transaction",
+                "Total",
+                "Invoice 104",
+                "42",
+                "Invoice 105",
+                "18",
+                "North",
+                "Nested detail",
+                "Included",
+                "Tax line",
+                "7.50",
+                "West",
+                "Invoice 106",
+                "23"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Connected and nested table cells",
+                  "bbox": [
+                    18.0,
+                    17.987,
+                    231.837,
+                    35.693
+                  ]
+                },
+                {
+                  "text": "Region",
+                  "bbox": [
+                    23.7,
+                    51.372,
+                    51.42,
+                    62.268
+                  ]
+                },
+                {
+                  "text": "Transaction",
+                  "bbox": [
+                    98.967,
+                    51.372,
+                    146.359,
+                    62.268
+                  ]
+                },
+                {
+                  "text": "Total",
+                  "bbox": [
+                    212.082,
+                    51.372,
+                    232.41,
+                    62.268
+                  ]
+                },
+                {
+                  "text": "Invoice 104",
+                  "bbox": [
+                    99.967,
+                    73.602,
+                    142.751,
+                    84.498
+                  ]
+                },
+                {
+                  "text": "42",
+                  "bbox": [
+                    213.082,
+                    73.602,
+                    222.234,
+                    84.498
+                  ]
+                },
+                {
+                  "text": "Invoice 105",
+                  "bbox": [
+                    99.967,
+                    97.182,
+                    142.751,
+                    108.078
+                  ]
+                },
+                {
+                  "text": "18",
+                  "bbox": [
+                    213.082,
+                    97.182,
+                    222.234,
+                    108.078
+                  ]
+                },
+                {
+                  "text": "North",
+                  "bbox": [
+                    24.7,
+                    85.392,
+                    46.756,
+                    96.288
+                  ]
+                },
+                {
+                  "text": "Nested detail",
+                  "bbox": [
+                    32.1,
+                    128.513,
+                    75.64,
+                    138.047
+                  ]
+                },
+                {
+                  "text": "Included",
+                  "bbox": [
+                    165.367,
+                    128.513,
+                    194.116,
+                    138.047
+                  ]
+                },
+                {
+                  "text": "Tax line",
+                  "bbox": [
+                    32.1,
+                    146.733,
+                    57.328,
+                    156.267
+                  ]
+                },
+                {
+                  "text": "7.50",
+                  "bbox": [
+                    165.367,
+                    146.733,
+                    179.255,
+                    156.267
+                  ]
+                },
+                {
+                  "text": "West",
+                  "bbox": [
+                    24.7,
+                    176.352,
+                    43.372,
+                    187.248
+                  ]
+                },
+                {
+                  "text": "Invoice 106",
+                  "bbox": [
+                    99.967,
+                    176.352,
+                    142.751,
+                    187.248
+                  ]
+                },
+                {
+                  "text": "23",
+                  "bbox": [
+                    213.082,
+                    176.352,
+                    222.234,
+                    187.248
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Connected",
+                "and",
+                "nested",
+                "table",
+                "cells",
+                "Region",
+                "Transaction",
+                "Total",
+                "Invoice",
+                "104",
+                "42",
+                "Invoice",
+                "105",
+                "18",
+                "North",
+                "Nested",
+                "detail",
+                "Included",
+                "Tax",
+                "line",
+                "7.50",
+                "West",
+                "Invoice",
+                "106",
+                "23"
+              ],
+              "lines": [
+                "Connected and nested table cells",
+                "Region",
+                "Transaction",
+                "Total",
+                "Invoice 104",
+                "42",
+                "Invoice 105",
+                "18",
+                "North",
+                "Nested detail",
+                "Included",
+                "Tax line",
+                "7.50",
+                "West",
+                "Invoice 106",
+                "23"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Connected and nested table cells",
+                  "bbox": [
+                    18.0,
+                    18.000234,
+                    231.832986,
+                    35.705901
+                  ]
+                },
+                {
+                  "text": "Region",
+                  "bbox": [
+                    23.7,
+                    51.405846,
+                    51.418309,
+                    62.301181
+                  ]
+                },
+                {
+                  "text": "Transaction",
+                  "bbox": [
+                    103.932454,
+                    51.405846,
+                    150.777596,
+                    62.301181
+                  ]
+                },
+                {
+                  "text": "Total",
+                  "bbox": [
+                    224.07536,
+                    51.405846,
+                    243.842154,
+                    62.301181
+                  ]
+                },
+                {
+                  "text": "Invoice 104",
+                  "bbox": [
+                    104.932454,
+                    74.001354,
+                    147.713844,
+                    84.896689
+                  ]
+                },
+                {
+                  "text": "42",
+                  "bbox": [
+                    225.07536,
+                    74.001354,
+                    234.226802,
+                    84.896689
+                  ]
+                },
+                {
+                  "text": "Invoice 105",
+                  "bbox": [
+                    104.932454,
+                    97.596862,
+                    147.713844,
+                    108.492197
+                  ]
+                },
+                {
+                  "text": "18",
+                  "bbox": [
+                    225.07536,
+                    97.596862,
+                    234.226802,
+                    108.492197
+                  ]
+                },
+                {
+                  "text": "North",
+                  "bbox": [
+                    24.7,
+                    85.799107,
+                    46.754654,
+                    96.694443
+                  ]
+                },
+                {
+                  "text": "Nested detail",
+                  "bbox": [
+                    31.4,
+                    127.891773,
+                    74.938483,
+                    137.42544
+                  ]
+                },
+                {
+                  "text": "Included",
+                  "bbox": [
+                    165.36494,
+                    127.891773,
+                    194.112938,
+                    137.42544
+                  ]
+                },
+                {
+                  "text": "Tax line",
+                  "bbox": [
+                    31.4,
+                    146.124975,
+                    56.06714,
+                    155.658643
+                  ]
+                },
+                {
+                  "text": "7.50",
+                  "bbox": [
+                    165.36494,
+                    146.124975,
+                    179.252456,
+                    155.658643
+                  ]
+                },
+                {
+                  "text": "West",
+                  "bbox": [
+                    24.7,
+                    175.058776,
+                    43.210871,
+                    185.954111
+                  ]
+                },
+                {
+                  "text": "Invoice 106",
+                  "bbox": [
+                    104.932454,
+                    175.058776,
+                    147.713844,
+                    185.954111
+                  ]
+                },
+                {
+                  "text": "23",
+                  "bbox": [
+                    225.07536,
+                    175.058776,
+                    234.226802,
+                    185.954111
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 300.0,
+            "height_pt": 220.0
+          },
+          "weasyprint": {
+            "width_pt": 300.0,
+            "height_pt": 220.0
+          }
+        }
+      ]
+    },
+    "visual_page_selector_reference": {
+      "source": {
+        "html_sha256": "c53ffd0eb3f7e114d1c0114c0d2cd7242e23c071e9933fbf92020f5ecf52c7b9",
+        "css_sha256": "048638a830792daf337220b4b3ba705927a30e6fdff12117623f0eb2b0b913a2"
+      },
+      "resources": {},
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "b8b43aa74ed884c92097a78f5cc2d9ec3fb74d8dec6756b2e0220ea4754511d9",
+          "extracted_layout_sha256": "e5910437d0bbb6be927ffa69ac9df0e27733a31419f3c694c1c161251a7281d8",
+          "bytes": 20468,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "TJTYCW+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "PQJMIX+STF2                          CID TrueType      Identity-H       yes yes yes     11  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "2fb524ca6312ed90dd19c0fd3bd89f2cbfe0adb7d935fdf0f9828bfce5d900d0",
+          "extracted_layout_sha256": "dcc01e3a80321161e19e6ff854544d1eb59875e467bf4e9661713a595b3a50ff",
+          "bytes": 13758,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     23  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     27  0",
+                "ESSOFH+Times-New                     CID TrueType      Identity-H       yes yes yes     31  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 4,
+        "weasyprint": 4,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 52,
+        "weasyprint_words": 52,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 22,
+        "weasyprint_lines": 22,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 0.728266909090909,
+        "median": 0.5529180000000053,
+        "p95": 2.69143600000001,
+        "max": 3.7652630000000045,
+        "sample_count": 88
+      },
+      "matched_lines": 22,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 190.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 190.0
+            }
+          },
+          "text": {
+            "serpentype_words": 13,
+            "weasyprint_words": 13,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 6,
+            "weasyprint_lines": 6,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 6,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.6464112083333345,
+            "median": 0.41470300000003135,
+            "p95": 1.4986799999999931,
+            "max": 2.694502,
+            "sample_count": 24
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "First",
+                "page",
+                "RIGHT",
+                "First",
+                "page",
+                "Cover",
+                "content.",
+                "FIXED",
+                "PAGE",
+                "MARK",
+                "Base",
+                "•",
+                "1"
+              ],
+              "lines": [
+                "First page",
+                "RIGHT",
+                "First page",
+                "Cover content.",
+                "FIXED PAGE MARK",
+                "Base • 1"
+              ],
+              "line_boxes": [
+                {
+                  "text": "First page",
+                  "bbox": [
+                    121.42,
+                    5.552,
+                    158.58,
+                    16.448
+                  ]
+                },
+                {
+                  "text": "RIGHT",
+                  "bbox": [
+                    234.112,
+                    5.552,
+                    258.0,
+                    16.448
+                  ]
+                },
+                {
+                  "text": "First page",
+                  "bbox": [
+                    22.0,
+                    21.986,
+                    91.44,
+                    41.054
+                  ]
+                },
+                {
+                  "text": "Cover content.",
+                  "bbox": [
+                    22.0,
+                    49.031,
+                    83.713,
+                    61.289
+                  ]
+                },
+                {
+                  "text": "FIXED PAGE MARK",
+                  "bbox": [
+                    205.03,
+                    157.834,
+                    256.42,
+                    166.006
+                  ]
+                },
+                {
+                  "text": "Base • 1",
+                  "bbox": [
+                    126.973,
+                    174.233,
+                    153.027,
+                    183.767
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "First",
+                "page",
+                "RIGHT",
+                "First",
+                "page",
+                "Cover",
+                "content.",
+                "FIXED",
+                "PAGE",
+                "MARK",
+                "Base",
+                "•",
+                "1"
+              ],
+              "lines": [
+                "First page",
+                "RIGHT",
+                "First page",
+                "Cover content.",
+                "FIXED PAGE MARK",
+                "Base • 1"
+              ],
+              "line_boxes": [
+                {
+                  "text": "First page",
+                  "bbox": [
+                    124.114502,
+                    6.571409,
+                    155.888564,
+                    15.426869
+                  ]
+                },
+                {
+                  "text": "RIGHT",
+                  "bbox": [
+                    233.559082,
+                    6.571409,
+                    257.997591,
+                    15.426869
+                  ]
+                },
+                {
+                  "text": "First page",
+                  "bbox": [
+                    22.0,
+                    22.000098,
+                    91.437579,
+                    41.067433
+                  ]
+                },
+                {
+                  "text": "Cover content.",
+                  "bbox": [
+                    22.0,
+                    49.067233,
+                    83.533,
+                    61.325233
+                  ]
+                },
+                {
+                  "text": "FIXED PAGE MARK",
+                  "bbox": [
+                    205.029297,
+                    157.828187,
+                    256.005297,
+                    166.000187
+                  ]
+                },
+                {
+                  "text": "Base • 1",
+                  "bbox": [
+                    128.47168,
+                    175.124911,
+                    151.528876,
+                    182.873641
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "page": 2,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 190.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 190.0
+            }
+          },
+          "text": {
+            "serpentype_words": 13,
+            "weasyprint_words": 13,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 6,
+            "weasyprint_lines": 6,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 6,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.7548143333333321,
+            "median": 0.41470300000003135,
+            "p95": 1.870833999999988,
+            "max": 3.7652630000000045,
+            "sample_count": 24
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "LEFT",
+                "Quarterly",
+                "report",
+                "Second",
+                "page",
+                "Left-page",
+                "content.",
+                "FIXED",
+                "PAGE",
+                "MARK",
+                "Base",
+                "•",
+                "2"
+              ],
+              "lines": [
+                "LEFT",
+                "Quarterly report",
+                "Second page",
+                "Left-page content.",
+                "FIXED PAGE MARK",
+                "Base • 2"
+              ],
+              "line_boxes": [
+                {
+                  "text": "LEFT",
+                  "bbox": [
+                    22.0,
+                    5.552,
+                    39.24,
+                    16.448
+                  ]
+                },
+                {
+                  "text": "Quarterly report",
+                  "bbox": [
+                    109.16,
+                    5.552,
+                    170.84,
+                    16.448
+                  ]
+                },
+                {
+                  "text": "Second page",
+                  "bbox": [
+                    22.0,
+                    21.986,
+                    110.004,
+                    41.054
+                  ]
+                },
+                {
+                  "text": "Left-page content.",
+                  "bbox": [
+                    22.0,
+                    49.031,
+                    99.445,
+                    61.289
+                  ]
+                },
+                {
+                  "text": "FIXED PAGE MARK",
+                  "bbox": [
+                    205.03,
+                    157.834,
+                    256.42,
+                    166.006
+                  ]
+                },
+                {
+                  "text": "Base • 2",
+                  "bbox": [
+                    126.973,
+                    174.233,
+                    153.027,
+                    183.767
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "LEFT",
+                "Quarterly",
+                "report",
+                "Second",
+                "page",
+                "Left-page",
+                "content.",
+                "FIXED",
+                "PAGE",
+                "MARK",
+                "Base",
+                "•",
+                "2"
+              ],
+              "lines": [
+                "LEFT",
+                "Quarterly report",
+                "Second page",
+                "Left-page content.",
+                "FIXED PAGE MARK",
+                "Base • 2"
+              ],
+              "line_boxes": [
+                {
+                  "text": "LEFT",
+                  "bbox": [
+                    22.0,
+                    6.571409,
+                    41.110834,
+                    15.426869
+                  ]
+                },
+                {
+                  "text": "Quarterly report",
+                  "bbox": [
+                    105.395264,
+                    4.871188,
+                    174.605263,
+                    17.129188
+                  ]
+                },
+                {
+                  "text": "Second page",
+                  "bbox": [
+                    22.0,
+                    22.000098,
+                    110.000932,
+                    41.067433
+                  ]
+                },
+                {
+                  "text": "Left-page content.",
+                  "bbox": [
+                    22.0,
+                    49.067233,
+                    99.445,
+                    61.325233
+                  ]
+                },
+                {
+                  "text": "FIXED PAGE MARK",
+                  "bbox": [
+                    205.029297,
+                    157.828187,
+                    256.005297,
+                    166.000187
+                  ]
+                },
+                {
+                  "text": "Base • 2",
+                  "bbox": [
+                    128.47168,
+                    175.124911,
+                    151.528876,
+                    182.873641
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "page": 3,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 190.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 190.0
+            }
+          },
+          "text": {
+            "serpentype_words": 9,
+            "weasyprint_words": 9,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 4,
+            "weasyprint_lines": 4,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 4,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.7601641250000011,
+            "median": 1.0194090000000102,
+            "p95": 1.49812399999999,
+            "max": 1.4986799999999931,
+            "sample_count": 16
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "BLANK",
+                "SIDE",
+                "RIGHT",
+                "FIXED",
+                "PAGE",
+                "MARK",
+                "Base",
+                "•",
+                "3"
+              ],
+              "lines": [
+                "BLANK SIDE",
+                "RIGHT",
+                "FIXED PAGE MARK",
+                "Base • 3"
+              ],
+              "line_boxes": [
+                {
+                  "text": "BLANK SIDE",
+                  "bbox": [
+                    117.496,
+                    5.552,
+                    162.504,
+                    16.448
+                  ]
+                },
+                {
+                  "text": "RIGHT",
+                  "bbox": [
+                    234.112,
+                    5.552,
+                    258.0,
+                    16.448
+                  ]
+                },
+                {
+                  "text": "FIXED PAGE MARK",
+                  "bbox": [
+                    205.03,
+                    157.834,
+                    256.42,
+                    166.006
+                  ]
+                },
+                {
+                  "text": "Base • 3",
+                  "bbox": [
+                    126.973,
+                    174.233,
+                    153.027,
+                    183.767
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "BLANK",
+                "SIDE",
+                "RIGHT",
+                "FIXED",
+                "PAGE",
+                "MARK",
+                "Base",
+                "•",
+                "3"
+              ],
+              "lines": [
+                "BLANK SIDE",
+                "RIGHT",
+                "FIXED PAGE MARK",
+                "Base • 3"
+              ],
+              "line_boxes": [
+                {
+                  "text": "BLANK SIDE",
+                  "bbox": [
+                    116.33435,
+                    6.571409,
+                    163.659463,
+                    15.426869
+                  ]
+                },
+                {
+                  "text": "RIGHT",
+                  "bbox": [
+                    233.559082,
+                    6.571409,
+                    257.997591,
+                    15.426869
+                  ]
+                },
+                {
+                  "text": "FIXED PAGE MARK",
+                  "bbox": [
+                    205.029297,
+                    157.828187,
+                    256.005297,
+                    166.000187
+                  ]
+                },
+                {
+                  "text": "Base • 3",
+                  "bbox": [
+                    128.47168,
+                    175.124911,
+                    151.528876,
+                    182.873641
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "page": 4,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 190.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 190.0
+            }
+          },
+          "text": {
+            "serpentype_words": 17,
+            "weasyprint_words": 17,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 6,
+            "weasyprint_lines": 6,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 6,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.762310374999999,
+            "median": 0.41470300000003135,
+            "p95": 1.870833999999988,
+            "max": 3.7652630000000045,
+            "sample_count": 24
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "LEFT",
+                "Quarterly",
+                "report",
+                "Fourth",
+                "page",
+                "Verso",
+                "content",
+                "after",
+                "a",
+                "blank",
+                "page.",
+                "FIXED",
+                "PAGE",
+                "MARK",
+                "Base",
+                "•",
+                "4"
+              ],
+              "lines": [
+                "LEFT",
+                "Quarterly report",
+                "Fourth page",
+                "Verso content after a blank page.",
+                "FIXED PAGE MARK",
+                "Base • 4"
+              ],
+              "line_boxes": [
+                {
+                  "text": "LEFT",
+                  "bbox": [
+                    22.0,
+                    5.552,
+                    39.24,
+                    16.448
+                  ]
+                },
+                {
+                  "text": "Quarterly report",
+                  "bbox": [
+                    109.16,
+                    5.552,
+                    170.84,
+                    16.448
+                  ]
+                },
+                {
+                  "text": "Fourth page",
+                  "bbox": [
+                    22.0,
+                    21.986,
+                    107.274,
+                    41.054
+                  ]
+                },
+                {
+                  "text": "Verso content after a blank page.",
+                  "bbox": [
+                    22.0,
+                    49.031,
+                    162.229,
+                    61.289
+                  ]
+                },
+                {
+                  "text": "FIXED PAGE MARK",
+                  "bbox": [
+                    205.03,
+                    157.834,
+                    256.42,
+                    166.006
+                  ]
+                },
+                {
+                  "text": "Base • 4",
+                  "bbox": [
+                    126.973,
+                    174.233,
+                    153.027,
+                    183.767
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "LEFT",
+                "Quarterly",
+                "report",
+                "Fourth",
+                "page",
+                "Verso",
+                "content",
+                "after",
+                "a",
+                "blank",
+                "page.",
+                "FIXED",
+                "PAGE",
+                "MARK",
+                "Base",
+                "•",
+                "4"
+              ],
+              "lines": [
+                "LEFT",
+                "Quarterly report",
+                "Fourth page",
+                "Verso content after a blank page.",
+                "FIXED PAGE MARK",
+                "Base • 4"
+              ],
+              "line_boxes": [
+                {
+                  "text": "LEFT",
+                  "bbox": [
+                    22.0,
+                    6.571409,
+                    41.110834,
+                    15.426869
+                  ]
+                },
+                {
+                  "text": "Quarterly report",
+                  "bbox": [
+                    105.395264,
+                    4.871188,
+                    174.605263,
+                    17.129188
+                  ]
+                },
+                {
+                  "text": "Fourth page",
+                  "bbox": [
+                    22.0,
+                    22.000098,
+                    107.271027,
+                    41.067433
+                  ]
+                },
+                {
+                  "text": "Verso content after a blank page.",
+                  "bbox": [
+                    22.0,
+                    49.067233,
+                    162.049,
+                    61.325233
+                  ]
+                },
+                {
+                  "text": "FIXED PAGE MARK",
+                  "bbox": [
+                    205.029297,
+                    157.828187,
+                    256.005297,
+                    166.000187
+                  ]
+                },
+                {
+                  "text": "Base • 4",
+                  "bbox": [
+                    128.47168,
+                    175.124911,
+                    151.528876,
+                    182.873641
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          }
+        },
+        {
+          "page": 2,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          }
+        },
+        {
+          "page": 3,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          }
+        },
+        {
+          "page": 4,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 190.0
+          }
+        }
+      ]
+    },
+    "visual_typography_reference": {
+      "source": {
+        "html_sha256": "2a7abf50ff4abbebcd05fcb901ed430e39e886c6887b54943751402a6567b5ca",
+        "css_sha256": "a1b745df9b6fac5af3bd8561d5464fe570732bab2cf9347747df373dfc17f164"
+      },
+      "resources": {},
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "f7c96e98e79b98b006bda3992902baa408d7b5bf233a6670aafc2ed05ee3db89",
+          "extracted_layout_sha256": "f56a9006a4094c764256ea5fb3f7a12b7b59c156ef864993aea568448908c292",
+          "bytes": 19700,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "UVNKJI+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "BRZTII+STF2                          CID TrueType      Identity-H       yes yes yes     11  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "ecb4177616f77f49b3fffd513f761b252c2ca7729967d0a1a2e232eff7e89c0b",
+          "extracted_layout_sha256": "f84c0d195a7d5d3faa8ef797cd7f5e527b9df2c58ae07ed8c4003a89ae3fbee9",
+          "bytes": 12720,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     18  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     22  0",
+                "UKOHAV+Noto-Sans-Oblique             CID TrueType      Identity-H       yes yes yes     26  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 2,
+        "weasyprint": 2,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 42,
+        "weasyprint_words": 42,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 10,
+        "weasyprint_lines": 10,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 0.05832652500000037,
+        "median": 0.039270000000001914,
+        "p95": 0.15454199999999219,
+        "max": 0.6000000000000227,
+        "sample_count": 40
+      },
+      "matched_lines": 10,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 290.0,
+              "height": 220.0
+            },
+            "weasyprint": {
+              "width": 290.0,
+              "height": 220.0
+            }
+          },
+          "text": {
+            "serpentype_words": 39,
+            "weasyprint_words": 39,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 9,
+            "weasyprint_lines": 9,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 9,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.0642121111111121,
+            "median": 0.047848999999999364,
+            "p95": 0.15454199999999219,
+            "max": 0.6000000000000227,
+            "sample_count": 36
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Typography",
+                "and",
+                "paint",
+                "Office",
+                "affinity",
+                "AVÉ",
+                "—",
+                "bold",
+                "weights,",
+                "emphasis,",
+                "and",
+                "a",
+                "link.",
+                "Justified",
+                "text",
+                "keeps",
+                "an",
+                "indented",
+                "first",
+                "line",
+                "and",
+                "wraps",
+                "with",
+                "stable",
+                "spacing",
+                "across",
+                "the",
+                "available",
+                "measure.",
+                "A",
+                "carefully‐",
+                "composed",
+                "softhyphen",
+                "line.",
+                "Translucent",
+                "color",
+                "survives",
+                "PDF",
+                "export."
+              ],
+              "lines": [
+                "Typography and paint",
+                "Office affinity AVÉ — bold weights, emphasis, and a link.",
+                "Justified text keeps an indented first line and wraps with stable",
+                "spacing across the available measure.",
+                "A carefully‐",
+                "composed",
+                "softhyphen",
+                "line.",
+                "Translucent color survives PDF export."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Typography and paint",
+                  "bbox": [
+                    18.0,
+                    17.985,
+                    182.955,
+                    38.415
+                  ]
+                },
+                {
+                  "text": "Office affinity AVÉ — bold weights, emphasis, and a link.",
+                  "bbox": [
+                    18.0,
+                    46.391,
+                    256.698,
+                    58.649
+                  ]
+                },
+                {
+                  "text": "Justified text keeps an indented first line and wraps with stable",
+                  "bbox": [
+                    30.0,
+                    64.192,
+                    272.0,
+                    75.088
+                  ]
+                },
+                {
+                  "text": "spacing across the available measure.",
+                  "bbox": [
+                    18.0,
+                    74.192,
+                    160.176,
+                    85.088
+                  ]
+                },
+                {
+                  "text": "A carefully‐",
+                  "bbox": [
+                    18.0,
+                    90.632,
+                    59.816,
+                    101.528
+                  ]
+                },
+                {
+                  "text": "composed",
+                  "bbox": [
+                    18.0,
+                    101.512,
+                    57.184,
+                    112.408
+                  ]
+                },
+                {
+                  "text": "softhyphen",
+                  "bbox": [
+                    18.0,
+                    112.392,
+                    60.656,
+                    123.288
+                  ]
+                },
+                {
+                  "text": "line.",
+                  "bbox": [
+                    18.0,
+                    123.272,
+                    33.728,
+                    134.168
+                  ]
+                },
+                {
+                  "text": "Translucent color survives PDF export.",
+                  "bbox": [
+                    23.0,
+                    145.152,
+                    165.984,
+                    156.048
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Typography",
+                "and",
+                "paint",
+                "Office",
+                "affinity",
+                "AVÉ",
+                "—",
+                "bold",
+                "weights,",
+                "emphasis,",
+                "and",
+                "a",
+                "link.",
+                "Justified",
+                "text",
+                "keeps",
+                "an",
+                "indented",
+                "first",
+                "line",
+                "and",
+                "wraps",
+                "with",
+                "stable",
+                "spacing",
+                "across",
+                "the",
+                "available",
+                "measure.",
+                "A",
+                "carefully­‐",
+                "composed",
+                "softhyphen",
+                "line.",
+                "Translucent",
+                "color",
+                "survives",
+                "PDF",
+                "export."
+              ],
+              "lines": [
+                "Typography and paint",
+                "Office affinity AVÉ — bold weights, emphasis, and a link.",
+                "Justified text keeps an indented first line and wraps with stable",
+                "spacing across the available measure.",
+                "A carefully­‐",
+                "composed",
+                "softhyphen",
+                "line.",
+                "Translucent color survives PDF export."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Typography and paint",
+                  "bbox": [
+                    18.0,
+                    17.999912,
+                    182.355,
+                    38.429912
+                  ]
+                },
+                {
+                  "text": "Office affinity AVÉ — bold weights, emphasis, and a link.",
+                  "bbox": [
+                    18.0,
+                    46.43027,
+                    256.696424,
+                    58.68827
+                  ]
+                },
+                {
+                  "text": "Justified text keeps an indented first line and wraps with stable",
+                  "bbox": [
+                    30.0,
+                    64.240514,
+                    271.948964,
+                    75.13585
+                  ]
+                },
+                {
+                  "text": "spacing across the available measure.",
+                  "bbox": [
+                    18.0,
+                    74.240514,
+                    159.863346,
+                    85.135849
+                  ]
+                },
+                {
+                  "text": "A carefully­‐",
+                  "bbox": [
+                    18.0,
+                    90.688267,
+                    59.661458,
+                    101.583603
+                  ]
+                },
+                {
+                  "text": "composed",
+                  "bbox": [
+                    18.0,
+                    101.583775,
+                    57.18161,
+                    112.479111
+                  ]
+                },
+                {
+                  "text": "softhyphen",
+                  "bbox": [
+                    18.0,
+                    112.479283,
+                    60.653398,
+                    123.374619
+                  ]
+                },
+                {
+                  "text": "line.",
+                  "bbox": [
+                    18.0,
+                    123.374791,
+                    33.727041,
+                    134.270127
+                  ]
+                },
+                {
+                  "text": "Translucent color survives PDF export.",
+                  "bbox": [
+                    23.0,
+                    145.270299,
+                    165.999277,
+                    156.165634
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "page": 2,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 290.0,
+              "height": 220.0
+            },
+            "weasyprint": {
+              "width": 290.0,
+              "height": 220.0
+            }
+          },
+          "text": {
+            "serpentype_words": 3,
+            "weasyprint_words": 3,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 1,
+            "weasyprint_lines": 1,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 1,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.005356249999994844,
+            "median": 0.007614999999987049,
+            "p95": 0.007614999999987049,
+            "max": 0.008279000000001702,
+            "sample_count": 4
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Rounded",
+                "dashed",
+                "edges."
+              ],
+              "lines": [
+                "Rounded dashed edges."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Rounded dashed edges.",
+                  "bbox": [
+                    23.0,
+                    22.992,
+                    113.672,
+                    33.888
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Rounded",
+                "dashed",
+                "edges."
+              ],
+              "lines": [
+                "Rounded dashed edges."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Rounded dashed edges.",
+                  "bbox": [
+                    23.0,
+                    23.000279,
+                    113.666469,
+                    33.895615
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 290.0,
+            "height_pt": 220.0
+          },
+          "weasyprint": {
+            "width_pt": 290.0,
+            "height_pt": 220.0
+          }
+        },
+        {
+          "page": 2,
+          "serpentype": {
+            "width_pt": 290.0,
+            "height_pt": 220.0
+          },
+          "weasyprint": {
+            "width_pt": 290.0,
+            "height_pt": 220.0
+          }
+        }
+      ]
+    },
+    "visual_fonts_reference": {
+      "source": {
+        "html_sha256": "b6dfa6188588844483eea89c5cd63cce019a3dc2285a58aad9d11a219ab1ab6f",
+        "css_sha256": "77290a867623ea7ecd6f0a79fd171df95e0891713c0fa579812165d9afd6a036"
+      },
+      "resources": {},
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "5032bfd8dd773bf26d2facc6f4d162f1ef1c1d51b5d96e9caed9c96c9071eaf5",
+          "extracted_layout_sha256": "41de2cbcc92a688905902963fed1bbfe3f4636c3272a2b316ea15e12578c2a9d",
+          "bytes": 19983,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "VDRPKT+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "CJBQWM+STF2                          CID TrueType      Identity-H       yes yes yes     11  0",
+                "MXVYXW+STF3                          CID TrueType      Identity-H       yes yes yes     16  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "057782ee73932b5dbdcd29934657272d91432862dd77a124d7bf790b1dae4bd5",
+          "extracted_layout_sha256": "41a9d1236230e6301627263249a4077c6a304d247b19ad4e108a5ec752cc24ab",
+          "bytes": 115464,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     15  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     19  0",
+                "LIPTYH+Apple-Color                   CID TrueType      Identity-H       yes yes yes     23  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [
+                "1     0 image     160   160  rgb     3   8  image  no        25  0  1280  1280 22.0K  29%",
+                "1     1 smask     160   160  gray    1   8  image  no        25  0  1280  1280 1972B 7.7%"
+              ],
+              "count": 2
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 1,
+        "weasyprint": 1,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 26,
+        "weasyprint_words": 26,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 5,
+        "weasyprint_lines": 5,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 0.2867869999999968,
+        "median": 0.06022699999999759,
+        "p95": 2.141999999999996,
+        "max": 2.42577,
+        "sample_count": 20
+      },
+      "matched_lines": 5,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 290.0,
+              "height": 180.0
+            },
+            "weasyprint": {
+              "width": 290.0,
+              "height": 180.0
+            }
+          },
+          "text": {
+            "serpentype_words": 26,
+            "weasyprint_words": 26,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 5,
+            "weasyprint_lines": 5,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 5,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.2867869999999968,
+            "median": 0.06022699999999759,
+            "p95": 2.141999999999996,
+            "max": 2.42577,
+            "sample_count": 20
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Font",
+                "rendering",
+                "Сәлеметсіз",
+                "бе",
+                "—",
+                "Привет",
+                "—",
+                "Ωmega.",
+                "Ligatures",
+                "and",
+                "kerning:",
+                "office",
+                "affinity",
+                "AVATAR.",
+                "Cluster",
+                "fallback",
+                "keeps",
+                "this",
+                "emoji",
+                "together:",
+                "😀",
+                "Combining",
+                "marks:",
+                "café",
+                "and",
+                "naïve."
+              ],
+              "lines": [
+                "Font rendering",
+                "Сәлеметсіз бе — Привет — Ωmega.",
+                "Ligatures and kerning: office affinity AVATAR.",
+                "Cluster fallback keeps this emoji together: 😀",
+                "Combining marks: café and naïve."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Font rendering",
+                  "bbox": [
+                    20.0,
+                    19.985,
+                    132.41,
+                    40.415
+                  ]
+                },
+                {
+                  "text": "Сәлеметсіз бе — Привет — Ωmega.",
+                  "bbox": [
+                    20.0,
+                    50.389,
+                    207.88,
+                    65.371
+                  ]
+                },
+                {
+                  "text": "Ligatures and kerning: office affinity AVATAR.",
+                  "bbox": [
+                    20.0,
+                    74.351,
+                    210.683,
+                    86.609
+                  ]
+                },
+                {
+                  "text": "Cluster fallback keeps this emoji together: 😀",
+                  "bbox": [
+                    25.0,
+                    100.591,
+                    216.03877,
+                    112.849
+                  ]
+                },
+                {
+                  "text": "Combining marks: café and naïve.",
+                  "bbox": [
+                    20.0,
+                    126.832,
+                    147.232,
+                    137.728
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Font",
+                "rendering",
+                "Сәлеметсіз",
+                "бе",
+                "—",
+                "Привет",
+                "—",
+                "Ωmega.",
+                "Ligatures",
+                "and",
+                "kerning:",
+                "office",
+                "affinity",
+                "AVATAR.",
+                "Cluster",
+                "fallback",
+                "keeps",
+                "this",
+                "emoji",
+                "together:",
+                "😀",
+                "Combining",
+                "marks:",
+                "café",
+                "and",
+                "naïve."
+              ],
+              "lines": [
+                "Font rendering",
+                "Сәлеметсіз бе — Привет — Ωmega.",
+                "Ligatures and kerning: office affinity AVATAR.",
+                "Cluster fallback keeps this emoji together: 😀",
+                "Combining marks: café and naïve."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Font rendering",
+                  "bbox": [
+                    20.0,
+                    19.999912,
+                    132.11,
+                    40.429912
+                  ]
+                },
+                {
+                  "text": "Сәлеметсіз бе — Привет — Ωmega.",
+                  "bbox": [
+                    20.0,
+                    50.429998,
+                    207.77267,
+                    65.411334
+                  ]
+                },
+                {
+                  "text": "Ligatures and kerning: office affinity AVATAR.",
+                  "bbox": [
+                    20.0,
+                    74.411227,
+                    208.541,
+                    86.669227
+                  ]
+                },
+                {
+                  "text": "Cluster fallback keeps this emoji together: 😀",
+                  "bbox": [
+                    25.0,
+                    100.669039,
+                    213.613,
+                    112.927039
+                  ]
+                },
+                {
+                  "text": "Combining marks: café and naïve.",
+                  "bbox": [
+                    20.0,
+                    127.014928,
+                    147.224239,
+                    137.910263
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 290.0,
+            "height_pt": 180.0
+          },
+          "weasyprint": {
+            "width_pt": 290.0,
+            "height_pt": 180.0
+          }
+        }
+      ]
+    },
+    "visual_webfont_reference": {
+      "source": {
+        "html_sha256": "dd3ad7fc5c1f9b95f3726beaedf9bad4c29e89fccc4427659203430f690ee2a7",
+        "css_sha256": "25aaa1539190e5c4a9af5ea144ec15c9137d7a5f71a777895fc6c8888dccd937"
+      },
+      "resources": {
+        "SourceSans3-Regular.otf.woff2": "63de0da0cc05298e2e9c6e5cef506d8454ca665f6e668a99d94f51174b9256ed"
+      },
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "fe504cb9a41d3efe02f542c83189a4dc47f60144b31769aa325b216881c793e0",
+          "extracted_layout_sha256": "b68509883f714b3587f886bb8dde61633886103f07744ca7e9757f8a7bbe2419",
+          "bytes": 18288,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "CIGQQH+STF1                          CID Type 0C (OT)  Identity-H       yes yes yes      6  0",
+                "VSAWQF+STF2                          CID TrueType      Identity-H       yes yes yes     11  0",
+                "KKSJGK+STF3                          CID TrueType      Identity-H       yes yes yes     16  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "494db61d118a82fd9b1fe8e91a473595138ae02cf8f11ec22680cdb4e0e61e2e",
+          "extracted_layout_sha256": "a4c6f9b16225fb6ea715c80862fc4ec5365cb1c9da43c80feb8800918098dd00",
+          "bytes": 18496,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     15  0",
+                "FGXBGX+Source-Sans-3,                CID Type 0C (OT)  Identity-H       yes yes yes     19  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     23  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 1,
+        "weasyprint": 1,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 17,
+        "weasyprint_words": 17,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 3,
+        "weasyprint_lines": 3,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 0.251980916666664,
+        "median": 0.20364799999998695,
+        "p95": 0.4026499999999942,
+        "max": 1.34335999999999,
+        "sample_count": 12
+      },
+      "matched_lines": 3,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 290.0,
+              "height": 170.0
+            },
+            "weasyprint": {
+              "width": 290.0,
+              "height": 170.0
+            }
+          },
+          "text": {
+            "serpentype_words": 17,
+            "weasyprint_words": 17,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 3,
+            "weasyprint_lines": 3,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 3,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.251980916666664,
+            "median": 0.20364799999998695,
+            "p95": 0.4026499999999942,
+            "max": 1.34335999999999,
+            "sample_count": 12
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Embedded",
+                "web",
+                "font",
+                "Source",
+                "Sans",
+                "3",
+                "renders",
+                "from",
+                "its",
+                "WOFF2",
+                "face.",
+                "Fallback",
+                "text",
+                "stays",
+                "in",
+                "Noto",
+                "Sans."
+              ],
+              "lines": [
+                "Embedded web font",
+                "Source Sans 3 renders from its WOFF2 face.",
+                "Fallback text stays in Noto Sans."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Embedded web font",
+                  "bbox": [
+                    20.0,
+                    19.985,
+                    169.295,
+                    40.415
+                  ]
+                },
+                {
+                  "text": "Source Sans 3 renders from its WOFF2 face.",
+                  "bbox": [
+                    20.0,
+                    52.751,
+                    253.636,
+                    69.989
+                  ]
+                },
+                {
+                  "text": "Fallback text stays in Noto Sans.",
+                  "bbox": [
+                    20.0,
+                    79.07,
+                    169.73,
+                    92.69
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Embedded",
+                "web",
+                "font",
+                "Source",
+                "Sans",
+                "3",
+                "renders",
+                "from",
+                "its",
+                "WOFF2",
+                "face.",
+                "Fallback",
+                "text",
+                "stays",
+                "in",
+                "Noto",
+                "Sans."
+              ],
+              "lines": [
+                "Embedded web font",
+                "Source Sans 3 renders from its WOFF2 face.",
+                "Fallback text stays in Noto Sans."
+              ],
+              "line_boxes": [
+                {
+                  "text": "Embedded web font",
+                  "bbox": [
+                    20.0,
+                    19.999912,
+                    169.295,
+                    40.429912
+                  ]
+                },
+                {
+                  "text": "Source Sans 3 renders from its WOFF2 face.",
+                  "bbox": [
+                    20.0,
+                    52.430176,
+                    252.29264,
+                    69.667852
+                  ]
+                },
+                {
+                  "text": "Fallback text stays in Noto Sans.",
+                  "bbox": [
+                    20.0,
+                    78.667683,
+                    169.526352,
+                    92.28735
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 290.0,
+            "height_pt": 170.0
+          },
+          "weasyprint": {
+            "width_pt": 290.0,
+            "height_pt": 170.0
+          }
+        }
+      ]
+    },
+    "visual_pagination_reference": {
+      "source": {
+        "html_sha256": "417f009f91271f494b3dcff5ed9f4440f3d08376e1e7d98831d1c423d4f43ff9",
+        "css_sha256": "a8bcba2c1f60c3ece339fd3e19312e5f5ffeed0d58a5019f9aa605d3f2fc97bd"
+      },
+      "resources": {},
+      "outputs": {
+        "serpentype": {
+          "pdf_sha256": "223f9ff5f3c0bbcd61dc272974e19b6ed94cb06c1943d6f91f4f649aac80c447",
+          "extracted_layout_sha256": "fc0c6780fa4969c29c72e8fda0cd9c65781250de6d00c13598f1c5daf116540c",
+          "bytes": 17362,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "PUUEEV+STF1                          CID TrueType      Identity-H       yes yes yes      6  0",
+                "OSMOZB+STF2                          CID TrueType      Identity-H       yes yes yes     11  0"
+              ],
+              "count": 2
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        },
+        "weasyprint": {
+          "pdf_sha256": "b038dc913c5dc5bd09fd80a8451634beeabc45250f9759b72406dea32d673a76",
+          "extracted_layout_sha256": "ef2ceb1ef2707f5bde08d25f244dc34ab7b7f76e662b76eabcda0a83560684c8",
+          "bytes": 10225,
+          "poppler_objects": {
+            "fonts": {
+              "available": true,
+              "rows": [
+                "JVLFBO+Noto-Sans-Bold                CID TrueType      Identity-H       yes yes yes     17  0",
+                "WJWDHV+Noto-Sans                     CID TrueType      Identity-H       yes yes yes     21  0",
+                "ESSOFH+Times-New                     CID TrueType      Identity-H       yes yes yes     25  0"
+              ],
+              "count": 3
+            },
+            "images": {
+              "available": true,
+              "rows": [],
+              "count": 0
+            }
+          }
+        }
+      },
+      "pages": {
+        "serpentype": 2,
+        "weasyprint": 2,
+        "count_match": true,
+        "mean_width_delta_pt": 0.0,
+        "mean_height_delta_pt": 0.0
+      },
+      "text": {
+        "serpentype_words": 96,
+        "weasyprint_words": 96,
+        "word_sequence_similarity_pct": 100.0,
+        "serpentype_lines": 14,
+        "weasyprint_lines": 14,
+        "line_sequence_similarity_pct": 100.0,
+        "exact_line_sequence": true,
+        "line_differences": [],
+        "word_differences": []
+      },
+      "line_bbox_centered_delta_pt": {
+        "mean": 0.3090447678571436,
+        "median": 0.025753999999999166,
+        "p95": 1.6901239999999973,
+        "max": 1.6915340000000185,
+        "sample_count": 56
+      },
+      "matched_lines": 14,
+      "per_page": [
+        {
+          "page": 1,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 170.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 170.0
+            }
+          },
+          "text": {
+            "serpentype_words": 67,
+            "weasyprint_words": 67,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 9,
+            "weasyprint_lines": 9,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 9,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.30378577777777654,
+            "median": 0.025754000000006272,
+            "p95": 1.259999999999991,
+            "max": 1.6915340000000185,
+            "sample_count": 36
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "Paragraph",
+                "pagination",
+                "Careful",
+                "pagination",
+                "keeps",
+                "a",
+                "paragraph",
+                "readable",
+                "across",
+                "the",
+                "page",
+                "boundary.",
+                "Each",
+                "line",
+                "belongs",
+                "to",
+                "the",
+                "same",
+                "passage,",
+                "and",
+                "the",
+                "renderer",
+                "moves",
+                "a",
+                "group",
+                "of",
+                "lines",
+                "before",
+                "painting",
+                "when",
+                "the",
+                "widow",
+                "and",
+                "orphan",
+                "constraints",
+                "require",
+                "it.",
+                "The",
+                "first",
+                "page",
+                "should",
+                "end",
+                "with",
+                "a",
+                "stable",
+                "block",
+                "of",
+                "text",
+                "rather",
+                "than",
+                "a",
+                "single",
+                "stranded",
+                "line.",
+                "On",
+                "the",
+                "following",
+                "page",
+                "the",
+                "paragraph",
+                "continues",
+                "naturally,",
+                "preserving",
+                "its",
+                "measure,",
+                "Page",
+                "1"
+              ],
+              "lines": [
+                "Paragraph pagination",
+                "Careful pagination keeps a paragraph readable across the",
+                "page boundary. Each line belongs to the same passage,",
+                "and the renderer moves a group of lines before painting",
+                "when the widow and orphan constraints require it. The",
+                "first page should end with a stable block of text rather",
+                "than a single stranded line. On the following page the",
+                "paragraph continues naturally, preserving its measure,",
+                "Page 1"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Paragraph pagination",
+                  "bbox": [
+                    16.0,
+                    15.987,
+                    158.766,
+                    33.693
+                  ]
+                },
+                {
+                  "text": "Careful pagination keeps a paragraph readable across the",
+                  "bbox": [
+                    16.0,
+                    41.551,
+                    261.52,
+                    53.809
+                  ]
+                },
+                {
+                  "text": "page boundary. Each line belongs to the same passage,",
+                  "bbox": [
+                    16.0,
+                    53.551,
+                    251.035,
+                    65.809
+                  ]
+                },
+                {
+                  "text": "and the renderer moves a group of lines before painting",
+                  "bbox": [
+                    16.0,
+                    65.551,
+                    254.446,
+                    77.809
+                  ]
+                },
+                {
+                  "text": "when the widow and orphan constraints require it. The",
+                  "bbox": [
+                    16.0,
+                    77.551,
+                    248.074,
+                    89.809
+                  ]
+                },
+                {
+                  "text": "first page should end with a stable block of text rather",
+                  "bbox": [
+                    16.0,
+                    89.551,
+                    244.672,
+                    101.809
+                  ]
+                },
+                {
+                  "text": "than a single stranded line. On the following page the",
+                  "bbox": [
+                    16.0,
+                    101.551,
+                    243.07,
+                    113.809
+                  ]
+                },
+                {
+                  "text": "paragraph continues naturally, preserving its measure,",
+                  "bbox": [
+                    16.0,
+                    113.551,
+                    248.614,
+                    125.809
+                  ]
+                },
+                {
+                  "text": "Page 1",
+                  "bbox": [
+                    128.88,
+                    157.233,
+                    151.119,
+                    166.767
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "Paragraph",
+                "pagination",
+                "Careful",
+                "pagination",
+                "keeps",
+                "a",
+                "paragraph",
+                "readable",
+                "across",
+                "the",
+                "page",
+                "boundary.",
+                "Each",
+                "line",
+                "belongs",
+                "to",
+                "the",
+                "same",
+                "passage,",
+                "and",
+                "the",
+                "renderer",
+                "moves",
+                "a",
+                "group",
+                "of",
+                "lines",
+                "before",
+                "painting",
+                "when",
+                "the",
+                "widow",
+                "and",
+                "orphan",
+                "constraints",
+                "require",
+                "it.",
+                "The",
+                "first",
+                "page",
+                "should",
+                "end",
+                "with",
+                "a",
+                "stable",
+                "block",
+                "of",
+                "text",
+                "rather",
+                "than",
+                "a",
+                "single",
+                "stranded",
+                "line.",
+                "On",
+                "the",
+                "following",
+                "page",
+                "the",
+                "paragraph",
+                "continues",
+                "naturally,",
+                "preserving",
+                "its",
+                "measure,",
+                "Page",
+                "1"
+              ],
+              "lines": [
+                "Paragraph pagination",
+                "Careful pagination keeps a paragraph readable across the",
+                "page boundary. Each line belongs to the same passage,",
+                "and the renderer moves a group of lines before painting",
+                "when the widow and orphan constraints require it. The",
+                "first page should end with a stable block of text rather",
+                "than a single stranded line. On the following page the",
+                "paragraph continues naturally, preserving its measure,",
+                "Page 1"
+              ],
+              "line_boxes": [
+                {
+                  "text": "Paragraph pagination",
+                  "bbox": [
+                    16.0,
+                    16.000233,
+                    158.24333,
+                    33.705901
+                  ]
+                },
+                {
+                  "text": "Careful pagination keeps a paragraph readable across the",
+                  "bbox": [
+                    16.0,
+                    41.576754,
+                    260.62,
+                    53.834754
+                  ]
+                },
+                {
+                  "text": "page boundary. Each line belongs to the same passage,",
+                  "bbox": [
+                    16.0,
+                    53.576754,
+                    250.675,
+                    65.834754
+                  ]
+                },
+                {
+                  "text": "and the renderer moves a group of lines before painting",
+                  "bbox": [
+                    16.0,
+                    65.576754,
+                    253.546,
+                    77.834754
+                  ]
+                },
+                {
+                  "text": "when the widow and orphan constraints require it. The",
+                  "bbox": [
+                    16.0,
+                    77.576754,
+                    247.354,
+                    89.834754
+                  ]
+                },
+                {
+                  "text": "first page should end with a stable block of text rather",
+                  "bbox": [
+                    16.0,
+                    89.576754,
+                    244.312,
+                    101.834754
+                  ]
+                },
+                {
+                  "text": "than a single stranded line. On the following page the",
+                  "bbox": [
+                    16.0,
+                    101.576754,
+                    242.71,
+                    113.834754
+                  ]
+                },
+                {
+                  "text": "paragraph continues naturally, preserving its measure,",
+                  "bbox": [
+                    16.0,
+                    113.576754,
+                    247.354,
+                    125.834754
+                  ]
+                },
+                {
+                  "text": "Page 1",
+                  "bbox": [
+                    130.571534,
+                    158.124912,
+                    149.428876,
+                    165.873642
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "page": 2,
+          "present": {
+            "serpentype": true,
+            "weasyprint": true
+          },
+          "dimensions_pt": {
+            "serpentype": {
+              "width": 280.0,
+              "height": 170.0
+            },
+            "weasyprint": {
+              "width": 280.0,
+              "height": 170.0
+            }
+          },
+          "text": {
+            "serpentype_words": 29,
+            "weasyprint_words": 29,
+            "word_sequence_similarity_pct": 100.0,
+            "serpentype_lines": 5,
+            "weasyprint_lines": 5,
+            "line_sequence_similarity_pct": 100.0,
+            "exact_line_sequence": true
+          },
+          "matched_lines": 5,
+          "line_bbox_centered_delta_pt": {
+            "mean": 0.3185109500000042,
+            "median": 0.00018700000001103945,
+            "p95": 1.6901239999999973,
+            "max": 1.6915340000000185,
+            "sample_count": 20
+          },
+          "extracted_text": {
+            "serpentype": {
+              "words": [
+                "leading,",
+                "and",
+                "inline",
+                "emphasis.",
+                "This",
+                "final",
+                "sentence",
+                "confirms",
+                "that",
+                "content",
+                "after",
+                "the",
+                "page",
+                "break",
+                "remains",
+                "in",
+                "order",
+                "and",
+                "is",
+                "never",
+                "clipped.",
+                "Following",
+                "content",
+                "starts",
+                "after",
+                "the",
+                "paragraph.",
+                "Page",
+                "2"
+              ],
+              "lines": [
+                "leading, and inline emphasis. This final sentence confirms",
+                "that content after the page break remains in order and is",
+                "never clipped.",
+                "Following content starts after the paragraph.",
+                "Page 2"
+              ],
+              "line_boxes": [
+                {
+                  "text": "leading, and inline emphasis. This final sentence confirms",
+                  "bbox": [
+                    16.0,
+                    15.871,
+                    259.468,
+                    28.129
+                  ]
+                },
+                {
+                  "text": "that content after the page break remains in order and is",
+                  "bbox": [
+                    16.0,
+                    27.871,
+                    257.029,
+                    40.129
+                  ]
+                },
+                {
+                  "text": "never clipped.",
+                  "bbox": [
+                    16.0,
+                    39.871,
+                    75.4,
+                    52.129
+                  ]
+                },
+                {
+                  "text": "Following content starts after the paragraph.",
+                  "bbox": [
+                    16.0,
+                    59.992,
+                    184.872,
+                    70.888
+                  ]
+                },
+                {
+                  "text": "Page 2",
+                  "bbox": [
+                    128.88,
+                    157.233,
+                    151.119,
+                    166.767
+                  ]
+                }
+              ]
+            },
+            "weasyprint": {
+              "words": [
+                "leading,",
+                "and",
+                "inline",
+                "emphasis.",
+                "This",
+                "final",
+                "sentence",
+                "confirms",
+                "that",
+                "content",
+                "after",
+                "the",
+                "page",
+                "break",
+                "remains",
+                "in",
+                "order",
+                "and",
+                "is",
+                "never",
+                "clipped.",
+                "Following",
+                "content",
+                "starts",
+                "after",
+                "the",
+                "paragraph.",
+                "Page",
+                "2"
+              ],
+              "lines": [
+                "leading, and inline emphasis. This final sentence confirms",
+                "that content after the page break remains in order and is",
+                "never clipped.",
+                "Following content starts after the paragraph.",
+                "Page 2"
+              ],
+              "line_boxes": [
+                {
+                  "text": "leading, and inline emphasis. This final sentence confirms",
+                  "bbox": [
+                    16.0,
+                    15.871187,
+                    259.468,
+                    28.129187
+                  ]
+                },
+                {
+                  "text": "that content after the page break remains in order and is",
+                  "bbox": [
+                    16.0,
+                    27.871187,
+                    256.489,
+                    40.129187
+                  ]
+                },
+                {
+                  "text": "never clipped.",
+                  "bbox": [
+                    16.0,
+                    39.871187,
+                    75.22,
+                    52.129187
+                  ]
+                },
+                {
+                  "text": "Following content starts after the paragraph.",
+                  "bbox": [
+                    16.0,
+                    60.00028,
+                    184.405726,
+                    70.895615
+                  ]
+                },
+                {
+                  "text": "Page 2",
+                  "bbox": [
+                    130.571534,
+                    158.124912,
+                    149.428876,
+                    165.873642
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "page_boxes": [
+        {
+          "page": 1,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 170.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 170.0
+          }
+        },
+        {
+          "page": 2,
+          "serpentype": {
+            "width_pt": 280.0,
+            "height_pt": 170.0
+          },
+          "weasyprint": {
+            "width_pt": 280.0,
+            "height_pt": 170.0
+          }
+        }
+      ]
+    }
+  },
+  "aggregate": {
+    "document_count": 10,
+    "total_pages_serpentype": 17,
+    "total_pages_weasyprint": 17,
+    "total_words_serpentype": 382,
+    "total_words_weasyprint": 382,
+    "total_lines_serpentype": 137,
+    "total_lines_weasyprint": 137,
+    "page_count_matches": 10,
+    "mean_word_sequence_similarity_pct": 100.0,
+    "mean_line_sequence_similarity_pct": 100.0,
+    "exact_line_sequence_document_count": 10,
+    "matched_line_count": 137,
+    "mean_bbox_delta_of_document_means_pt": 0.6360081031809155,
+    "all_documents_exact_line_sequence": true
+  }
+}
