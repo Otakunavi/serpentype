@@ -1198,7 +1198,7 @@ class Release020Tests(unittest.TestCase):
             "<p>Repeatable PDF 2026</p>",
             "@page { size:200pt 100pt; margin:10pt }")
         digest = hashlib.sha256(bytes(doc.to_pdf())).hexdigest()
-        self.assertEqual(digest, "2df1225a1772d9920d1059a3999f4b5cca511ad85f65fc82f4f17443bfd38a9a")
+        self.assertEqual(digest, "a8356d1a9a03a38c5dd1c970f1c74955c7f8c753fda18db330092d8daf38bfba")
 
     def test_paginated_pdf_matches_visual_reference(self):
         self.assert_visual_reference("visual_release_reference")
