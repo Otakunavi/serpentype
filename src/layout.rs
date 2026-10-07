@@ -1522,6 +1522,7 @@ struct Glyph {
     soft_hyphen: bool,
     soft_hyphen_advance: f32,
     inline_box: Option<Arc<InlineBox>>,
+    inline_strut: Option<Arc<InlineStrut>>,
     destination: Option<String>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1536,6 +1537,7 @@ struct InlineRun {
     href: Option<Arc<str>>,
     inline_box: Option<Node>,
     destination: Option<String>,
+    inline_struts: Vec<Style>,
 }
 #[derive(Clone)]
 struct InlineBox {
@@ -1546,6 +1548,12 @@ struct InlineBox {
     inner_width: f32,
     href: Option<Arc<str>>,
     destination: Option<String>,
+}
+#[derive(Clone, Copy)]
+struct InlineStrut {
+    ascent: f32,
+    descent: f32,
+    height: f32,
 }
 #[derive(Clone, Default)]
 struct Line {
@@ -1587,25 +1595,45 @@ fn push_line(lines: &mut Vec<Line>, mut glyphs: Vec<Glyph>, default_height: f32)
     let baseline_ascent = glyphs
         .iter()
         .map(|g| {
-            g.inline_box.as_ref().map_or_else(
-                || g.font.ascent as f32 / g.font.units_per_em as f32 * g.size + g.shift,
-                |inline| inline.style.margin[0] + inline.height + g.shift,
-            )
+            g.inline_box
+                .as_ref()
+                .map_or_else(
+                    || g.font.ascent as f32 / g.font.units_per_em as f32 * g.size + g.shift,
+                    |inline| inline.style.margin[0] + inline.height + g.shift,
+                )
+                .max(
+                    g.inline_strut
+                        .as_ref()
+                        .map_or(0.0, |strut| strut.ascent + g.shift),
+                )
         })
         .fold(default_height * 0.75, f32::max);
     let baseline_descent = glyphs
         .iter()
         .map(|g| {
-            g.inline_box.as_ref().map_or_else(
-                || -(g.font.descent as f32 / g.font.units_per_em as f32 * g.size) - g.shift,
-                |inline| inline.style.margin[2] - g.shift,
-            )
+            g.inline_box
+                .as_ref()
+                .map_or_else(
+                    || -(g.font.descent as f32 / g.font.units_per_em as f32 * g.size) - g.shift,
+                    |inline| inline.style.margin[2] - g.shift,
+                )
+                .max(
+                    g.inline_strut
+                        .as_ref()
+                        .map_or(0.0, |strut| strut.descent - g.shift),
+                )
         })
         .fold(default_height * 0.25, f32::max);
     let height = glyphs
         .iter()
         .map(|g| g.line_height)
-        .fold(default_height.max(metric_height), f32::max);
+        .fold(default_height.max(metric_height), f32::max)
+        .max(
+            glyphs
+                .iter()
+                .filter_map(|g| g.inline_strut.as_ref().map(|strut| strut.height))
+                .fold(0.0, f32::max),
+        );
     // Keep line-box sizing compatible with the existing layout rules, but
     // place glyphs using the face's actual vertical metrics. The old 0.9/0.3
     // estimate shifted text upward relative to WeasyPrint even when both used
@@ -1677,6 +1705,7 @@ fn soft_hyphen_glyph(
         soft_hyphen: true,
         soft_hyphen_advance: natural_advance + style.letter_spacing,
         inline_box: None,
+        inline_strut: None,
         destination: None,
     })
 }
@@ -1686,7 +1715,12 @@ fn inline_runs(
     inherited_destination: Option<String>,
     out: &mut Vec<InlineRun>,
     root: bool,
+    inline_struts: &mut Vec<Style>,
 ) {
+    let adds_inline_strut = !root && node.tag != "#text" && node.style.display == "inline";
+    if adds_inline_strut {
+        inline_struts.push(node.style.clone());
+    }
     let href = node
         .attr("href")
         .filter(|target| {
@@ -1713,7 +1747,11 @@ fn inline_runs(
             href,
             inline_box: Some(node.clone()),
             destination,
+            inline_struts: inline_struts.clone(),
         });
+        if adds_inline_strut {
+            inline_struts.pop();
+        }
         return;
     }
     if node.tag == "br" {
@@ -1723,7 +1761,11 @@ fn inline_runs(
             href,
             inline_box: None,
             destination,
+            inline_struts: inline_struts.clone(),
         });
+        if adds_inline_strut {
+            inline_struts.pop();
+        }
         return;
     }
     if !node.text.is_empty() {
@@ -1733,6 +1775,7 @@ fn inline_runs(
             href: href.clone(),
             inline_box: None,
             destination: destination.clone(),
+            inline_struts: inline_struts.clone(),
         });
     } else if destination.is_some() && node.children.is_empty() {
         out.push(InlineRun {
@@ -1741,11 +1784,72 @@ fn inline_runs(
             href: href.clone(),
             inline_box: None,
             destination: destination.clone(),
+            inline_struts: inline_struts.clone(),
         });
     }
     for child in &node.children {
-        inline_runs(child, href.clone(), destination.clone(), out, false);
+        inline_runs(
+            child,
+            href.clone(),
+            destination.clone(),
+            out,
+            false,
+            inline_struts,
+        );
     }
+    if adds_inline_strut {
+        inline_struts.pop();
+    }
+}
+
+fn inline_strut(style: &Style, fonts: &FontRegistry) -> Result<InlineStrut> {
+    let font = fonts.resolve_with_stretch(
+        &style.family,
+        style.weight,
+        &style.font_style,
+        style.font_stretch,
+        ' ',
+    )?;
+    let shift = match style.vertical_align.as_str() {
+        "super" | "top" => style.font_size * 0.35,
+        "sub" | "bottom" => -style.font_size * 0.2,
+        "middle" => style.font_size * 0.1,
+        _ => 0.0,
+    };
+    Ok(InlineStrut {
+        ascent: font.ascent as f32 / font.units_per_em as f32 * style.font_size + shift,
+        descent: -(font.descent as f32 / font.units_per_em as f32 * style.font_size) - shift,
+        height: style.line_height,
+    })
+}
+
+fn apply_inline_struts(
+    units: &mut [ShapedUnit],
+    start: usize,
+    styles: &[Style],
+    fonts: &FontRegistry,
+) -> Result<()> {
+    if styles.is_empty() || start >= units.len() {
+        return Ok(());
+    }
+    let mut combined = InlineStrut {
+        ascent: 0.0,
+        descent: 0.0,
+        height: 0.0,
+    };
+    for style in styles {
+        let metrics = inline_strut(style, fonts)?;
+        combined.ascent = combined.ascent.max(metrics.ascent);
+        combined.descent = combined.descent.max(metrics.descent);
+        combined.height = combined.height.max(metrics.height);
+    }
+    let combined = Arc::new(combined);
+    for unit in &mut units[start..] {
+        if let ShapedUnit::Glyph(glyph, _, _) = unit {
+            glyph.inline_strut = Some(combined.clone());
+        }
+    }
+    Ok(())
 }
 
 fn inline_box_has_in_flow_content(node: &Node) -> bool {
@@ -1910,6 +2014,7 @@ fn inline_box_glyph(
                     .map(str::to_owned)
             }),
         })),
+        inline_strut: None,
         destination: None,
     })
 }
@@ -1944,6 +2049,7 @@ fn anchor_glyph(destination: String, style: &Style, fonts: &FontRegistry) -> Res
         soft_hyphen: false,
         soft_hyphen_advance: 0.0,
         inline_box: None,
+        inline_strut: None,
         destination: Some(destination),
     })
 }
@@ -2030,6 +2136,7 @@ fn shape_segment(
                 soft_hyphen: false,
                 soft_hyphen_advance: 0.0,
                 inline_box: None,
+                inline_strut: None,
                 destination: None,
             },
             can_wrap,
@@ -2100,7 +2207,7 @@ fn lines_for_shaped(
         return Err(Error("text-indent leaves no usable first line".into()));
     }
     let mut runs = Vec::new();
-    inline_runs(node, None, None, &mut runs, true);
+    inline_runs(node, None, None, &mut runs, true, &mut Vec::new());
     let mut units = Vec::new();
     let mut previous_space = false;
     let mut character_index = 0usize;
@@ -2124,6 +2231,7 @@ fn lines_for_shaped(
                 true,
                 false,
             ));
+            apply_inline_struts(&mut units, run_start, &run.inline_struts, fonts)?;
             previous_space = false;
             preceding_rtl = false;
             continue;
@@ -2217,6 +2325,7 @@ fn lines_for_shaped(
                         soft_hyphen: false,
                         soft_hyphen_advance: 0.0,
                         inline_box: None,
+                        inline_strut: None,
                         destination: None,
                     },
                     false,
@@ -2302,6 +2411,7 @@ fn lines_for_shaped(
                         soft_hyphen: false,
                         soft_hyphen_advance: 0.0,
                         inline_box: None,
+                        inline_strut: None,
                         destination: None,
                     },
                     !matches!(style.white_space.as_str(), "nowrap" | "pre"),
@@ -2380,6 +2490,7 @@ fn lines_for_shaped(
                 ));
             }
         }
+        apply_inline_struts(&mut units, run_start, &run.inline_struts, fonts)?;
     }
     let default_height = node.style.line_height.max(node.style.font_size);
     let mut lines = Vec::new();

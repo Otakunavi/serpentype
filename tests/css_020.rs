@@ -1480,6 +1480,25 @@ fn glyph_baselines_use_font_vertical_metrics_without_expanding_css_line_height()
 }
 
 #[test]
+fn nested_inline_font_size_keeps_the_ancestor_line_strut() {
+    let doc = renderer()
+        .layout(
+            "<p><strong>A<br><span style='font-size:10pt'>B</span></strong></p>",
+            "@page { size:200pt 100pt; margin:0 } \
+             p { margin:0; font-size:14pt; line-height:1.25 }",
+        )
+        .unwrap();
+    let a = text_position(&doc, 'A').unwrap().1;
+    let b = text_position(&doc, 'B').unwrap().1;
+    let expected = 14.0 * 1.25;
+
+    assert!(
+        (b - a - expected).abs() < 0.1,
+        "nested inline child dropped its ancestor's line-height: {a} -> {b}"
+    );
+}
+
+#[test]
 fn block_transform_origin_uses_the_auto_width_border_box() {
     let doc = renderer()
         .layout(
