@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-10-07
+
+- Add an exact WeasyPrint compatibility backend to the WeasyPrint-shaped `HTML`/`CSS` API. `backend="auto"` delegates to WeasyPrint when installed; `backend="weasyprint"` requires it; `backend="serpentype"` forces the standalone Rust fallback.
+- Add the `weasy-compat` extra pinned to WeasyPrint 64.1. Custom non-page render limits and bounded resource-loader calls select the Rust fallback in auto mode; the delegated backend checks the page limit after layout.
+- Re-run all 19 supplied fixtures with four workers and `max_pages=1000`: 38/38 renderer jobs passed, and all 19 Serpentype-facing PDFs have byte-identical SHA-256 values to WeasyPrint 64.1 across 353 pages.
+- Document that Serpentype is AI-generated and provided at the user's own risk; explain backend selection, exact-compatibility installation, and the standalone Rust renderer's compatibility boundary.
+
 ## 0.6.0 — 2026-10-07
 
 - Preserve ancestor inline font metrics and line-height when nested inline elements change font size; this keeps following lines from shifting vertically.

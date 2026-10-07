@@ -840,7 +840,7 @@ class Release020Tests(unittest.TestCase):
             source = Path(directory) / "invoice source.html"
             source.write_text("<p>&#x10fff;</p>", encoding="utf-8")
             with self.assertRaises(serpentype.MissingGlyphError) as caught:
-                serpentype.HTML(filename=source).render()
+                serpentype.HTML(filename=source, backend="serpentype").render()
             self.assertEqual(caught.exception.source, str(source))
             self.assertEqual((caught.exception.line, caught.exception.column), (1, 4))
 
@@ -858,7 +858,9 @@ class Release020Tests(unittest.TestCase):
         font = Path(__file__).parent / "fixtures" / "SourceSans3-Regular.otf.woff2"
         sheet = serpentype.CSS(string=f"@font-face {{ font-family: WebFont; src: url('{font}') }} "
                                      "p { font-family: WebFont }")
-        pdf = serpentype.HTML(string="<p>Web Font</p>").write_pdf(stylesheets=[sheet])
+        pdf = serpentype.HTML(
+            string="<p>Web Font</p>", backend="serpentype"
+        ).write_pdf(stylesheets=[sheet])
         self.assertIn(b"/FontFile3", pdf)
 
     def test_experimental_arabic_bidi_extracts_logical_text(self):
@@ -1069,7 +1071,9 @@ class Release020Tests(unittest.TestCase):
         svg = ("<svg xmlns='http://www.w3.org/2000/svg' width='30' height='20'>"
                "<circle cx='15' cy='10' r='8' fill='red'/></svg>")
         uri = "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
-        pdf = serpentype.HTML(string=f"<img src='{uri}'>").write_pdf()
+        pdf = serpentype.HTML(
+            string=f"<img src='{uri}'>", backend="serpentype"
+        ).write_pdf()
         self.assertIn(b"/Subtype /Form", pdf)
 
     def test_svg_embedded_raster_data_image(self):
