@@ -1453,6 +1453,62 @@ fn unitless_line_height_scales_with_inherited_font_size() {
 }
 
 #[test]
+fn glyph_baselines_use_font_vertical_metrics_without_expanding_css_line_height() {
+    let html = "<p>A</p><p>B</p>";
+    let css = "@page { size:200pt 100pt; margin:0 } body, p { margin:0 } \
+        p { font-size:10pt; line-height:12pt }";
+    let doc = renderer().layout(html, css).unwrap();
+    let face = ttf_parser::Face::parse(
+        include_bytes!("../serpentype/assets/NotoSans-Regular.ttf"),
+        0,
+    )
+    .unwrap();
+    let ascent = face.ascender() as f32 / face.units_per_em() as f32 * 10.0;
+    let descent = -(face.descender() as f32 / face.units_per_em() as f32 * 10.0);
+    let expected_baseline = ascent + (12.0 - ascent - descent) / 2.0;
+    let a = text_position(&doc, 'A').unwrap().1;
+    let b = text_position(&doc, 'B').unwrap().1;
+
+    assert!(
+        (a - expected_baseline).abs() < 0.05,
+        "{a} != {expected_baseline}"
+    );
+    assert!(
+        (b - a - 12.0).abs() < 0.05,
+        "line height changed: {a} -> {b}"
+    );
+}
+
+#[test]
+fn block_transform_origin_uses_the_auto_width_border_box() {
+    let doc = renderer()
+        .layout(
+            "<p class='rotated'>A</p>",
+            "@page { size:200pt 100pt; margin:10pt } \
+             p { margin:0; font-size:10pt; line-height:12pt } \
+             .rotated { transform:rotate(90deg) }",
+        )
+        .unwrap();
+    let matrix = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::BeginTransform(matrix) => Some(*matrix),
+            _ => None,
+        })
+        .unwrap();
+
+    assert!(
+        (matrix[4] - 116.0).abs() < 0.1,
+        "transform origin should center the 180pt auto-width block, got {matrix:?}"
+    );
+    assert!(
+        (matrix[5] + 84.0).abs() < 0.1,
+        "transform origin should center the 12pt line box, got {matrix:?}"
+    );
+}
+
+#[test]
 fn empty_block_with_br_preserves_its_line_box() {
     let doc = renderer()
         .layout(

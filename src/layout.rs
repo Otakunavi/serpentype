@@ -1584,11 +1584,33 @@ fn push_line(lines: &mut Vec<Line>, mut glyphs: Vec<Glyph>, default_height: f32)
         })
         .fold(default_height * 0.25, f32::max);
     let metric_height = ascent + descent;
+    let baseline_ascent = glyphs
+        .iter()
+        .map(|g| {
+            g.inline_box.as_ref().map_or_else(
+                || g.font.ascent as f32 / g.font.units_per_em as f32 * g.size + g.shift,
+                |inline| inline.style.margin[0] + inline.height + g.shift,
+            )
+        })
+        .fold(default_height * 0.75, f32::max);
+    let baseline_descent = glyphs
+        .iter()
+        .map(|g| {
+            g.inline_box.as_ref().map_or_else(
+                || -(g.font.descent as f32 / g.font.units_per_em as f32 * g.size) - g.shift,
+                |inline| inline.style.margin[2] - g.shift,
+            )
+        })
+        .fold(default_height * 0.25, f32::max);
     let height = glyphs
         .iter()
         .map(|g| g.line_height)
         .fold(default_height.max(metric_height), f32::max);
-    let baseline = ascent + ((height - metric_height) / 2.0).max(0.0);
+    // Keep line-box sizing compatible with the existing layout rules, but
+    // place glyphs using the face's actual vertical metrics. The old 0.9/0.3
+    // estimate shifted text upward relative to WeasyPrint even when both used
+    // the same font and line-height.
+    let baseline = baseline_ascent + ((height - baseline_ascent - baseline_descent) / 2.0);
     lines.push(Line {
         glyphs,
         width,
@@ -3211,8 +3233,33 @@ impl Flow {
         if node.style.position == "absolute" {
             return self.out_of_flow_node(node, false);
         }
+        let auto_block_transform_box = (node.style.display == "block"
+            && node.style.width.is_none()
+            && node.style.width_percent.is_none())
+        .then(|| {
+            let x = self.content_x();
+            let width = self.content_width();
+            let margins = resolved_edges(node.style.margin, node.style.margin_percent, width);
+            (
+                x + margins[3],
+                x + width - margins[1],
+                self.pages.len() - 1,
+                self.y + margins[0],
+                margins[2],
+                self.pages.len(),
+            )
+        });
         let item_counts: Vec<usize> = self.pages.iter().map(|p| p.items.len()).collect();
         self.node_content(node)?;
+        let auto_block_transform_y = auto_block_transform_box.and_then(
+            |(_, _, page_index, top, bottom_margin, initial_page_count)| {
+                (self.pages.len() == initial_page_count).then_some((
+                    page_index,
+                    top,
+                    self.y - bottom_margin,
+                ))
+            },
+        );
         if node.style.position == "relative" {
             let horizontal = |index: usize| {
                 node.style.inset[index].or_else(|| {
@@ -3246,7 +3293,7 @@ impl Flow {
                 if start >= page.items.len() {
                     continue;
                 }
-                let bounds = page.items[start..].iter().filter_map(item_bounds).fold(
+                let mut bounds = page.items[start..].iter().filter_map(item_bounds).fold(
                     None,
                     |bounds: Option<(f32, f32, f32, f32)>, (x, y, w, h)| {
                         Some(match bounds {
@@ -3257,6 +3304,18 @@ impl Flow {
                         })
                     },
                 );
+                if let (Some((box_left, box_right, _, _, _, _)), Some((left, top, right, bottom))) =
+                    (auto_block_transform_box, bounds)
+                {
+                    bounds = Some((left.min(box_left), top, right.max(box_right), bottom));
+                }
+                if let (Some((box_page, box_top, box_bottom)), Some((left, top, right, bottom))) =
+                    (auto_block_transform_y, bounds)
+                {
+                    if index == box_page {
+                        bounds = Some((left, top.min(box_top), right, bottom.max(box_bottom)));
+                    }
+                }
                 if let Some((left, top, right, bottom)) = bounds {
                     let origin_x = (left + right) / 2.0;
                     let origin_y = (top + bottom) / 2.0;

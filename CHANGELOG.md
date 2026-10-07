@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 — 2026-10-07
+
+- Position text baselines from the selected font's actual ascent and descent while preserving the CSS line-box height.
+- Compute centered transforms for auto-width blocks from the block's border-box width and vertical content range instead of the painted glyph bounds.
+- Verify the supplied 19-fixture pack against WeasyPrint 64.1: all 405 pages render, with matching page counts and MediaBoxes and no Serpentype diagnostics, overflow, missing glyphs or unsupported-feature reports.
+- Record the remaining compatibility limits: the same words are extracted in a different order on nine pages, and full pixel-identical rendering is not established.
+
 ## 0.4.0 — 2026-10-07
 
 - Fix wrapping around trailing collapsible spaces, inline wrappers ending in block content, and flow positioning after a fragmented block.
