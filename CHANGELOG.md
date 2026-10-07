@@ -1,11 +1,11 @@
 # Changelog
 
-## 0.6.0 — 2026-10-07
+## Unreleased
 
 - Preserve ancestor inline font metrics and line-height when nested inline elements change font size; this keeps following lines from shifting vertically.
 - Add a regression test for nested inline font-size changes across explicit line breaks.
 - Re-run the supplied 19-fixture compatibility pack: all 405 pages render with matching page counts and MediaBoxes; mean grayscale pixel error improves from 3.78 to 3.69/255 compared with WeasyPrint 64.1.
-- Keep the documented compatibility limits: extracted word order differs on nine pages and visual output is not pixel-identical.
+- This work remains unreleased: extracted word order differs on nine pages and visual output is not pixel-identical.
 
 ## 0.5.0 — 2026-10-07
 
