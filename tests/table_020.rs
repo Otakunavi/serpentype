@@ -166,6 +166,39 @@ fn collapsed_table_ignores_border_spacing() {
 }
 
 #[test]
+fn collapsed_table_page_fragment_draws_its_bottom_border() {
+    let rows = (0..12)
+        .map(|index| format!("<tr><td>R{index:02}</td></tr>"))
+        .collect::<String>();
+    let document = renderer()
+        .layout(
+            &format!("<table><tbody>{rows}</tbody></table>"),
+            "@page { size:140pt 60pt; margin:5pt } \
+             table { width:120pt; table-layout:fixed; border-collapse:collapse } \
+             td { border:0.5pt solid black; padding:0; font-size:8pt; line-height:10pt }",
+        )
+        .unwrap();
+    assert!(document.page_count() > 1);
+    let page = &document.pages[0];
+    let row_count = page
+        .items
+        .iter()
+        .filter(|item| matches!(item, Item::Text { ch: 'R', .. }))
+        .count();
+    let horizontal_edges = page
+        .items
+        .iter()
+        .filter(|item| matches!(item, Item::Rect { w, h, fill: Some(Color(0.0, 0.0, 0.0)), .. } if *w > 100.0 && *h <= 0.5))
+        .count();
+
+    assert_eq!(
+        horizontal_edges,
+        row_count + 1,
+        "each page fragment should have a bottom border in addition to its row separators"
+    );
+}
+
+#[test]
 fn separate_border_spacing_participates_in_table_pagination() {
     let rows = (0..14)
         .map(|index| format!("<tr><td>R{index:02}</td></tr>"))

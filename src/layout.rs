@@ -6250,6 +6250,11 @@ impl Flow {
                     && self.y + row_height > self.limit() - footer_height + EPS
                     && self.page_has_content()
                 {
+                    if let Some(previous) =
+                        row_index.checked_sub(1).and_then(|index| bodies.get(index))
+                    {
+                        self.paint_collapsed_row_boundary(row, &widths, self.y - previous.row_gap);
+                    }
                     self.draw_table_footer(&foots, &widths);
                     self.new_page()?;
                     self.ensure_header(&heads, &widths, header_height, footer_height, row)?;
@@ -6258,6 +6263,15 @@ impl Flow {
                 let take = ((available + EPS) / row.step).floor().max(0.0) as usize;
                 if take == 0 {
                     if self.y > self.page.margin[0] + header_height + EPS {
+                        if let Some(previous) =
+                            row_index.checked_sub(1).and_then(|index| bodies.get(index))
+                        {
+                            self.paint_collapsed_row_boundary(
+                                row,
+                                &widths,
+                                self.y - previous.row_gap,
+                            );
+                        }
                         self.draw_table_footer(&foots, &widths);
                         self.new_page()?;
                         self.ensure_header(&heads, &widths, header_height, footer_height, row)?;
@@ -6271,6 +6285,7 @@ impl Flow {
                 self.draw_row(row, &widths, offset, take);
                 offset += take;
                 if offset < row.line_count {
+                    self.paint_collapsed_row_boundary(row, &widths, self.y - row.row_gap);
                     self.draw_table_footer(&foots, &widths);
                     self.new_page()?;
                     self.ensure_header(&heads, &widths, header_height, footer_height, row)?;
@@ -6759,6 +6774,38 @@ impl Flow {
             let mut item = original.clone();
             translate_item(&mut item, x, y);
             self.item(item);
+        }
+    }
+    fn paint_collapsed_row_boundary(&mut self, row: &Row, widths: &[f32], y: f32) {
+        if !row.collapsed {
+            return;
+        }
+        for cell in &row.cells {
+            let border = cell.borders[0];
+            if !cell.draw_borders[0] || border.width <= 0.0 || cell.style.visibility != "visible" {
+                continue;
+            }
+            let x = row.x
+                + widths[..cell.column].iter().sum::<f32>()
+                + row.column_gap * cell.column as f32;
+            let width: f32 = widths[cell.column..cell.column + cell.colspan]
+                .iter()
+                .sum::<f32>()
+                + row.column_gap * cell.colspan.saturating_sub(1) as f32;
+            if cell.style.opacity < 1.0 - EPS {
+                self.item(Item::BeginOpacity(cell.style.opacity));
+            }
+            self.item(Item::Rect {
+                x,
+                y,
+                w: width.max(border.width),
+                h: border.width,
+                fill: Some(border.color),
+                stroke: None,
+            });
+            if cell.style.opacity < 1.0 - EPS {
+                self.item(Item::EndOpacity);
+            }
         }
     }
     fn draw_table_section(&mut self, rows: &[Row], widths: &[f32]) {
