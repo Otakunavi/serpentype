@@ -144,6 +144,7 @@ fn defaults(tag: &str, style: &mut Style) {
     }
     if matches!(tag, "td" | "th") {
         style.display = "table-cell".into();
+        style.vertical_align = "middle".into();
     }
     match tag {
         "h1" => {
@@ -299,7 +300,7 @@ fn convert(
         return Some(Node {
             tag: "#text".into(),
             attrs: HashMap::new(),
-            style: parent.clone(),
+            style: Style::inherit(parent),
             text: text.borrow().to_string(),
             children: vec![],
             source_offset: parent_source_offset,

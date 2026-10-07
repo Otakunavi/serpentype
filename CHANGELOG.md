@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-10-07
+
+- Fix wrapping around trailing collapsible spaces, inline wrappers ending in block content, and flow positioning after a fragmented block.
+- Use intrinsic text widths for auto-sized inline flex items and remove a collapsed-table-cell text-width adjustment that distorted layout.
+- Apply HTML default middle alignment to table data cells without leaking non-inherited vertical alignment into text styles.
+- Expand compatibility verification to confirm matching page counts, page boxes and normalized text content across all 405 pages in the 19-fixture pack against WeasyPrint 64.1 with the bundled font forced in both engines.
+- Preserve WeasyPrint as the production default: text extraction order differs on nine pages, and pixel-perfect equivalence across all fixtures has not been established.
+
 ## 0.3.0 — 2026-10-07
 
 - Preserve inline and inline-block display on block HTML tags, empty inline-block placeholders and empty `<br>` line boxes instead of dropping them during flow splitting.

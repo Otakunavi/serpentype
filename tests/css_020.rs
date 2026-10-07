@@ -89,6 +89,58 @@ fn table_nested_in_inline_spans_keeps_table_layout_and_borders() {
 }
 
 #[test]
+fn inline_wrapper_after_table_keeps_its_trailing_line_box() {
+    let html =
+        "<div><span><table><tbody><tr><td>R</td></tr></tbody></table></span></div><div>Z</div>";
+    let css = "@page { size:200pt 200pt; margin:10pt } \
+        div { margin:0; font-size:10pt; line-height:12pt } \
+        table { border-collapse:collapse } td { border:0.1pt solid black; padding:0 }";
+    let doc = renderer().layout(html, css).unwrap();
+    let row_y = text_position(&doc, 'R').unwrap().1;
+    let following_y = text_position(&doc, 'Z').unwrap().1;
+    assert!(
+        (following_y - row_y - 24.0).abs() < 0.5,
+        "expected the table row and trailing inline line box, got {}pt",
+        following_y - row_y
+    );
+}
+
+#[test]
+fn trailing_collapsible_space_does_not_split_a_fitting_phrase() {
+    let html = "<div>По результатам камерального контроля</div>";
+    let css = "@page { size:200pt 120pt; margin:10pt } \
+        div { width:77.387pt; font-size:10pt; line-height:12.5pt; margin:0 }";
+    let doc = renderer().layout(html, css).unwrap();
+    let first_word_y = text_position(&doc, 'П').unwrap().1;
+    let second_word_y = text_position(&doc, 'р').unwrap().1;
+    assert!(
+        (first_word_y - second_word_y).abs() < 0.1,
+        "a trailing collapsible space split a phrase that fits: {first_word_y} vs {second_word_y}"
+    );
+}
+
+#[test]
+fn flex_inline_items_use_their_intrinsic_widths() {
+    let html = "<div class='flex'><span class='badge'>FLEX</span><b>middle</b><i>end</i></div>";
+    let css = "@page { size:300pt 100pt; margin:10pt } body { margin:0 } \
+        .flex { display:flex; width:240pt; justify-content:space-between; align-items:center } \
+        .badge { display:inline-block; padding:2pt 4pt; border-radius:5pt; background:#207448 }";
+    let doc = renderer().layout(html, css).unwrap();
+    let badge_width = doc.pages[0]
+        .items
+        .iter()
+        .find_map(|item| match item {
+            Item::RoundedRect { w, .. } => Some(*w),
+            _ => None,
+        })
+        .expect("expected the badge background");
+    assert!(
+        badge_width < 80.0,
+        "expected intrinsic badge width, got {badge_width}pt"
+    );
+}
+
+#[test]
 fn inline_multicolumn_text_uses_balanced_side_by_side_columns() {
     let html = "<div class='columns'>LEFTCOLUMN words repeat across the page. \
         RIGHTCOLUMN words repeat across the page. LEFTCOLUMN words repeat across the page. \
