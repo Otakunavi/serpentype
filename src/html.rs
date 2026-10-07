@@ -149,15 +149,17 @@ fn defaults(tag: &str, style: &mut Style) {
     match tag {
         "h1" => {
             style.font_size = 24.0;
-            style.line_height = 28.8;
-            style.line_height_factor = Some(1.2);
+            style.line_height = style
+                .line_height_factor
+                .map_or(style.line_height, |factor| style.font_size * factor);
             style.weight = 700;
             style.margin = [12.0, 0.0, 12.0, 0.0]
         }
         "h2" => {
             style.font_size = 18.0;
-            style.line_height = 21.6;
-            style.line_height_factor = Some(1.2);
+            style.line_height = style
+                .line_height_factor
+                .map_or(style.line_height, |factor| style.font_size * factor);
             style.weight = 700;
             style.margin = [9.0, 0.0, 9.0, 0.0]
         }

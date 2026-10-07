@@ -2,9 +2,9 @@
 
 > **AI-generated software:** Serpentype was generated with AI assistance. It is provided as-is; use it at your own risk. Review and validate its output before relying on it, especially for legal, financial, regulatory, or production documents.
 
-Latest published release: **0.5.0**. The current development version contains compatibility fixes that have not been released; fixture results still show differences from WeasyPrint, so exact-compatibility use is not ready. See the [compatibility progress](docs/compatibility-progress.md), [capability matrix](docs/capabilities.md), and [WeasyPrint compatibility limits](docs/weasyprint_compat.md).
+Latest release: **0.6.0**. The WeasyPrint-shaped API was checked against the supplied 0.2.1 fixture pack using WeasyPrint 64.1: page counts and page boxes match, with no diagnostics or missing glyphs. Raster output is close but not pixel-identical; see the [compatibility report](docs/compatibility-progress.md), [capability matrix](docs/capabilities.md), and [WeasyPrint compatibility limits](docs/weasyprint_compat.md).
 
-Serpentype is a Rust document layout engine with a Python API. It accepts a **controlled** HTML/CSS subset, calculates page breaks, then exports the prepared pages as a vector/text PDF. No browser, system renderer, or system font is used by Serpentype. A prebuilt platform wheel needs only Python ≥3.10.
+Serpentype is a Rust document layout engine with a Python API. It accepts a **controlled** HTML/CSS subset, calculates page breaks, then exports the prepared pages as a vector/text PDF. The direct `Renderer` uses registered fonts and bundled fallbacks. The WeasyPrint-shaped `FontConfiguration` also registers host Times New Roman on macOS when available, so that compatibility output can depend on installed fonts. No browser or system renderer is used. A prebuilt platform wheel needs only Python ≥3.10.
 
 ```python
 from serpentype import FontRegistry, Renderer, bundled_font_path

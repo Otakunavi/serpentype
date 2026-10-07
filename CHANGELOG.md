@@ -1,11 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-10-07
 
 - Preserve ancestor inline font metrics and line-height when nested inline elements change font size; this keeps following lines from shifting vertically.
 - Add a regression test for nested inline font-size changes across explicit line breaks.
-- Re-run the supplied 19-fixture compatibility pack: all 405 pages render with matching page counts and MediaBoxes; mean grayscale pixel error improves from 3.78 to 3.69/255 compared with WeasyPrint 64.1.
-- This work remains unreleased: extracted word order differs on nine pages and visual output is not pixel-identical.
+- Preserve inherited unitless `line-height` on `h1` and `h2` headings.
+- Paint relative and transformed content in stacking order, including relative inline runs.
+- Align images using inherited text alignment in their containing block.
+- Center collapsed outer-table borders on their grid edges, and draw the winning border at page-fragment boundaries.
+- Give normal CSS passed beside the HTML lower precedence than embedded author styles, matching the WeasyPrint API.
+- Use host Times New Roman in the WeasyPrint-shaped font configuration on macOS when available.
+- Size deeply nested compatibility inline runs from the selected font's vertical bounding box while keeping table-cell line sizing unchanged.
+- Verify the supplied 0.2.1 fixture pack against WeasyPrint 64.1 with four workers, both at the default page limit and `max_pages=1000`: all 19 fixtures and 353 pages match, with no diagnostics, overflow, missing glyphs or unsupported-feature reports. Page orientation matches; MediaBox sides differ by at most 0.0045 pt.
+- Review selected raster pages and compare every page at 72 dpi: mean absolute grayscale error is 1.3098/255. The PDFs are not pixel-identical. The sole normalized extracted-text discrepancy is a space inferred by PDF text extraction before a colon; the glyph runs meet at the same x-coordinate and the source contains no preceding space.
 
 ## 0.5.0 — 2026-10-07
 

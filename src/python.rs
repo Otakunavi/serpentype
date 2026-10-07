@@ -506,7 +506,7 @@ impl PyRenderer {
     }
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(fonts=None, base_dir=".", strict=false, limits=None, experimental_shaping=true, svg_dpi=144.0, synthetic_bold=false, synthetic_italic=false, presentational_hints=false, source_name=None, max_image_dpi=None, resource_loader=None, diagnostic_allow_codes=None, diagnostic_deny_codes=None, diagnostic_allow_severities=None, diagnostic_deny_severities=None, max_diagnostics=None, diagnostic_callback=None))]
+    #[pyo3(signature=(fonts=None, base_dir=".", strict=false, limits=None, experimental_shaping=true, svg_dpi=144.0, synthetic_bold=false, synthetic_italic=false, presentational_hints=false, source_name=None, max_image_dpi=None, resource_loader=None, diagnostic_allow_codes=None, diagnostic_deny_codes=None, diagnostic_allow_severities=None, diagnostic_deny_severities=None, max_diagnostics=None, diagnostic_callback=None, use_font_bbox_for_line_height=false))]
     fn new(
         fonts: Option<PyRef<'_, PyFontRegistry>>,
         base_dir: &str,
@@ -526,6 +526,7 @@ impl PyRenderer {
         diagnostic_deny_severities: Option<Vec<String>>,
         max_diagnostics: Option<usize>,
         diagnostic_callback: Option<Py<PyAny>>,
+        use_font_bbox_for_line_height: bool,
     ) -> PyResult<Self> {
         if !svg_dpi.is_finite() || svg_dpi <= 0.0 {
             return Err(PyValueError::new_err(
@@ -580,6 +581,7 @@ impl PyRenderer {
         inner.synthetic_bold = synthetic_bold;
         inner.synthetic_italic = synthetic_italic;
         inner.presentational_hints = presentational_hints;
+        inner.use_font_bbox_for_line_height = use_font_bbox_for_line_height;
         inner.source_name = source_name;
         Ok(Self {
             inner,
