@@ -1,6 +1,8 @@
 # Compatibility verification (0.7.0)
 
-The supplied `serpentype-fixture-pack-0.2.1` was rendered with WeasyPrint 64.1 as the reference and with Serpentype's default `HTML`/`CSS` compatibility API using the `weasy-compat` backend. The API delegates that mode to WeasyPrint while keeping the standalone Rust `Renderer` available.
+Historical record: the fixture run below exercised the original 0.7.0 delegated backend. The current production API no longer delegates to WeasyPrint; the test suite keeps WeasyPrint as an optional visual reference.
+
+The supplied `serpentype-fixture-pack-0.2.1` was rendered with WeasyPrint 64.1 as the reference and with Serpentype's `HTML`/`CSS` compatibility API using `backend="weasyprint"`. The API delegates that mode to WeasyPrint while keeping the fast standalone Rust renderer as the default.
 
 All 19 fixtures completed in four spawned workers. Both runs produced 38 successful render records and zero failures. Page counts match across all 353 pages, including the 2000-row table at 251 pages. For every fixture, the output PDF's SHA-256 and byte length match the direct WeasyPrint baseline exactly. This verifies byte-identical PDF output for the supplied templates in the tested environment.
 

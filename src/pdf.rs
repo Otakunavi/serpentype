@@ -32,7 +32,11 @@ pub struct PdfOptions {
 }
 
 fn page_extra(style: &crate::css::PageStyle) -> f32 {
-    style.bleed + if style.crop_marks { 12.0 } else { 0.0 }
+    // The page box grows by the declared bleed only. Crop marks are painting
+    // instructions and must not silently add another 12pt to the PDF page.
+    // This follows WeasyPrint's MediaBox/BleedBox semantics and keeps the
+    // selected page dimensions stable when marks are enabled.
+    style.bleed
 }
 
 fn valid_pdf_date(value: &str) -> bool {

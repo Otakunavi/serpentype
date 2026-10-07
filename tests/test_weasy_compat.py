@@ -1,13 +1,15 @@
-"""Exercise the WeasyPrint call forms used by cameral-control."""
+"""Exercise Serpentype call shapes and test-only Poppler/WeasyPrint comparison."""
 
 import base64
 from io import BytesIO, StringIO
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 from serpentype import CSS, HTML
-from serpentype.compat import _WeasyHTML
 from serpentype.text.fonts import FontConfiguration
 from serpentype import bundled_font_path
 
@@ -16,21 +18,100 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WeasyCompatTests(unittest.TestCase):
-    @unittest.skipIf(_WeasyHTML is None, "WeasyPrint optional extra is not installed")
-    def test_weasy_backend_matches_direct_pdf_bytes(self):
-        fonts = FontConfiguration()
-        html_text = "<p>Exact compatibility</p>"
-        css_text = "@page { size: 160pt 100pt; margin: 10pt } p { color: #123456 }"
-        sheet = CSS(string=css_text, font_config=fonts)
-        actual = HTML(string=html_text, backend="weasyprint").write_pdf(
-            stylesheets=[sheet], font_config=fonts, presentational_hints=True
+    def test_backend_argument_is_not_part_of_the_production_api(self):
+        with self.assertRaisesRegex(TypeError, "backend"):
+            HTML(string="<p>Rust only</p>", backend="weasyprint")
+
+    def test_compat_api_and_weasy_reference_match_poppler_text_geometry(self):
+        try:
+            from weasyprint import CSS as WeasyCSS, HTML as WeasyHTML
+            from weasyprint.text.fonts import FontConfiguration as WeasyFontConfiguration
+        except ImportError:
+            self.skipTest("install the test-weasy extra to run the visual comparison")
+
+        pdftotext = shutil.which("pdftotext")
+        if pdftotext is None:
+            pdftoppm = shutil.which("pdftoppm")
+            candidates = []
+            if pdftoppm:
+                resolved_ppm = Path(pdftoppm).resolve()
+                candidates.append(resolved_ppm.with_name("pdftotext"))
+                if len(resolved_ppm.parents) > 2:
+                    candidates.append(resolved_ppm.parents[2] / "native/poppler/bin/pdftotext")
+                    candidates.append(resolved_ppm.parents[2] / "native/poppler/poppler/bin/pdftotext")
+            sibling = next((path for path in candidates if path.is_file()), None)
+            if sibling is None:
+                self.skipTest("Poppler pdftotext is required for bbox comparison")
+            pdftotext = str(sibling)
+
+        fixture = ROOT / "tests" / "fixtures" / "visual_release_reference.html"
+        stylesheet = ROOT / "tests" / "fixtures" / "visual_release_reference.css"
+        font_face = (
+            f"@font-face {{ font-family: 'Noto Sans'; src: url('{Path(bundled_font_path()).as_uri()}'); }}"
+            f"@font-face {{ font-family: 'Noto Sans'; src: url('{Path(bundled_font_path(700)).as_uri()}'); font-weight: 700; }}"
         )
-        expected = _WeasyHTML(string=html_text).write_pdf(
-            stylesheets=[sheet._make_weasy_css(fonts)],
-            font_config=fonts._weasy,
-            presentational_hints=True,
+        css_text = font_face + "\n" + stylesheet.read_text()
+        source = fixture.read_text()
+
+        native_fonts = FontConfiguration()
+        native_css = CSS(string=css_text, font_config=native_fonts)
+        native_pdf = HTML(string=source).write_pdf(
+            stylesheets=[native_css], font_config=native_fonts
         )
-        self.assertEqual(actual, expected)
+
+        weasy_fonts = WeasyFontConfiguration()
+        weasy_css = WeasyCSS(
+            string=css_text,
+            base_url=fixture.parent.as_uri() + "/",
+            font_config=weasy_fonts,
+        )
+        weasy_pdf = WeasyHTML(string=source, base_url=fixture.parent.as_uri() + "/").write_pdf(
+            stylesheets=[weasy_css], font_config=weasy_fonts
+        )
+        def poppler_layout(pdf):
+            result = subprocess.run(
+                [pdftotext, "-bbox-layout", "-", "-"],
+                input=pdf,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            root = ET.fromstring(result.stdout)
+            ns = "{http://www.w3.org/1999/xhtml}"
+            pages = []
+            for page in root.findall(".//" + ns + "page"):
+                lines = []
+                for line in page.findall(".//" + ns + "line"):
+                    words = line.findall(ns + "word")
+                    text = " ".join("".join(word.itertext()) for word in words)
+                    if text:
+                        coords = tuple(float(line.get(key)) for key in
+                                       ("xMin", "yMin", "xMax", "yMax"))
+                        lines.append((text, coords))
+                pages.append((float(page.get("width")), float(page.get("height")), lines))
+            return pages
+
+        native_pages = poppler_layout(native_pdf)
+        weasy_pages = poppler_layout(weasy_pdf)
+        self.assertEqual(len(native_pages), len(weasy_pages))
+        self.assertEqual(len(native_pages), 1)
+        native_width, native_height, native_lines = native_pages[0]
+        weasy_width, weasy_height, weasy_lines = weasy_pages[0]
+        self.assertEqual([line[0] for line in native_lines], [line[0] for line in weasy_lines])
+
+        # Align the different MediaBoxes by page center, then compare Poppler's
+        # extracted line boxes in points instead of comparing raster pixels.
+        deltas = []
+        for (_, native_box), (_, weasy_box) in zip(native_lines, weasy_lines):
+            for index, (native_coord, weasy_coord) in enumerate(zip(native_box, weasy_box)):
+                native_extent = native_width if index in (0, 2) else native_height
+                weasy_extent = weasy_width if index in (0, 2) else weasy_height
+                deltas.append(abs(
+                    (native_coord - native_extent / 2)
+                    - (weasy_coord - weasy_extent / 2)
+                ))
+        self.assertLessEqual(sum(deltas) / len(deltas), 5.0)
+        self.assertLessEqual(max(deltas), 15.0)
 
     def test_aliens_get_pdf_call_shape(self):
         fonts = FontConfiguration()
@@ -109,7 +190,6 @@ class WeasyCompatTests(unittest.TestCase):
         encoded = base64.b64encode(svg).decode()
         pdf = HTML(
             string=f'<img src="data:image/svg+xml;base64,{encoded}">',
-            backend="serpentype",
         ).write_pdf()
         self.assertIn(b"/Subtype /Form", pdf)
         path_svg = base64.b64encode(
@@ -117,14 +197,12 @@ class WeasyCompatTests(unittest.TestCase):
         ).decode()
         path_pdf = HTML(
             string=f'<img src="data:image/svg+xml;base64,{path_svg}">',
-            backend="serpentype",
         ).write_pdf()
         self.assertIn(b"/Subtype /Form", path_pdf)
         malformed = base64.b64encode(b'<svg><path').decode()
         with self.assertRaisesRegex(ValueError, "SVG"):
             HTML(
                 string=f'<img src="data:image/svg+xml;base64,{malformed}">',
-                backend="serpentype",
             ).write_pdf()
 
 

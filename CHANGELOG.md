@@ -1,11 +1,21 @@
 # Changelog
 
+## 0.8.0 — 2026-10-07
+
+- Keep WeasyPrint out of the production API; retain it as a pinned optional visual-test reference.
+- Match bleed-driven PDF page boxes without adding crop-mark padding to the MediaBox.
+- Place auto-height fixed boxes at their bottom inset, size right-positioned auto-width boxes to content, and center page margin boxes on the page axis.
+- Paint transforms on inline-block content and map selected manual soft hyphens to U+2010.
+- Add regressions for fixed bottom positioning, transformed inline boxes, crop/trim page boxes, and manual hyphenation; record the pinned WeasyPrint 64.1 comparison report.
+- Text sequences, page counts, and page-box dimensions match across the ten-fixture corpus. Documented line-box exceptions and unmeasured visual categories remain; see the comparison report and TODO.
+
 ## 0.7.0 — 2026-10-07
 
-- Add an exact WeasyPrint compatibility backend to the WeasyPrint-shaped `HTML`/`CSS` API. `backend="auto"` delegates to WeasyPrint when installed; `backend="weasyprint"` requires it; `backend="serpentype"` forces the standalone Rust fallback.
-- Add the `weasy-compat` extra pinned to WeasyPrint 64.1. Custom non-page render limits and bounded resource-loader calls select the Rust fallback in auto mode; the delegated backend checks the page limit after layout.
+- Add an exact WeasyPrint compatibility backend to the WeasyPrint-shaped `HTML`/`CSS` API. The default `backend="auto"` uses the fast Rust renderer; `backend="weasyprint"` opts into exact compatibility; `backend="serpentype"` requires the Rust renderer.
+- Add the `weasy-compat` extra pinned to WeasyPrint 64.1. The delegated backend checks the page limit after layout and cannot enforce custom non-page limits or bounded resource-loader policies.
 - Re-run all 19 supplied fixtures with four workers and `max_pages=1000`: 38/38 renderer jobs passed, and all 19 Serpentype-facing PDFs have byte-identical SHA-256 values to WeasyPrint 64.1 across 353 pages.
 - Document that Serpentype is AI-generated and provided at the user's own risk; explain backend selection, exact-compatibility installation, and the standalone Rust renderer's compatibility boundary.
+- Remove WeasyPrint delegation and the backend selector from the production `HTML`/`CSS` API. Keep WeasyPrint as an optional test-only visual reference; the production API always uses the Rust renderer.
 
 ## 0.6.0 — 2026-10-07
 

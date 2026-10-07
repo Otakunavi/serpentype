@@ -1,9 +1,4 @@
-"""WeasyPrint-shaped Python entry points used by cameral-control.
-
-This adapter preserves the callers' object lifecycle and output types. It can
-delegate to WeasyPrint for full rendering parity or use Serpentype's controlled
-HTML/CSS subset as a standalone fallback.
-"""
+"""HTML/CSS compatibility entry points backed by Serpentype's Rust renderer."""
 
 from __future__ import annotations
 
@@ -17,17 +12,8 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
 
-from ._serpentype import FontRegistry, RenderLimitError, Renderer
+from ._serpentype import FontRegistry, Renderer
 from .resources import ResourceKind, ResourceLoader
-
-try:
-    from weasyprint import CSS as _WeasyCSS
-    from weasyprint import HTML as _WeasyHTML
-    from weasyprint.text.fonts import FontConfiguration as _WeasyFontConfiguration
-    from weasyprint.urls import default_url_fetcher as _weasy_default_url_fetcher
-except ImportError:
-    _WeasyCSS = _WeasyHTML = _WeasyFontConfiguration = _weasy_default_url_fetcher = None
-
 
 _FONT_FACE = re.compile(r"@font-face\s*\{([^{}]*)\}", re.IGNORECASE | re.DOTALL)
 _URL = re.compile(r"url\(\s*(['\"]?)(.*?)\1\s*\)", re.IGNORECASE | re.DOTALL)
@@ -36,12 +22,6 @@ _SRC = re.compile(
     r"\bsrc\s*=\s*(?:\"(?P<double>[^\"]*)\"|'(?P<single>[^']*)'|(?P<bare>[^\s>]+))",
     re.IGNORECASE | re.DOTALL,
 )
-
-
-def _local_weasy_url_fetcher(url):
-    if urlsplit(url).scheme.lower() in {"http", "https"}:
-        raise ValueError(f"remote resource is unsupported without a resource_loader: {url}")
-    return _weasy_default_url_fetcher(url)
 
 
 def _read_source(*, string=None, filename=None, file_obj=None, encoding=None):
@@ -159,7 +139,6 @@ class FontConfiguration:
 
     def __init__(self):
         self.registry = FontRegistry()
-        self._weasy = _WeasyFontConfiguration() if _WeasyFontConfiguration else None
         regular = str(files("serpentype").joinpath("assets", "NotoSans-Regular.ttf"))
         bold = str(files("serpentype").joinpath("assets", "NotoSans-Bold.ttf"))
         self.registry.register_file(regular, family="Noto Sans")
@@ -181,6 +160,7 @@ class FontConfiguration:
             for family in ("serif", "Times Newer Roman"):
                 self.registry.register_file(regular, family=family)
                 self.registry.register_file(bold, family=family, weight=700)
+
         for family in ("sans-serif",):
             self.registry.register_file(regular, family=family)
             self.registry.register_file(bold, family=family, weight=700)
@@ -199,7 +179,6 @@ class FontConfiguration:
         else:
             self.registry.register_file(regular, family="Inter")
             self.registry.register_file(bold, family="Inter", weight=700)
-
 
 class CSS:
     """Stylesheet constructed from string, filename, or a readable file object."""
@@ -221,51 +200,26 @@ class CSS:
         )
         self.base_url = base_url
         self.font_config = font_config or FontConfiguration()
-        self._weasy_base = base_url if base_url is not None else inferred_base
-        self._weasy_css = self._make_weasy_css(self.font_config)
-
-    def _make_weasy_css(self, font_config):
-        if _WeasyCSS is None or self.resource_loader is not None:
-            return None
-        return _WeasyCSS(
-            string=self.source,
-            base_url=(os.fspath(self._weasy_base)
-                      if self._weasy_base is not None else None),
-            font_config=font_config._weasy,
-            url_fetcher=_local_weasy_url_fetcher,
-        )
 
 
 class Document:
-    """Prepared document with WeasyPrint-style pages and write_pdf()."""
+    """Prepared Serpentype document with pages and write_pdf()."""
 
     def __init__(self, prepared):
         self._prepared = prepared
-        self._uses_weasy = _WeasyHTML is not None and not hasattr(prepared, "to_pdf")
-        if self._uses_weasy:
-            self.pages = prepared.pages
-            self.warnings = getattr(prepared, "warnings", ())
-            self.diagnostics = ()
-            self.overflow_count = 0
-            self.missing_glyphs = ()
-            self.unsupported_features = ()
-            self.metadata = prepared.metadata
-        else:
-            self.pages = tuple(range(prepared.page_count))
-            self.warnings = prepared.warnings
-            self.diagnostics = prepared.diagnostics
-            self.overflow_count = prepared.overflow_count
-            self.missing_glyphs = prepared.missing_glyphs
-            self.unsupported_features = prepared.unsupported_features
-            self.metadata = prepared.metadata
+        self.pages = tuple(range(prepared.page_count))
+        self.warnings = prepared.warnings
+        self.diagnostics = prepared.diagnostics
+        self.overflow_count = prepared.overflow_count
+        self.missing_glyphs = prepared.missing_glyphs
+        self.unsupported_features = prepared.unsupported_features
+        self.metadata = prepared.metadata
 
     @property
     def render_stats(self):
         return getattr(self._prepared, "render_stats", None)
 
     def write_pdf(self, target=None):
-        if self._uses_weasy:
-            return self._prepared.write_pdf(target)
         data = bytes(self._prepared.to_pdf())
         if target is None:
             return data
@@ -309,17 +263,10 @@ class HTML:
     """HTML entry point for the call forms used by cameral-control."""
 
     def __init__(self, *, string=None, filename=None, file_obj=None, base_url=None,
-                 encoding=None, resource_loader=None, url_fetcher=None, backend="auto"):
-        if backend not in {"auto", "serpentype", "weasyprint"}:
-            raise ValueError("backend must be 'auto', 'serpentype', or 'weasyprint'")
-        if backend == "weasyprint" and _WeasyHTML is None:
-            raise ImportError(
-                "backend='weasyprint' requires the 'weasy-compat' extra"
-            )
+                 encoding=None, resource_loader=None, url_fetcher=None):
         self._source, self._inferred_base, self._source_name = _read_source(
             string=string, filename=filename, file_obj=file_obj, encoding=encoding
         )
-        self.backend = backend
         self.base_url = base_url
         if resource_loader is not None and url_fetcher is not None:
             raise TypeError("provide resource_loader or url_fetcher")
@@ -327,14 +274,6 @@ class HTML:
             ResourceLoader(callback=url_fetcher, allowed_schemes=("file", "data", "package", "memory", "http", "https"))
             if url_fetcher is not None else None
         )
-        self._weasy_html = None
-        if backend != "serpentype" and _WeasyHTML is not None and self.resource_loader is None:
-            weasy_base = base_url if base_url is not None else self._inferred_base
-            self._weasy_html = _WeasyHTML(
-                string=self._source,
-                base_url=os.fspath(weasy_base) if weasy_base is not None else None,
-                url_fetcher=_local_weasy_url_fetcher,
-            )
 
     def render(self, *, stylesheets=None, font_config=None, presentational_hints=False,
                limits=None):
@@ -344,44 +283,6 @@ class HTML:
         config = font_config or next(
             (sheet.font_config for sheet in sheets if sheet.font_config is not None), None
         ) or FontConfiguration()
-        weasy_inputs_available = (
-            self._weasy_html is not None
-            and all(sheet._weasy_css is not None for sheet in sheets)
-        )
-        can_use_weasy = weasy_inputs_available
-        weasy_limits_compatible = True
-        if limits is not None:
-            weasy_limits_compatible = (
-                limits.max_input_bytes == 20_000_000
-                and limits.max_nodes == 200_000
-                and limits.max_css_rules == 50_000
-                and limits.max_image_pixels == 50_000_000
-                and limits.max_resource_bytes == 100_000_000
-                and limits.max_layout_iterations == 1_000_000
-                and not limits.restrict_base_dir
-            )
-        if self.backend == "weasyprint" and not weasy_inputs_available:
-            raise ValueError(
-                "the WeasyPrint backend cannot use a resource_loader or a CSS object "
-                "created without WeasyPrint"
-            )
-        if self.backend == "weasyprint" and not weasy_limits_compatible:
-            raise ValueError(
-                "the WeasyPrint backend cannot enforce customized non-page RenderLimits"
-            )
-        can_use_weasy &= weasy_limits_compatible
-        if can_use_weasy:
-            weasy_document = self._weasy_html.render(
-                stylesheets=[sheet._make_weasy_css(config) for sheet in sheets],
-                font_config=config._weasy,
-                presentational_hints=presentational_hints,
-            )
-            page_limit = limits.max_pages if limits is not None else 500
-            if len(weasy_document.pages) > page_limit:
-                raise RenderLimitError(
-                    f"page limit exceeded ({len(weasy_document.pages)} > {page_limit})"
-                )
-            return Document(weasy_document)
         for sheet in sheets:
             for face in sheet.font_faces:
                 if isinstance(face.source, bytes):

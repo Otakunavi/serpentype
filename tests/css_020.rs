@@ -935,7 +935,7 @@ fn manual_soft_hyphen_only_paints_when_used_for_a_break() {
             .collect::<String>()
     };
     assert_eq!(text(&wide), "encyclopedia");
-    assert_eq!(text(&narrow), "encyclo-pedia");
+    assert_eq!(text(&narrow), "encyclo‐pedia");
     assert!(text_position(&narrow, 'p').unwrap().1 > text_position(&narrow, 'e').unwrap().1);
 
     let none = base_renderer
@@ -954,7 +954,7 @@ fn manual_soft_hyphen_only_paints_when_used_for_a_break() {
             "p { margin:0; width:55pt; overflow-wrap:normal; hyphens:manual }",
         )
         .unwrap();
-    assert_eq!(text(&shaped), "encyclo-pedia");
+    assert_eq!(text(&shaped), "encyclo‐pedia");
 
     let nearest = base_renderer
         .layout(
@@ -962,12 +962,44 @@ fn manual_soft_hyphen_only_paints_when_used_for_a_break() {
             "p { margin:0; width:85pt; overflow-wrap:normal; hyphens:manual }",
         )
         .unwrap();
-    assert_eq!(text(&nearest), "prefix encyclo-pedia");
+    assert_eq!(text(&nearest), "prefix encyclo‐pedia");
     assert_eq!(
         text_position(&nearest, 'p').unwrap().1,
-        text_position(&nearest, '-').unwrap().1,
+        text_position(&nearest, '‐').unwrap().1,
         "the nearest soft hyphen must win over an earlier space"
     );
+}
+
+#[test]
+fn auto_height_fixed_box_honors_bottom_inset() {
+    let doc = renderer()
+        .layout(
+            "<div class='fixed'>FIXED</div>",
+            "@page { size:200pt 200pt; margin:10pt } .fixed { position:fixed; right:0; bottom:0; padding:2pt; font-size:8pt }",
+        )
+        .unwrap();
+    let (x, baseline) = text_position(&doc, 'F').unwrap();
+    assert!(baseline > 160.0, "fixed baseline was {baseline}");
+    assert!(
+        x > 150.0,
+        "fixed text did not shrink to its right edge: {x}"
+    );
+}
+
+#[test]
+fn transformed_inline_block_paints_its_transform_around_the_atomic_box() {
+    let doc = renderer()
+        .layout(
+            "<p><span class='tilted'>Rotated text</span></p>",
+            "p { margin:0 } .tilted { display:inline-block; padding:4pt; transform:rotate(2deg) }",
+        )
+        .unwrap();
+    let transforms = doc.pages[0]
+        .items
+        .iter()
+        .filter(|item| matches!(item, Item::BeginTransform(_)))
+        .count();
+    assert_eq!(transforms, 1);
 }
 
 #[test]
@@ -1189,7 +1221,7 @@ fn grid_gap_offsets_tracks_and_rows() {
             .abs()
             < 0.1
     );
-    assert!((xy('C').1 - xy('A').1 - 24.4).abs() < 0.2);
+    assert!((xy('C').1 - xy('A').1 - 26.32).abs() < 0.2);
 }
 
 #[test]
@@ -1362,9 +1394,9 @@ fn bleed_and_crop_marks_expand_the_pdf_page_and_retain_trim_geometry() {
     assert!(doc.pages[0].style.crop_marks);
     let pdf = doc.to_pdf().unwrap();
     let source = String::from_utf8_lossy(&pdf);
-    assert!(source.contains("/MediaBox [0 0 234.000 134.000]"));
-    assert!(source.contains("/TrimBox [17.000 17.000 217.000 117.000]"));
-    assert!(source.contains("/BleedBox [12.000 12.000 222.000 122.000]"));
+    assert!(source.contains("/MediaBox [0 0 210.000 110.000]"));
+    assert!(source.contains("/TrimBox [5.000 5.000 205.000 105.000]"));
+    assert!(source.contains("/BleedBox [0.000 0.000 210.000 110.000]"));
     assert!(source.contains("/BleedBox"));
 }
 

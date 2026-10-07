@@ -387,7 +387,7 @@ class Release020Tests(unittest.TestCase):
         extracted = page.extract_text()
         self.assertIn("one", extracted)
         self.assertIn("two", extracted)
-        self.assertIn("encyclo-pedia", extracted.replace("\n", ""))
+        self.assertIn("encyclo‐pedia", extracted.replace("\n", ""))
         self.assertIn(b" re", page.get_contents().get_data())
 
     def test_visibility_hidden_keeps_content_out_of_pdf_text(self):
@@ -840,7 +840,7 @@ class Release020Tests(unittest.TestCase):
             source = Path(directory) / "invoice source.html"
             source.write_text("<p>&#x10fff;</p>", encoding="utf-8")
             with self.assertRaises(serpentype.MissingGlyphError) as caught:
-                serpentype.HTML(filename=source, backend="serpentype").render()
+                serpentype.HTML(filename=source).render()
             self.assertEqual(caught.exception.source, str(source))
             self.assertEqual((caught.exception.line, caught.exception.column), (1, 4))
 
@@ -859,7 +859,7 @@ class Release020Tests(unittest.TestCase):
         sheet = serpentype.CSS(string=f"@font-face {{ font-family: WebFont; src: url('{font}') }} "
                                      "p { font-family: WebFont }")
         pdf = serpentype.HTML(
-            string="<p>Web Font</p>", backend="serpentype"
+            string="<p>Web Font</p>"
         ).write_pdf(stylesheets=[sheet])
         self.assertIn(b"/FontFile3", pdf)
 
@@ -1072,7 +1072,7 @@ class Release020Tests(unittest.TestCase):
                "<circle cx='15' cy='10' r='8' fill='red'/></svg>")
         uri = "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
         pdf = serpentype.HTML(
-            string=f"<img src='{uri}'>", backend="serpentype"
+            string=f"<img src='{uri}'>"
         ).write_pdf()
         self.assertIn(b"/Subtype /Form", pdf)
 
@@ -1185,8 +1185,8 @@ class Release020Tests(unittest.TestCase):
         pdf = bytes(self.renderer.layout("<p>Trimmed</p>",
             "@page { size:200pt 100pt; margin:10pt; bleed:5pt; marks:crop }").to_pdf())
         page = PdfReader(io.BytesIO(pdf)).pages[0]
-        self.assertEqual(float(page.mediabox.width), 234.0)
-        self.assertEqual(float(page.mediabox.height), 134.0)
+        self.assertEqual(float(page.mediabox.width), 210.0)
+        self.assertEqual(float(page.mediabox.height), 110.0)
         self.assertEqual(float(page.trimbox.width), 200.0)
         self.assertEqual(float(page.bleedbox.width), 210.0)
         self.assertIn(b" m ", page.get_contents().get_data())
@@ -1202,7 +1202,7 @@ class Release020Tests(unittest.TestCase):
             "<p>Repeatable PDF 2026</p>",
             "@page { size:200pt 100pt; margin:10pt }")
         digest = hashlib.sha256(bytes(doc.to_pdf())).hexdigest()
-        self.assertEqual(digest, "64750613774dc2e9ebaf383ab97993ecb717bd96b9cc5b26ef321593aa6b4e00")
+        self.assertEqual(digest, "74fbc59ef7df3cf655ecbfa2ad9eb538142342d3860cf8d3dbb183e3070578a8")
 
     def test_paginated_pdf_matches_visual_reference(self):
         self.assert_visual_reference("visual_release_reference")

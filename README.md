@@ -2,9 +2,9 @@
 
 > **AI-generated software:** Serpentype was generated with AI assistance. It is provided as-is; use it at your own risk. Review and validate its output before relying on it, especially for legal, financial, regulatory, or production documents.
 
-Latest release: **0.7.0**. For exact WeasyPrint output through the `HTML`/`CSS` compatibility API, install `serpentype[weasy-compat]`; that extra pins WeasyPrint 64.1 and the adapter delegates those calls to it when available. `HTML(..., backend="serpentype")` forces the standalone Rust fallback, and `Renderer` remains the native Rust engine. Without WeasyPrint, the compatibility API falls back to Serpentype's controlled HTML/CSS subset and does not promise pixel identity. See the [compatibility report](docs/compatibility-progress.md), [capability matrix](docs/capabilities.md), and [WeasyPrint compatibility limits](docs/weasyprint_compat.md).
+Latest release: **0.8.0**. The `HTML`/`CSS` API always uses Serpentype's Rust renderer. It preserves common WeasyPrint call signatures while supporting Serpentype's documented HTML/CSS subset; WeasyPrint is used only as an optional visual test reference. See the [compatibility report](docs/compatibility-progress.md), [capability matrix](docs/capabilities.md), and [API compatibility limits](docs/weasyprint_compat.md).
 
-Serpentype is a Rust document layout engine with a Python API. It accepts a **controlled** HTML/CSS subset, calculates page breaks, then exports the prepared pages as a vector/text PDF. The direct `Renderer` uses registered fonts and bundled fallbacks. The WeasyPrint compatibility extra uses WeasyPrint's own renderer to preserve its full output behavior; it requires the native runtime dependencies supported by WeasyPrint on the host. A prebuilt platform wheel for the Rust engine needs only Python ≥3.10.
+Serpentype is a Rust document layout engine with a Python API. It accepts a **controlled** HTML/CSS subset, calculates page breaks, then exports the prepared pages as a vector/text PDF. The direct `Renderer` uses registered fonts and bundled fallbacks. A prebuilt platform wheel needs only Python ≥3.10.
 
 ```python
 from serpentype import FontRegistry, Renderer, bundled_font_path
@@ -45,7 +45,7 @@ pdf = HTML(string="<img src='memory:logo'>", resource_loader=loader).write_pdf()
 # The same loader can be passed to Renderer(resource_loader=loader).
 ```
 
-`HTML` and `CSS` also accept `url_fetcher(url)` returning a WeasyPrint-style dictionary with `string`, `file_obj` or `filename` and optional `mime_type`. HTTP(S) is opt-in through `ResourceLoader(allowed_schemes=(..., "https"), allowed_hosts=(...))`. `Renderer(max_image_dpi=300)` can downsample oversized raster resources; supported SVG is preserved as vector PDF content.
+`HTML` and `CSS` also accept `url_fetcher(url)` returning a compatibility dictionary with `string`, `file_obj` or `filename` and optional `mime_type`. HTTP(S) is opt-in through `ResourceLoader(allowed_schemes=(..., "https"), allowed_hosts=(...))`. `Renderer(max_image_dpi=300)` can downsample oversized raster resources; supported SVG is preserved as vector PDF content.
 
 For the cameral-control `page_definition.css`, pass the stylesheet after the application's Jinja variables and conditionals have been rendered. Register a font under `Times Newer Roman` before layout. The stylesheet's named pages, first-page margin boxes, page counters, QR flex column, and five-column grid are supported. Its `size: landscape` pages display horizontally; the redundant `page-orientation: rotate-right` does not rotate them again. Rotation still applies when the page size is not given by the `landscape` keyword.
 
@@ -63,7 +63,7 @@ cargo test --no-default-features --locked
 .venv/bin/python -I -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-The development CI workflow targets manylinux 2.17 and musllinux on x86_64/aarch64, macOS arm64/x86_64, Windows x86_64, and CPython 3.10–3.14 through ABI3. **Only macOS arm64 / CPython 3.13 wheel build and installation have been verified locally.** The declared Rust MSRV is 1.98.1. Serpentype's selected Rust dependencies do not link to browser engines, Pango, Cairo, or Fontconfig. WeasyPrint is needed only for the optional benchmark.
+The development CI workflow targets manylinux 2.17 and musllinux on x86_64/aarch64, macOS arm64/x86_64, Windows x86_64, and CPython 3.10–3.14 through ABI3. **Only macOS arm64 / CPython 3.13 wheel build and installation have been verified locally.** The declared Rust MSRV is 1.98.1. Serpentype's selected Rust dependencies do not link to browser engines, Pango, Cairo, or Fontconfig. WeasyPrint is an optional test dependency (`python -m pip install '.[test-weasy]'`) and is not imported by the production package.
 
 For the `cameral-control` WeasyPrint call sites, Serpentype also exports `HTML`, `CSS`, and `serpentype.text.fonts.FontConfiguration`. See the [API compatibility and migration limits](docs/weasyprint_compat.md).
 
