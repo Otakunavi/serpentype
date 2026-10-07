@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from serpentype import CSS, HTML
+from serpentype.compat import _WeasyHTML
 from serpentype.text.fonts import FontConfiguration
 from serpentype import bundled_font_path
 
@@ -15,6 +16,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WeasyCompatTests(unittest.TestCase):
+    @unittest.skipIf(_WeasyHTML is None, "WeasyPrint optional extra is not installed")
+    def test_weasy_backend_matches_direct_pdf_bytes(self):
+        fonts = FontConfiguration()
+        html_text = "<p>Exact compatibility</p>"
+        css_text = "@page { size: 160pt 100pt; margin: 10pt } p { color: #123456 }"
+        sheet = CSS(string=css_text, font_config=fonts)
+        actual = HTML(string=html_text, backend="weasyprint").write_pdf(
+            stylesheets=[sheet], font_config=fonts, presentational_hints=True
+        )
+        expected = _WeasyHTML(string=html_text).write_pdf(
+            stylesheets=[sheet._make_weasy_css(fonts)],
+            font_config=fonts._weasy,
+            presentational_hints=True,
+        )
+        self.assertEqual(actual, expected)
+
     def test_aliens_get_pdf_call_shape(self):
         fonts = FontConfiguration()
         font_url = Path(bundled_font_path()).as_uri()
@@ -90,16 +107,25 @@ class WeasyCompatTests(unittest.TestCase):
             b'</svg>'
         )
         encoded = base64.b64encode(svg).decode()
-        pdf = HTML(string=f'<img src="data:image/svg+xml;base64,{encoded}">').write_pdf()
+        pdf = HTML(
+            string=f'<img src="data:image/svg+xml;base64,{encoded}">',
+            backend="serpentype",
+        ).write_pdf()
         self.assertIn(b"/Subtype /Form", pdf)
         path_svg = base64.b64encode(
             b'<svg width="20" height="20"><path d="M0 0L20 20"/></svg>'
         ).decode()
-        path_pdf = HTML(string=f'<img src="data:image/svg+xml;base64,{path_svg}">').write_pdf()
+        path_pdf = HTML(
+            string=f'<img src="data:image/svg+xml;base64,{path_svg}">',
+            backend="serpentype",
+        ).write_pdf()
         self.assertIn(b"/Subtype /Form", path_pdf)
         malformed = base64.b64encode(b'<svg><path').decode()
         with self.assertRaisesRegex(ValueError, "SVG"):
-            HTML(string=f'<img src="data:image/svg+xml;base64,{malformed}">').write_pdf()
+            HTML(
+                string=f'<img src="data:image/svg+xml;base64,{malformed}">',
+                backend="serpentype",
+            ).write_pdf()
 
 
 if __name__ == "__main__":
