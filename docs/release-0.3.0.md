@@ -12,10 +12,10 @@ Serpentype 0.3.0 fixes layout defects found in the supplied compatibility fixtur
 
 The 19-fixture pack completed with four spawned workers: 19/19 Serpentype renders succeeded, with no failures, overflow, missing glyphs, unsupported-feature reports or diagnostics. The 2000-row table renders in 287 pages under both default limits and `max_pages=1000`.
 
-For a fair comparison, the fixture's `common.css` was extended with a universal rule forcing its bundled `Fixture Sans` font for both engines. Against the bundled WeasyPrint 64.1 baseline, all 19 page counts now match. Page orientation and named landscape content width also match.
+For a controlled reference check, the fixture's `common.css` was extended with a universal rule forcing its bundled `Fixture Sans` font in both renderers. Against the WeasyPrint 64.1 reference, all 19 page counts now match. Page orientation and named landscape content width also match.
 
-This is not pixel or pagination equivalence. Visual review and extracted text show different row-to-page assignments in the second tables of the appendix and notice-registration production templates, and some text line breaks/order differ. The fixtures therefore do not justify switching production rendering without reviewing those templates individually. WeasyPrint remains the production default.
+This is not pixel or pagination equivalence. Visual review and extracted text show different row-to-page assignments in the second tables of the appendix and notice-registration production templates, and some text line breaks/order differ. These differences identify remaining work against the reference; each production template should be reviewed individually.
 
-The verification run used macOS arm64, CPython 3.13, Serpentype 0.3.0 and WeasyPrint 64.1. The common-font override is needed because the production snapshots contain inline font-family declarations that otherwise prevent a controlled comparison.
+The verification run used macOS arm64, CPython 3.13, Serpentype 0.3.0 and WeasyPrint 64.1 as the reference renderer. The common-font override is needed because the production snapshots contain inline font-family declarations that otherwise prevent a controlled comparison.
 
 The local regression suites pass: `cargo test --locked --no-default-features` and `python -m pytest -q` (104 tests and 35 subtests).

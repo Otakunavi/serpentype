@@ -113,6 +113,56 @@ class WeasyCompatTests(unittest.TestCase):
         self.assertLessEqual(sum(deltas) / len(deltas), 5.0)
         self.assertLessEqual(max(deltas), 15.0)
 
+    def test_inline_block_production_fixtures_render_with_both_engines(self):
+        try:
+            from weasyprint import CSS as WeasyCSS, HTML as WeasyHTML
+            from weasyprint.text.fonts import FontConfiguration as WeasyFontConfiguration
+        except ImportError:
+            self.skipTest("install the test-weasy extra to render the reference PDFs")
+
+        fixtures = ROOT / "tests" / "fixtures"
+        base_url = fixtures.as_uri() + "/"
+        regular = Path(bundled_font_path()).resolve()
+        bold = Path(bundled_font_path(700)).resolve()
+        font_css = (
+            f"@font-face {{ font-family: 'Noto Sans'; src: url('{regular.as_uri()}'); }}\n"
+            f"@font-face {{ font-family: 'Noto Sans'; src: url('{bold.as_uri()}'); font-weight: 700; }}\n"
+        )
+        for name in ("inline_block_width_notice", "inline_block_width_appendix"):
+            with self.subTest(fixture=name):
+                html = (fixtures / f"{name}.html").read_text(encoding="utf-8")
+                css_text = font_css + (fixtures / f"{name}.css").read_text(encoding="utf-8")
+                native_fonts = FontConfiguration()
+                native_css = CSS(string=css_text, base_url=base_url, font_config=native_fonts)
+                document = HTML(string=html, base_url=base_url).render(
+                    stylesheets=[native_css], font_config=native_fonts
+                )
+                diagnostic_codes = {diagnostic.code for diagnostic in document.diagnostics}
+                self.assertIn("inline-block-width", diagnostic_codes)
+                width_warning = next(
+                    diagnostic for diagnostic in document.diagnostics
+                    if diagnostic.code == "inline-block-width"
+                )
+                self.assertEqual(width_warning.severity, "warning")
+                self.assertGreater(len(document.pages), 0)
+                native_pdf = document.write_pdf()
+                self.assertTrue(native_pdf.startswith(b"%PDF-"))
+
+                weasy_fonts = WeasyFontConfiguration()
+                weasy_css = WeasyCSS(
+                    string=css_text, base_url=base_url, font_config=weasy_fonts
+                )
+                reference = WeasyHTML(string=html, base_url=base_url).write_pdf(
+                    stylesheets=[weasy_css], font_config=weasy_fonts
+                )
+                self.assertTrue(reference.startswith(b"%PDF-"))
+                from pypdf import PdfReader
+
+                self.assertEqual(
+                    len(document.pages),
+                    len(PdfReader(BytesIO(reference)).pages),
+                )
+
     def test_aliens_get_pdf_call_shape(self):
         fonts = FontConfiguration()
         font_url = Path(bundled_font_path()).as_uri()

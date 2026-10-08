@@ -1,7 +1,18 @@
 # Changelog
 
+## 0.9.0 — 2026-10-08
+
+- Keep inline-blocks with no usable content width renderable and emit a source-located `inline-block-width` warning when their contents must be omitted.
+- Resolve percentage heights and min/max heights only against a definite containing-block height.
+- Keep fragmented height-constrained flex containers renderable, lay out flex-row items across matching page fragments, and emit source-located warnings when row alignment is omitted.
+- Ignore the BOM/zero-width no-break space when building visible text and bidi output.
+- Expand the reference comparison to fourteen fixtures, including the supplied Russian and Kazakh notice templates; record text, page geometry, object inventories, raster metrics, and visual difference crops.
+- Keep the remaining QR content omission, production-template text-flow differences, and visual mismatches documented in TODO and the comparison report.
+
 ## 0.8.0 — 2026-10-07
 
+- Keep PDF layout running when an inline-block has no usable content width; omit that box's content and emit an `inline-block-width` warning with its HTML source location.
+- Keep fragmented height-constrained flex containers renderable, lay out flex-row items across matching page fragments, and emit source-located warnings when row alignment is omitted.
 - Keep WeasyPrint out of the production API; retain it as a pinned optional visual-test reference.
 - Match bleed-driven PDF page boxes without adding crop-mark padding to the MediaBox.
 - Place auto-height fixed boxes at their bottom inset, size right-positioned auto-width boxes to content, and center page margin boxes on the page axis.
@@ -44,7 +55,7 @@
 - Use intrinsic text widths for auto-sized inline flex items and remove a collapsed-table-cell text-width adjustment that distorted layout.
 - Apply HTML default middle alignment to table data cells without leaking non-inherited vertical alignment into text styles.
 - Expand compatibility verification to confirm matching page counts, page boxes and normalized text content across all 405 pages in the 19-fixture pack against WeasyPrint 64.1 with the bundled font forced in both engines.
-- Preserve WeasyPrint as the production default: text extraction order differs on nine pages, and pixel-perfect equivalence across all fixtures has not been established.
+- At that release, retain the established production renderer while using WeasyPrint 64.1 as the compatibility reference: text extraction order differed on nine pages, and full visual parity had not been established.
 
 ## 0.3.0 — 2026-10-07
 
@@ -60,8 +71,8 @@
 ## 0.2.1 — 2026-10-06
 
 - Pass optional `RenderLimits` through the WeasyPrint-shaped `HTML.render()` and `HTML.write_pdf()` methods, so compatibility callers can configure the page and resource bounds.
-- Record the October 2026 production-template comparison: Serpentype is not a drop-in WeasyPrint renderer; landscape table sizing and malformed nested-table markup need fixture-based review, and long-document page limits must be selected for the workload.
-- Keep the WeasyPrint backend as the production default until the affected templates pass visual golden comparisons.
+- Record the October 2026 production-template comparison against the WeasyPrint reference: landscape table sizing and malformed nested-table markup need fixture-based review, and long-document page limits must be selected for the workload.
+- At that point, the reference renderer remained in use for production templates pending visual golden comparisons of the affected fixtures.
 
 ## 0.2.0 — 2026-10-05
 

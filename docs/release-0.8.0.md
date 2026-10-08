@@ -6,7 +6,8 @@ boxes, manual soft hyphens, and PDF bleed/crop page geometry.
 
 ## Compatibility comparison
 
-The checked-in ten-fixture corpus is compared with WeasyPrint 64.1 using
+The checked-in ten-fixture corpus is checked against the WeasyPrint 64.1
+reference using
 Poppler `pdftotext -bbox-layout`. All fixtures match page counts, page
 dimensions, extracted word sequences, and normalized line sequences. The
 equal-fixture mean line-box delta is 0.64 pt. Documented geometry exceptions

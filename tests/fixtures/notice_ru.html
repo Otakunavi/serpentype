@@ -1,0 +1,509 @@
+<!doctype html>
+<html><head><style>@page { size: A4; margin: 15mm; }
+
+/* Шрифт по умолчанию там, где font-family не задан явно: таблицы нарушений
+   (aliens/notice/pipeline.py) его не проставляют. Без этого правила WeasyPrint
+   разрешает `serif` через системные шрифты — в контейнере это DejaVu, на macOS
+   Georgia, — и вес PDF начинает зависеть от окружения (+2.3 КБ на фолбэки).
+   Инлайновые стили шаблона это правило не перебивает: у них приоритет выше. */
+body {
+  font-family: "Times Newer Roman", serif;
+}
+
+@page :first {
+  @bottom-right {
+    content: "" !important;
+  }
+  @bottom-left {
+    content: "" !important;
+  }
+  @bottom-center {
+    content: "" !important;
+  }
+  @top-right {
+    content: "" !important;
+  }
+  @top-left {
+    content: "" !important;
+  }
+  @top-center {
+    content: "" !important;
+  }
+}
+
+@page appendix_1_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение 1 к  уведомлению  № NT-2026-00042 от 08.10.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page esf_turnover_notice_appendix_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение к уведомлению № NT-2026-00042 от 08.10.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page esf_turnover_advice_appendix_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение к извещению № NT-2026-00042 от 08.10.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page appendix_2_ru {
+  size: landscape !important;
+  page-orientation: rotate-right !important;
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение 2 к  уведомлению  № NT-2026-00042 от 08.10.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+
+@page appendix_1_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "08.10.2026 ж. № NT-2026-00042  хабарламасына  1-қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page esf_turnover_notice_appendix_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "08.10.2026 ж. № NT-2026-00042 хабарламасына қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page esf_turnover_advice_appendix_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "08.10.2026 ж. № NT-2026-00042 хабархатқа қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page appendix_2_kk {
+  size: landscape !important;
+  page-orientation: rotate-right !important;
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "08.10.2026 ж. № NT-2026-00042  хабарламасына  2-қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@media print {
+  .appendix_1_kk {
+  }
+  .appendix_2_kk {
+  }
+  .appendix_1_ru {
+  }
+  .appendix_2_ru {
+  }
+  [data-print="paged"] > .appendix_1_kk {
+    page: appendix_1_kk !important;
+  }
+  [data-print="paged"] > .esf_turnover_notice_appendix_kk {
+    page: esf_turnover_notice_appendix_kk !important;
+  }
+  [data-print="paged"] > .esf_turnover_advice_appendix_kk {
+    page: esf_turnover_advice_appendix_kk !important;
+  }
+  [data-print="paged"] > .appendix_2_kk {
+    page: appendix_2_kk !important;
+  }
+  [data-print="paged"] > .appendix_1_ru {
+    page: appendix_1_ru !important;
+  }
+  [data-print="paged"] > .esf_turnover_notice_appendix_ru {
+    page: esf_turnover_notice_appendix_ru !important;
+  }
+  [data-print="paged"] > .esf_turnover_advice_appendix_ru {
+    page: esf_turnover_advice_appendix_ru !important;
+  }
+  [data-print="paged"] > .appendix_2_ru {
+    page: appendix_2_ru !important;
+  }
+}
+.qr {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-right: 10px;
+}
+.qr img {
+    width: 3cm;
+    height: auto;
+    aspect-ratio: 1;
+    max-width: 100%;
+    max-height: 100%;
+}
+.row{
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+}
+</style></head><body><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;margin-top:0.5rem;margin-bottom:0.5rem"><div><div style="position:relative;display:flex;width:100%;height:100%;gap:1rem;border-radius:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;width:27.34%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline-block"><span type="button" style="display:inline-block;cursor:pointer;border-radius:0.125rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;transition-property:all;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;border-color:rgba(147,197,253, 1)"><img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTMuMm1tIiBoZWlnaHQ9IjEzLjJtbSIgdmVyc2lvbj0iMS4xIiB2aWV3Qm94PSIwIDAgMTMuMiAxMy4yIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxwYXRoIGQ9Ik0wLjgsMC44SDEuMlYxLjJIMC44ek0xLjIsMC44SDEuNlYxLjJIMS4yek0xLjYsMC44SDJWMS4ySDEuNnpNMiwwLjhIMi40VjEuMkgyek0yLjQsMC44SDIuOFYxLjJIMi40ek0yLjgsMC44SDMuMlYxLjJIMi44ek0zLjIsMC44SDMuNlYxLjJIMy4yek01LjIsMC44SDUuNlYxLjJINS4yek01LjYsMC44SDZWMS4ySDUuNnpNNiwwLjhINi40VjEuMkg2ek02LjQsMC44SDYuOFYxLjJINi40ek02LjgsMC44SDcuMlYxLjJINi44ek03LjIsMC44SDcuNlYxLjJINy4yek03LjYsMC44SDhWMS4ySDcuNnpNOCwwLjhIOC40VjEuMkg4ek04LjQsMC44SDguOFYxLjJIOC40ek05LjYsMC44SDEwVjEuMkg5LjZ6TTEwLDAuOEgxMC40VjEuMkgxMHpNMTAuNCwwLjhIMTAuOFYxLjJIMTAuNHpNMTAuOCwwLjhIMTEuMlYxLjJIMTAuOHpNMTEuMiwwLjhIMTEuNlYxLjJIMTEuMnpNMTEuNiwwLjhIMTJWMS4ySDExLjZ6TTEyLDAuOEgxMi40VjEuMkgxMnpNMC44LDEuMkgxLjJWMS42SDAuOHpNMy4yLDEuMkgzLjZWMS42SDMuMnpNNC44LDEuMkg1LjJWMS42SDQuOHpNNS42LDEuMkg2VjEuNkg1LjZ6TTYuNCwxLjJINi44VjEuNkg2LjR6TTYuOCwxLjJINy4yVjEuNkg2Ljh6TTcuMiwxLjJINy42VjEuNkg3LjJ6TTgsMS4ySDguNFYxLjZIOHpNOS42LDEuMkgxMFYxLjZIOS42ek0xMiwxLjJIMTIuNFYxLjZIMTJ6TTAuOCwxLjZIMS4yVjJIMC44ek0xLjYsMS42SDJWMkgxLjZ6TTIsMS42SDIuNFYySDJ6TTIuNCwxLjZIMi44VjJIMi40ek0zLjIsMS42SDMuNlYySDMuMnpNNC40LDEuNkg0LjhWMkg0LjR6TTUuMiwxLjZINS42VjJINS4yek01LjYsMS42SDZWMkg1LjZ6TTYuNCwxLjZINi44VjJINi40ek02LjgsMS42SDcuMlYySDYuOHpNNy42LDEuNkg4VjJINy42ek04LjQsMS42SDguOFYySDguNHpNOC44LDEuNkg5LjJWMkg4Ljh6TTkuNiwxLjZIMTBWMkg5LjZ6TTEwLjQsMS42SDEwLjhWMkgxMC40ek0xMC44LDEuNkgxMS4yVjJIMTAuOHpNMTEuMiwxLjZIMTEuNlYySDExLjJ6TTEyLDEuNkgxMi40VjJIMTJ6TTAuOCwySDEuMlYyLjRIMC44ek0xLjYsMkgyVjIuNEgxLjZ6TTIsMkgyLjRWMi40SDJ6TTIuNCwySDIuOFYyLjRIMi40ek0zLjIsMkgzLjZWMi40SDMuMnpNNC40LDJINC44VjIuNEg0LjR6TTQuOCwySDUuMlYyLjRINC44ek02LjgsMkg3LjJWMi40SDYuOHpNNy4yLDJINy42VjIuNEg3LjJ6TTgsMkg4LjRWMi40SDh6TTkuNiwySDEwVjIuNEg5LjZ6TTEwLjQsMkgxMC44VjIuNEgxMC40ek0xMC44LDJIMTEuMlYyLjRIMTAuOHpNMTEuMiwySDExLjZWMi40SDExLjJ6TTEyLDJIMTIuNFYyLjRIMTJ6TTAuOCwyLjRIMS4yVjIuOEgwLjh6TTEuNiwyLjRIMlYyLjhIMS42ek0yLDIuNEgyLjRWMi44SDJ6TTIuNCwyLjRIMi44VjIuOEgyLjR6TTMuMiwyLjRIMy42VjIuOEgzLjJ6TTQuOCwyLjRINS4yVjIuOEg0Ljh6TTYsMi40SDYuNFYyLjhINnpNNi44LDIuNEg3LjJWMi44SDYuOHpNOS42LDIuNEgxMFYyLjhIOS42ek0xMC40LDIuNEgxMC44VjIuOEgxMC40ek0xMC44LDIuNEgxMS4yVjIuOEgxMC44ek0xMS4yLDIuNEgxMS42VjIuOEgxMS4yek0xMiwyLjRIMTIuNFYyLjhIMTJ6TTAuOCwyLjhIMS4yVjMuMkgwLjh6TTMuMiwyLjhIMy42VjMuMkgzLjJ6TTQsMi44SDQuNFYzLjJINHpNNC40LDIuOEg0LjhWMy4ySDQuNHpNNS42LDIuOEg2VjMuMkg1LjZ6TTYsMi44SDYuNFYzLjJINnpNNi40LDIuOEg2LjhWMy4ySDYuNHpNNi44LDIuOEg3LjJWMy4ySDYuOHpNOCwyLjhIOC40VjMuMkg4ek04LjQsMi44SDguOFYzLjJIOC40ek05LjYsMi44SDEwVjMuMkg5LjZ6TTEyLDIuOEgxMi40VjMuMkgxMnpNMC44LDMuMkgxLjJWMy42SDAuOHpNMS4yLDMuMkgxLjZWMy42SDEuMnpNMS42LDMuMkgyVjMuNkgxLjZ6TTIsMy4ySDIuNFYzLjZIMnpNMi40LDMuMkgyLjhWMy42SDIuNHpNMi44LDMuMkgzLjJWMy42SDIuOHpNMy4yLDMuMkgzLjZWMy42SDMuMnpNNCwzLjJINC40VjMuNkg0ek00LjgsMy4ySDUuMlYzLjZINC44ek01LjYsMy4ySDZWMy42SDUuNnpNNi40LDMuMkg2LjhWMy42SDYuNHpNNy4yLDMuMkg3LjZWMy42SDcuMnpNOCwzLjJIOC40VjMuNkg4ek04LjgsMy4ySDkuMlYzLjZIOC44ek05LjYsMy4ySDEwVjMuNkg5LjZ6TTEwLDMuMkgxMC40VjMuNkgxMHpNMTAuNCwzLjJIMTAuOFYzLjZIMTAuNHpNMTAuOCwzLjJIMTEuMlYzLjZIMTAuOHpNMTEuMiwzLjJIMTEuNlYzLjZIMTEuMnpNMTEuNiwzLjJIMTJWMy42SDExLjZ6TTEyLDMuMkgxMi40VjMuNkgxMnpNNC40LDMuNkg0LjhWNEg0LjR6TTQuOCwzLjZINS4yVjRINC44ek01LjIsMy42SDUuNlY0SDUuMnpNNS42LDMuNkg2VjRINS42ek03LjIsMy42SDcuNlY0SDcuMnpNNy42LDMuNkg4VjRINy42ek04LjQsMy42SDguOFY0SDguNHpNOC44LDMuNkg5LjJWNEg4Ljh6TTAuOCw0SDEuMlY0LjRIMC44ek0yLDRIMi40VjQuNEgyek0yLjgsNEgzLjJWNC40SDIuOHpNMy4yLDRIMy42VjQuNEgzLjJ6TTQsNEg0LjRWNC40SDR6TTYsNEg2LjRWNC40SDZ6TTguNCw0SDguOFY0LjRIOC40ek05LjIsNEg5LjZWNC40SDkuMnpNMTAsNEgxMC40VjQuNEgxMHpNMS4yLDQuNEgxLjZWNC44SDEuMnpNMS42LDQuNEgyVjQuOEgxLjZ6TTIsNC40SDIuNFY0LjhIMnpNMi40LDQuNEgyLjhWNC44SDIuNHpNMi44LDQuNEgzLjJWNC44SDIuOHpNMy42LDQuNEg0VjQuOEgzLjZ6TTQuOCw0LjRINS4yVjQuOEg0Ljh6TTUuNiw0LjRINlY0LjhINS42ek02LDQuNEg2LjRWNC44SDZ6TTYuNCw0LjRINi44VjQuOEg2LjR6TTkuNiw0LjRIMTBWNC44SDkuNnpNMTAuOCw0LjRIMTEuMlY0LjhIMTAuOHpNMTIsNC40SDEyLjRWNC44SDEyek0wLjgsNC44SDEuMlY1LjJIMC44ek0yLDQuOEgyLjRWNS4ySDJ6TTIuNCw0LjhIMi44VjUuMkgyLjR6TTIuOCw0LjhIMy4yVjUuMkgyLjh6TTMuMiw0LjhIMy42VjUuMkgzLjJ6TTMuNiw0LjhINFY1LjJIMy42ek02LDQuOEg2LjRWNS4ySDZ6TTYuNCw0LjhINi44VjUuMkg2LjR6TTgsNC44SDguNFY1LjJIOHpNOC40LDQuOEg4LjhWNS4ySDguNHpNOC44LDQuOEg5LjJWNS4ySDguOHpNMTAsNC44SDEwLjRWNS4ySDEwek0xMC40LDQuOEgxMC44VjUuMkgxMC40ek0xMC44LDQuOEgxMS4yVjUuMkgxMC44ek0xMS4yLDQuOEgxMS42VjUuMkgxMS4yek0xMS42LDQuOEgxMlY1LjJIMTEuNnpNMS4yLDUuMkgxLjZWNS42SDEuMnpNMS42LDUuMkgyVjUuNkgxLjZ6TTIsNS4ySDIuNFY1LjZIMnpNMi40LDUuMkgyLjhWNS42SDIuNHpNMi44LDUuMkgzLjJWNS42SDIuOHpNMy42LDUuMkg0VjUuNkgzLjZ6TTUuMiw1LjJINS42VjUuNkg1LjJ6TTUuNiw1LjJINlY1LjZINS42ek02LDUuMkg2LjRWNS42SDZ6TTYuNCw1LjJINi44VjUuNkg2LjR6TTYuOCw1LjJINy4yVjUuNkg2Ljh6TTgsNS4ySDguNFY1LjZIOHpNOC40LDUuMkg4LjhWNS42SDguNHpNOS4yLDUuMkg5LjZWNS42SDkuMnpNMTAsNS4ySDEwLjRWNS42SDEwek0xMC40LDUuMkgxMC44VjUuNkgxMC40ek0xMS4yLDUuMkgxMS42VjUuNkgxMS4yek0xMS42LDUuMkgxMlY1LjZIMTEuNnpNMC44LDUuNkgxLjJWNkgwLjh6TTIsNS42SDIuNFY2SDJ6TTIuOCw1LjZIMy4yVjZIMi44ek0zLjIsNS42SDMuNlY2SDMuMnpNNC44LDUuNkg1LjJWNkg0Ljh6TTUuMiw1LjZINS42VjZINS4yek01LjYsNS42SDZWNkg1LjZ6TTYsNS42SDYuNFY2SDZ6TTYuNCw1LjZINi44VjZINi40ek03LjYsNS42SDhWNkg3LjZ6TTkuMiw1LjZIOS42VjZIOS4yek05LjYsNS42SDEwVjZIOS42ek0xMC44LDUuNkgxMS4yVjZIMTAuOHpNMTEuNiw1LjZIMTJWNkgxMS42ek0xMiw1LjZIMTIuNFY2SDEyek0wLjgsNkgxLjJWNi40SDAuOHpNMS4yLDZIMS42VjYuNEgxLjJ6TTIsNkgyLjRWNi40SDJ6TTIuNCw2SDIuOFY2LjRIMi40ek0zLjYsNkg0VjYuNEgzLjZ6TTQsNkg0LjRWNi40SDR6TTQuNCw2SDQuOFY2LjRINC40ek01LjIsNkg1LjZWNi40SDUuMnpNNi40LDZINi44VjYuNEg2LjR6TTcuMiw2SDcuNlY2LjRINy4yek03LjYsNkg4VjYuNEg3LjZ6TTguNCw2SDguOFY2LjRIOC40ek04LjgsNkg5LjJWNi40SDguOHpNOS4yLDZIOS42VjYuNEg5LjJ6TTAuOCw2LjRIMS4yVjYuOEgwLjh6TTEuMiw2LjRIMS42VjYuOEgxLjJ6TTIsNi40SDIuNFY2LjhIMnpNMi40LDYuNEgyLjhWNi44SDIuNHpNMi44LDYuNEgzLjJWNi44SDIuOHpNMy4yLDYuNEgzLjZWNi44SDMuMnpNNCw2LjRINC40VjYuOEg0ek01LjIsNi40SDUuNlY2LjhINS4yek03LjIsNi40SDcuNlY2LjhINy4yek04LDYuNEg4LjRWNi44SDh6TTguOCw2LjRIOS4yVjYuOEg4Ljh6TTkuMiw2LjRIOS42VjYuOEg5LjJ6TTEwLjQsNi40SDEwLjhWNi44SDEwLjR6TTEwLjgsNi40SDExLjJWNi44SDEwLjh6TTExLjIsNi40SDExLjZWNi44SDExLjJ6TTExLjYsNi40SDEyVjYuOEgxMS42ek0xMiw2LjRIMTIuNFY2LjhIMTJ6TTIsNi44SDIuNFY3LjJIMnpNMi40LDYuOEgyLjhWNy4ySDIuNHpNNCw2LjhINC40VjcuMkg0ek00LjQsNi44SDQuOFY3LjJINC40ek00LjgsNi44SDUuMlY3LjJINC44ek01LjIsNi44SDUuNlY3LjJINS4yek02LDYuOEg2LjRWNy4ySDZ6TTcuNiw2LjhIOFY3LjJINy42ek04LDYuOEg4LjRWNy4ySDh6TTkuMiw2LjhIOS42VjcuMkg5LjJ6TTEwLDYuOEgxMC40VjcuMkgxMHpNMTAuOCw2LjhIMTEuMlY3LjJIMTAuOHpNMTEuNiw2LjhIMTJWNy4ySDExLjZ6TTAuOCw3LjJIMS4yVjcuNkgwLjh6TTEuNiw3LjJIMlY3LjZIMS42ek0yLjQsNy4ySDIuOFY3LjZIMi40ek0zLjIsNy4ySDMuNlY3LjZIMy4yek00LDcuMkg0LjRWNy42SDR6TTQuNCw3LjJINC44VjcuNkg0LjR6TTQuOCw3LjJINS4yVjcuNkg0Ljh6TTUuMiw3LjJINS42VjcuNkg1LjJ6TTYuNCw3LjJINi44VjcuNkg2LjR6TTcuMiw3LjJINy42VjcuNkg3LjJ6TTcuNiw3LjJIOFY3LjZINy42ek04LjQsNy4ySDguOFY3LjZIOC40ek05LjIsNy4ySDkuNlY3LjZIOS4yek0xMS42LDcuMkgxMlY3LjZIMTEuNnpNMS4yLDcuNkgxLjZWOEgxLjJ6TTIuNCw3LjZIMi44VjhIMi40ek0zLjYsNy42SDRWOEgzLjZ6TTQuNCw3LjZINC44VjhINC40ek00LjgsNy42SDUuMlY4SDQuOHpNNS4yLDcuNkg1LjZWOEg1LjJ6TTUuNiw3LjZINlY4SDUuNnpNNiw3LjZINi40VjhINnpNOS4yLDcuNkg5LjZWOEg5LjJ6TTkuNiw3LjZIMTBWOEg5LjZ6TTEwLDcuNkgxMC40VjhIMTB6TTEwLjgsNy42SDExLjJWOEgxMC44ek0xMiw3LjZIMTIuNFY4SDEyek0wLjgsOEgxLjJWOC40SDAuOHpNMiw4SDIuNFY4LjRIMnpNMi40LDhIMi44VjguNEgyLjR6TTIuOCw4SDMuMlY4LjRIMi44ek0zLjIsOEgzLjZWOC40SDMuMnpNNCw4SDQuNFY4LjRINHpNNC40LDhINC44VjguNEg0LjR6TTUuMiw4SDUuNlY4LjRINS4yek01LjYsOEg2VjguNEg1LjZ6TTkuMiw4SDkuNlY4LjRIOS4yek05LjYsOEgxMFY4LjRIOS42ek0xMC40LDhIMTAuOFY4LjRIMTAuNHpNMTEuNiw4SDEyVjguNEgxMS42ek0xMiw4SDEyLjRWOC40SDEyek0xLjYsOC40SDJWOC44SDEuNnpNMiw4LjRIMi40VjguOEgyek0yLjQsOC40SDIuOFY4LjhIMi40ek0zLjYsOC40SDRWOC44SDMuNnpNNi44LDguNEg3LjJWOC44SDYuOHpNNy42LDguNEg4VjguOEg3LjZ6TTgsOC40SDguNFY4LjhIOHpNOC44LDguNEg5LjJWOC44SDguOHpNOS42LDguNEgxMFY4LjhIOS42ek0xMCw4LjRIMTAuNFY4LjhIMTB6TTEwLjQsOC40SDEwLjhWOC44SDEwLjR6TTExLjYsOC40SDEyVjguOEgxMS42ek0xMiw4LjRIMTIuNFY4LjhIMTJ6TTAuOCw4LjhIMS4yVjkuMkgwLjh6TTEuNiw4LjhIMlY5LjJIMS42ek0yLjQsOC44SDIuOFY5LjJIMi40ek0yLjgsOC44SDMuMlY5LjJIMi44ek0zLjIsOC44SDMuNlY5LjJIMy4yek00LjQsOC44SDQuOFY5LjJINC40ek01LjYsOC44SDZWOS4ySDUuNnpNNiw4LjhINi40VjkuMkg2ek02LjgsOC44SDcuMlY5LjJINi44ek03LjIsOC44SDcuNlY5LjJINy4yek04LjgsOC44SDkuMlY5LjJIOC44ek05LjIsOC44SDkuNlY5LjJIOS4yek05LjYsOC44SDEwVjkuMkg5LjZ6TTEwLDguOEgxMC40VjkuMkgxMHpNMTAuNCw4LjhIMTAuOFY5LjJIMTAuNHpNMTEuMiw4LjhIMTEuNlY5LjJIMTEuMnpNNCw5LjJINC40VjkuNkg0ek00LjQsOS4ySDQuOFY5LjZINC40ek02LDkuMkg2LjRWOS42SDZ6TTYuNCw5LjJINi44VjkuNkg2LjR6TTcuNiw5LjJIOFY5LjZINy42ek04LDkuMkg4LjRWOS42SDh6TTguNCw5LjJIOC44VjkuNkg4LjR6TTguOCw5LjJIOS4yVjkuNkg4Ljh6TTEwLjQsOS4ySDEwLjhWOS42SDEwLjR6TTExLjIsOS4ySDExLjZWOS42SDExLjJ6TTExLjYsOS4ySDEyVjkuNkgxMS42ek0xMiw5LjJIMTIuNFY5LjZIMTJ6TTAuOCw5LjZIMS4yVjEwSDAuOHpNMS4yLDkuNkgxLjZWMTBIMS4yek0xLjYsOS42SDJWMTBIMS42ek0yLDkuNkgyLjRWMTBIMnpNMi40LDkuNkgyLjhWMTBIMi40ek0yLjgsOS42SDMuMlYxMEgyLjh6TTMuMiw5LjZIMy42VjEwSDMuMnpNNC44LDkuNkg1LjJWMTBINC44ek01LjYsOS42SDZWMTBINS42ek02LjQsOS42SDYuOFYxMEg2LjR6TTcuNiw5LjZIOFYxMEg3LjZ6TTgsOS42SDguNFYxMEg4ek04LjgsOS42SDkuMlYxMEg4Ljh6TTkuNiw5LjZIMTBWMTBIOS42ek0xMC40LDkuNkgxMC44VjEwSDEwLjR6TTExLjYsOS42SDEyVjEwSDExLjZ6TTAuOCwxMEgxLjJWMTAuNEgwLjh6TTMuMiwxMEgzLjZWMTAuNEgzLjJ6TTQsMTBINC40VjEwLjRINHpNNC40LDEwSDQuOFYxMC40SDQuNHpNNC44LDEwSDUuMlYxMC40SDQuOHpNNS4yLDEwSDUuNlYxMC40SDUuMnpNNiwxMEg2LjRWMTAuNEg2ek02LjQsMTBINi44VjEwLjRINi40ek02LjgsMTBINy4yVjEwLjRINi44ek03LjIsMTBINy42VjEwLjRINy4yek04LDEwSDguNFYxMC40SDh6TTguOCwxMEg5LjJWMTAuNEg4Ljh6TTEwLjQsMTBIMTAuOFYxMC40SDEwLjR6TTEwLjgsMTBIMTEuMlYxMC40SDEwLjh6TTExLjIsMTBIMTEuNlYxMC40SDExLjJ6TTExLjYsMTBIMTJWMTAuNEgxMS42ek0xMiwxMEgxMi40VjEwLjRIMTJ6TTAuOCwxMC40SDEuMlYxMC44SDAuOHpNMS42LDEwLjRIMlYxMC44SDEuNnpNMiwxMC40SDIuNFYxMC44SDJ6TTIuNCwxMC40SDIuOFYxMC44SDIuNHpNMy4yLDEwLjRIMy42VjEwLjhIMy4yek01LjIsMTAuNEg1LjZWMTAuOEg1LjJ6TTUuNiwxMC40SDZWMTAuOEg1LjZ6TTYuNCwxMC40SDYuOFYxMC44SDYuNHpNNy42LDEwLjRIOFYxMC44SDcuNnpNOCwxMC40SDguNFYxMC44SDh6TTguOCwxMC40SDkuMlYxMC44SDguOHpNOS4yLDEwLjRIOS42VjEwLjhIOS4yek05LjYsMTAuNEgxMFYxMC44SDkuNnpNMTAsMTAuNEgxMC40VjEwLjhIMTB6TTEwLjQsMTAuNEgxMC44VjEwLjhIMTAuNHpNMC44LDEwLjhIMS4yVjExLjJIMC44ek0xLjYsMTAuOEgyVjExLjJIMS42ek0yLDEwLjhIMi40VjExLjJIMnpNMi40LDEwLjhIMi44VjExLjJIMi40ek0zLjIsMTAuOEgzLjZWMTEuMkgzLjJ6TTQsMTAuOEg0LjRWMTEuMkg0ek00LjQsMTAuOEg0LjhWMTEuMkg0LjR6TTQuOCwxMC44SDUuMlYxMS4ySDQuOHpNNS4yLDEwLjhINS42VjExLjJINS4yek02LjgsMTAuOEg3LjJWMTEuMkg2Ljh6TTkuMiwxMC44SDkuNlYxMS4ySDkuMnpNOS42LDEwLjhIMTBWMTEuMkg5LjZ6TTEwLjQsMTAuOEgxMC44VjExLjJIMTAuNHpNMTAuOCwxMC44SDExLjJWMTEuMkgxMC44ek0xMS4yLDEwLjhIMTEuNlYxMS4ySDExLjJ6TTExLjYsMTAuOEgxMlYxMS4ySDExLjZ6TTAuOCwxMS4ySDEuMlYxMS42SDAuOHpNMS42LDExLjJIMlYxMS42SDEuNnpNMiwxMS4ySDIuNFYxMS42SDJ6TTIuNCwxMS4ySDIuOFYxMS42SDIuNHpNMy4yLDExLjJIMy42VjExLjZIMy4yek00LjQsMTEuMkg0LjhWMTEuNkg0LjR6TTUuMiwxMS4ySDUuNlYxMS42SDUuMnpNNiwxMS4ySDYuNFYxMS42SDZ6TTYuNCwxMS4ySDYuOFYxMS42SDYuNHpNNy4yLDExLjJINy42VjExLjZINy4yek04LjQsMTEuMkg4LjhWMTEuNkg4LjR6TTEwLjQsMTEuMkgxMC44VjExLjZIMTAuNHpNMTAuOCwxMS4ySDExLjJWMTEuNkgxMC44ek0xMS4yLDExLjJIMTEuNlYxMS42SDExLjJ6TTEyLDExLjJIMTIuNFYxMS42SDEyek0wLjgsMTEuNkgxLjJWMTJIMC44ek0zLjIsMTEuNkgzLjZWMTJIMy4yek00LjQsMTEuNkg0LjhWMTJINC40ek03LjIsMTEuNkg3LjZWMTJINy4yek03LjYsMTEuNkg4VjEySDcuNnpNOCwxMS42SDguNFYxMkg4ek04LjgsMTEuNkg5LjJWMTJIOC44ek05LjYsMTEuNkgxMFYxMkg5LjZ6TTExLjYsMTEuNkgxMlYxMkgxMS42ek0wLjgsMTJIMS4yVjEyLjRIMC44ek0xLjIsMTJIMS42VjEyLjRIMS4yek0xLjYsMTJIMlYxMi40SDEuNnpNMiwxMkgyLjRWMTIuNEgyek0yLjQsMTJIMi44VjEyLjRIMi40ek0yLjgsMTJIMy4yVjEyLjRIMi44ek0zLjIsMTJIMy42VjEyLjRIMy4yek00LDEySDQuNFYxMi40SDR6TTQuNCwxMkg0LjhWMTIuNEg0LjR6TTQuOCwxMkg1LjJWMTIuNEg0Ljh6TTYuOCwxMkg3LjJWMTIuNEg2Ljh6TTguOCwxMkg5LjJWMTIuNEg4Ljh6TTkuNiwxMkgxMFYxMi40SDkuNnpNMTAsMTJIMTAuNFYxMi40SDEwek0xMC40LDEySDEwLjhWMTIuNEgxMC40ek0xMC44LDEySDExLjJWMTIuNEgxMC44ek0xMS42LDEySDEyVjEyLjRIMTEuNnoiIGlkPSJxci1wYXRoIiBmaWxsPSIjMDAwMDAwIiBmaWxsLW9wYWNpdHk9IjEiIGZpbGwtcnVsZT0ibm9uemVybyIgc3Ryb2tlPSJub25lIiAvPjwvc3ZnPg==" alt="QR Code" style="width:2cm;height:auto;object-fit:contain;display:block;max-width:100%"></span><span style="height: 0px; color: transparent; outline: none; position: absolute;"><span><span><span></span></span></span></span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:36.85%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:34.81%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Приложение к приказу</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Утверждена приказом</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Министр финансов </span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Республики Казахстан</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>от 28 октября 2025 года</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>№ 633</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Министр финансов </span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Республики Казахстан</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>от 20 февраля 2026 года</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>№ 111</span></span></span></div></div></div></div></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;margin-top:0.5rem;margin-bottom:0.5rem"><div><div style="position:relative;display:flex;width:100%;height:100%;gap:1rem;border-radius:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;width:33%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:33%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:33%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:right;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span>форма</span></span></span></div></div></div></div></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><strong style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>Уведомление </span></strong></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><strong style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>о расхождениях, выявленных по результатам камерального контроля</span></strong></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;margin-top:0.5rem;margin-bottom:0.5rem"><div><div style="position:relative;display:flex;width:100%;height:100%;gap:1rem;border-radius:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;width:50%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:left;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: none; vertical-align: baseline; font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;">08.10.2026</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><em style="font-family:&quot;Times Newer Roman&quot;, serif"><span> </span></em></span></span><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span>года</span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:50%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:right;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span>№ </span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: none; vertical-align: baseline; font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;">NT-2026-00042</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span></div></div></div></div></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;line-height:1;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span><br></span></u></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">Департамент государственных доходов по г. Алматы</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><em style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>, </span></em></u></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">6001</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><em style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>, </span></em></u></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">г. Алматы, проспект Абая, 10</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> &nbsp;&nbsp;&nbsp; (наименование</span></span></span><span><span style="font-size: 8pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> </span></span></span><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>, код, адрес органа государственных доходов)</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>в соответствии со статьей 137, подпунктом 4) пункта 1 статьи 82 Налогового кодекса Республики Казахстан (далее – Налоговый кодекс) уведомляет Вас&nbsp;&nbsp;&nbsp;</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">ТОО «Пример»</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(фамилия, имя, отчество (если оно указано в документе, удостоверяющем </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>личность)) или наименование налогоплательщика (налогового агента)</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">123456789012</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span> </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(индивидуальный идентификационный номер/бизнес-идентификационный номер </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(ИИН/БИН) </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>о нарушениях, выявленных </span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">08.10.2026</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> года, по налоговой отчетности:</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>ФНО: </span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">300.00</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span> ; </span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">01.01.2025 - 31.12.2025</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(наименование и налоговый период налоговой отчетности) </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>В соответствии с пунктом 2 статьи 82 Налогового кодекса Вам необходимо исполнить настоящее уведомление в течение 30 (тридцати) рабочих дней со дня, следующего за днем его вручения. </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>1. В соответствии с пунктом 4 статьи 137 Налогового кодекса исполнением уведомления признается: </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>1) в случае согласия с указанными в уведомлении расхождениями – устранение налогоплательщиком (налоговым агентом) выявленных нарушений налогового законодательства Республики Казахстан путем:</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>представления налоговой отчетности по уведомлению за налоговый период, к которому относятся выявленные расхождения;</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>уплаты суммы налога на добавленную стоимость в бюджет, ранее возвращенной из бюджета по требованию налогоплательщика (налогового агента) о возврате налога на добавленную стоимость, а также пеней за каждый день с даты перечисления налогоплательщику (налоговому агенту) таких сумм до дня уплаты; </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>отражения данных в специальном мобильном приложении и (или) уплаты налога и социальных платежей – для налогоплательщиков, применяющих специальный налоговый режим для самозанятых;</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>совершения в целях перехода на соответствующий налоговый режим действий, предусмотренных статьей 716 Налогового кодекса;</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>2) в случае несогласия с указанными в уведомлении расхождениями –представление налогоплательщиком (налоговым агентом) в орган государственных доходов, представивший уведомление, пояснения о причинах расхождений, не влекущих нарушения налогового законодательства Республики Казахстан (далее – пояснение), за исключением случаев, предусмотренных частью первой пункта 6 статьи 137 Налогового кодекса.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>При согласии с указанными в уведомлении расхождениями в части исполнения признается устранение налогоплательщиком (налоговым агентом) выявленных расхождений в части и представление пояснения отсутствия расхождений в оставшейся части.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>2. Согласно пункту 9 статьи 137 Налогового кодекса неисполнение в установленный срок настоящего уведомления влечет приостановление расходных операций по банковским счетам налогоплательщика, приостановление выписки электронных счет-фактур и ограничивается доступ к интернет-ресурсам и (или) интернет-площадке иностранной компании, осуществляющей деятельность посредством интернет-площадки на территории Республики Казахстан в соответствии со статьями 86, 88 и 89 Налогового кодекса.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>В соответствии с пунктом 10 статьи 137 Налогового кодекса орган государственных доходов вправе провести налоговую проверку по расхождениям, выявленным по результатам камерального контроля.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>В соответствии с пунктом 7 статьи 137 Налогового кодекса срок исполнения уведомления приостанавливается при подаче жалобы в суд по подтверждению фактического приобретения (получения) товаров, работ, услуг в случаях, указанных в подпунктах 3) и 4) пункта 6 статьи 137 Налогового кодекса.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Копия судебного акта о принятии жалобы к производству представляется налогоплательщиком (налоговым агентом) в орган государственных доходов, представивший уведомление.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>При этом приостановление действует на период со дня вынесения указанного в части второй пункта 7 статьи 137 Налогового кодекса судебного акта до его вступления в законную силу.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Приложение с описанием выявленных расхождений на ____ листе (ах).</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;line-height:1;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Руководитель (заместитель руководителя) органа государственных доходов</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">А. Касымов</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (фамилия, имя, отчество (если оно указано в документе, удостоверяющем личность), подпись)</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1;position:relative"><span><span style="font-size: 6pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:left;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> Место печати</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;line-height:1;position:relative"><span><span style="font-size: 6pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Уведомление получил&nbsp;&nbsp;____________________________________________</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(фамилия, имя, отчество (если оно указано в документе, удостоверяющем личность) или наименование налогоплательщика (налогового агента), подпись, дата) </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;line-height:1;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Место печати </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(за исключением юридических лиц, относящихся к субъектам частного предпринимательства)</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;line-height:1;position:relative"><span><span style="font-size: 10pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;margin-top:0.5rem;margin-bottom:0.5rem"><div><div style="position:relative;display:flex;width:100%;height:100%;gap:1rem;border-radius:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;width:37.53%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Уведомление вручено налогоплательщику (налоговому агенту)</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>_________________________</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(фамилия, имя, отчество (если оно указано в документе, удостоверяющем личность) должностного лица органа государственных доходов, вручившего уведомление, подпись, дата)</span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:10%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:51.47%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Фамилия, имя, отчество (если оно указано в документе, удостоверяющем личность) или наименование налогоплательщика (налогового агента):</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">ТОО «Пример»</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;line-height:1;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Адрес:</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">г. Алматы, проспект Абая, 25</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;line-height:1;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Уведомление отправлено налогоплательщику (налоговому агенту)</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>____________________________</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(документ, подтверждающий факт отправки и (или) получения)</span></span></span></div></div></div></div></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span><span><br></span></span></span></div></div></div></body></html><article id="print-area" data-print="paged">
+<section id="appendix_1_ru" class="appendix_1_ru">
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="FiFXgQOeGM" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="UH_Vi-s55Y" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-string="true">Приложение 1</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="E04Q6YPfUg" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            
+              <span data-slate-string="true">к уведомлению № NT-2026-00042 от 08.10.2026 г.</span>
+            
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="sREuw449cI" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            
+              <span data-slate-string="true">о допущенных нарушениях, выявленных по результатам камерального контроля<br></span>
+            
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="6zkLwLeEnR" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="xfArsqkePD" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-string="true">Протокол выявленных ошибок:</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="LfQL2c07Sx" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="ZmhP8rGHpw">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-string="true">Период, охваченный камеральным контролем: 01.01.2025 - 31.12.2025;</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="5FRTftuxlX">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="5juvQDz5wp" style="text-align: justify;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-string="true">N 1. «Выявлено расхождение в сведениях по электронным счетам-фактурам»</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="nlOPIFP7SE">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+              
+                <span data-slate-string="true">Сумма нарушения: 1 250 000 тенге</span>
+              
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="VuxGN_Uk_g">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+
+</section>
+<section id="appendix_2_ru" class="appendix_2_ru">
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="B2BMIdkZno" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="qE-36a2l0P" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">Приложение 2 </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="EFh5bhpLj9" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            
+              <span data-slate-string="true">к уведомлению № NT-2026-00042 от 08.10.2026 г.</span>
+            
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="QTl2daYWIc" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            
+              <span data-slate-string="true">о допущенных нарушениях, выявленных по результатам камерального контроля<br></span>
+            
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="ogfMx5v9s7" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="nbUgPIz5gW" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-left slate-selectable" placeholder="Пустой абзац" data-block-id="ah4vv86RAL" style="text-align: left;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">Период, охваченный камеральным контролем: 01.01.2025 - 31.12.2025;<br></span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-left slate-selectable" placeholder="Пустой абзац" data-block-id="p3PHzpSSgi" style="text-align: justify;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">Дополнительные данные по ошибке № 1. «Выявлено расхождение в сведениях по электронным счетам-фактурам»<br></span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="QdFN65shVu" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div data-slate-node="element" class="relative m-0 px-0 py-1 slate-p" data-block-id="NWRv8Vw_su">
+    <span data-slate-node="text">
+      <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+        <span data-slate-string="true">Таблица «Сведения по выявленному расхождению»</span>
+      </span>
+    </span>
+  </div>
+  
+  <div data-slate-node="element" class="relative m-0 px-0 py-1 slate-p" data-block-id="Jj-R5acSNS">
+    <span data-slate-node="text">
+      <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px;">
+        <span data-slate-string="true"><table cellpadding="1" cellspacing="0" style="vertical-align: baseline; width: 100%; font-size: 70%; border-collapse: collapse; border: 1px; table-layout: fixed; word-break: break-all; overflow-wrap: anywhere;">
+  <thead>
+    <tr style="text-align: center; vertical-align: middle; border: 1px solid;">
+      <th style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">№</th>
+      <th style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">Номер ЭСФ</th>
+      <th style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">БИН поставщика</th>
+      <th style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">Сумма, тенге</th>
+    </tr>
+  </thead>
+  <tbody style="border-collapse: collapse; border: 1px;">
+    <tr style="text-align: center; vertical-align: middle; border: 1px solid;">
+      <td style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">1</td>
+      <td style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">ESF-2025-000184</td>
+      <td style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">123456789012</td>
+      <td style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">1 250 000</td>
+    </tr>
+  </tbody>
+</table></span>
+      </span>
+    </span>
+  </div>
+  
+</section>
+</article>
+</div>
