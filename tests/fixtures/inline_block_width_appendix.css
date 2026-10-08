@@ -1,0 +1,2 @@
+/* Force the same bundled face in both engines for a controlled layout comparison. */
+* { font-family: "Noto Sans" !important; }

@@ -1,4 +1,8 @@
-# Historical benchmark: Serpentype 0.1 vs WeasyPrint 70.0
+# Historical reference measurements: Serpentype 0.1 and WeasyPrint 70.0
+
+WeasyPrint is included as a reference implementation for the controlled
+fixtures. The historical timing and memory figures below are environment-
+specific diagnostics and do not describe a general performance target.
 
 ## 0.2 bounded-cache and independent-process stress
 

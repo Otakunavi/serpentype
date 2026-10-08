@@ -10,9 +10,9 @@ Serpentype 0.4.0 addresses the remaining layout defects found while exercising t
 
 ## Compatibility verification
 
-The 19 fixtures were rendered with four spawned workers using the supplied bundled font forced in both Serpentype and WeasyPrint 64.1. All Serpentype renders completed without failures, diagnostics, overflow, missing glyphs or unsupported-feature reports. Page counts and page boxes match in all cases, for a total of 405 pages; normalized text tokens match on every page. The 2000-row table renders in 287 pages in both engines.
+The 19 fixtures were rendered with four spawned workers using the supplied bundled font forced in Serpentype and the WeasyPrint 64.1 reference. All Serpentype renders completed without failures, diagnostics, overflow, missing glyphs or unsupported-feature reports. Page counts and page boxes match in all cases, for a total of 405 pages; normalized text tokens match on every page. The 2000-row table renders in 287 pages in both renderers.
 
-PDF text extraction order still differs on nine pages. A full pixel-by-pixel visual comparison across the fixture pack has not been established, so WeasyPrint remains the production default. These results establish the tested compatibility subset; they do not claim complete browser or WeasyPrint equivalence.
+PDF text extraction order still differs on nine pages. A full pixel-by-pixel visual comparison across the fixture pack has not been established. These results establish the tested compatibility subset; they do not claim complete browser or reference-renderer equivalence.
 
 The local regression suites pass: `cargo test --locked --no-default-features`, `cargo clippy --no-default-features --locked --all-targets -- -D warnings`, and `python -m pytest -q` (104 tests and 35 subtests). The fixture run used the fixture pack's forced-font copy and `RenderLimits(max_pages=1000)` for the long-table case.
 

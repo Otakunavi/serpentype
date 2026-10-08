@@ -2,7 +2,7 @@
 
 ## Current API correction
 
-The original 0.7.0 implementation delegated `HTML`/`CSS` calls to WeasyPrint when requested. That integration has been removed from the production API. `HTML` and `CSS` now always use Serpentype's Rust renderer; WeasyPrint remains available only through the optional `test-weasy` dependency for visual comparisons.
+The original 0.7.0 implementation delegated `HTML`/`CSS` calls to WeasyPrint when requested. That integration has been removed from the production API. `HTML` and `CSS` now always use Serpentype's Rust renderer; WeasyPrint remains available only through the optional `test-weasy` dependency as a visual reference.
 
 ## Original release notes
 

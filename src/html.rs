@@ -33,7 +33,7 @@ impl Node {
         if self.tag == "br" {
             return "\n".into();
         }
-        let mut s = self.text.clone();
+        let mut s: String = self.text.chars().filter(|ch| *ch != '\u{feff}').collect();
         for c in &self.children {
             s.push_str(&c.plain_text());
         }

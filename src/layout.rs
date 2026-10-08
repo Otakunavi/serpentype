@@ -14,7 +14,7 @@ use std::time::Instant;
 use unicode_segmentation::UnicodeSegmentation;
 
 const EPS: f32 = 0.02;
-fn is_bidi_control(ch: char) -> bool {
+fn is_invisible_format_control(ch: char) -> bool {
     matches!(
         ch,
         '\u{061C}'
@@ -22,6 +22,7 @@ fn is_bidi_control(ch: char) -> bool {
             | '\u{200F}'
             | '\u{202A}'..='\u{202E}'
             | '\u{2066}'..='\u{2069}'
+            | '\u{FEFF}'
     )
 }
 /// Hard bounds applied to one layout. The defaults target ordinary print documents.
@@ -1177,6 +1178,20 @@ pub struct Page {
     pub style: PageStyle,
     pub name: Option<String>,
 }
+
+struct FlexLaneLayout {
+    pages: Vec<Page>,
+    y: f32,
+    page: PageStyle,
+    page_name: Option<String>,
+    page_content: bool,
+    page_counters: Vec<HashMap<String, Vec<i32>>>,
+    page_strings: Vec<HashMap<String, String>>,
+    page_running_elements: Vec<HashMap<String, String>>,
+    pending_break: bool,
+    pending_break_side: Option<String>,
+}
+
 /// Fully paginated document. Cloning shares immutable fonts and images.
 #[derive(Clone, Debug)]
 pub struct PreparedDocument {
@@ -1926,6 +1941,8 @@ fn inline_box_glyph(
     token: Option<&AtomicBool>,
     experimental_shaping: bool,
     shaping_ns: &AtomicU64,
+    warnings: &mut Vec<Diagnostic>,
+    source: &SourceContext,
 ) -> Result<Glyph> {
     let style = &node.style;
     let mut content_node = node.clone();
@@ -1936,9 +1953,6 @@ fn inline_box_glyph(
     let horizontal_edges = style.padding[1] + style.padding[3] + 2.0 * style.border_width;
     let horizontal_margins = style.margin[1] + style.margin[3];
     let available_outer = containing_width - horizontal_margins;
-    if available_outer <= horizontal_edges + EPS {
-        return Err(Error("inline-block has no usable width".into()));
-    }
     let declared = resolved_dimension(style.width, style.width_percent, containing_width);
     let minimum = resolved_dimension(style.min_width, style.min_width_percent, containing_width);
     let maximum = resolved_dimension(style.max_width, style.max_width_percent, containing_width);
@@ -1955,6 +1969,8 @@ fn inline_box_glyph(
             token,
             experimental_shaping,
             shaping_ns,
+            warnings,
+            source,
         )?
         .iter()
         .map(|line| line.width)
@@ -1965,17 +1981,30 @@ fn inline_box_glyph(
             intrinsic.min(available_outer - horizontal_edges)
         }
     };
-    let sizing_width = constrained_dimension(sizing_width, minimum, maximum);
+    let sizing_width = constrained_dimension(sizing_width, minimum, maximum).max(0.0);
     let width = if style.box_sizing == "border-box" {
         sizing_width
     } else {
         sizing_width + horizontal_edges
     };
-    let inner_width = width - horizontal_edges;
-    if inner_width <= 0.0 && has_content {
-        return Err(Error("inline-block has no usable content width".into()));
+    let inner_width = (width - horizontal_edges).max(0.0);
+    let can_layout_content = has_content && inner_width > EPS;
+    if has_content && !can_layout_content {
+        let mut warning = Diagnostic::new(
+            "inline-block-width",
+            "inline-block has no usable content width; its contents were omitted",
+        );
+        if let Some((line, column)) = node
+            .source_offset
+            .and_then(|offset| source_location_at(&source.html, offset))
+        {
+            warning.source = Some(source.source_name.as_deref().unwrap_or("<html>").to_owned());
+            warning.line = Some(line);
+            warning.column = Some(column);
+        }
+        warnings.push(warning);
     }
-    let lines = if has_content {
+    let lines = if can_layout_content {
         lines_for(
             &content_node,
             inner_width,
@@ -1984,6 +2013,8 @@ fn inline_box_glyph(
             token,
             experimental_shaping,
             shaping_ns,
+            warnings,
+            source,
         )?
     } else {
         Vec::new()
@@ -2110,6 +2141,7 @@ fn anchor_glyph(destination: String, style: &Style, fonts: &FontRegistry) -> Res
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lines_for(
     node: &Node,
     width: f32,
@@ -2118,9 +2150,11 @@ fn lines_for(
     token: Option<&AtomicBool>,
     _experimental_shaping: bool,
     shaping_ns: &AtomicU64,
+    warnings: &mut Vec<Diagnostic>,
+    source: &SourceContext,
 ) -> Result<Vec<Line>> {
     let start = Instant::now();
-    let result = lines_for_shaped(node, width, first_indent, fonts, token);
+    let result = lines_for_shaped(node, width, first_indent, fonts, token, warnings, source);
     shaping_ns.fetch_add(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
     result
 }
@@ -2222,7 +2256,8 @@ fn reorder_bidi_line(line: &mut Line) {
             glyph_offsets.push(last_offset);
             logical.push_str(&value);
             if glyph.visible {
-                visible_logical.extend(value.chars().filter(|ch| !is_bidi_control(*ch)));
+                visible_logical
+                    .extend(value.chars().filter(|ch| !is_invisible_format_control(*ch)));
             }
         }
     }
@@ -2260,6 +2295,8 @@ fn lines_for_shaped(
     first_indent: f32,
     fonts: &FontRegistry,
     token: Option<&AtomicBool>,
+    warnings: &mut Vec<Diagnostic>,
+    source: &SourceContext,
 ) -> Result<Vec<Line>> {
     if width - first_indent <= 0.0 {
         return Err(Error("text-indent leaves no usable first line".into()));
@@ -2284,6 +2321,8 @@ fn lines_for_shaped(
                 token,
                 true,
                 &AtomicU64::new(0),
+                warnings,
+                source,
             )?;
             units.push(ShapedUnit::Glyph(glyph, true, false));
             apply_inline_struts(&mut units, run_start, &run.inline_struts, fonts)?;
@@ -2340,7 +2379,7 @@ fn lines_for_shaped(
                 raw
             };
             let ch = cluster.chars().next().unwrap_or(' ');
-            if cluster.chars().all(is_bidi_control) {
+            if cluster.chars().all(is_invisible_format_control) {
                 let preceding_font = segment_font.take();
                 if let Some(font) = &preceding_font {
                     shape_segment(&segment, font, style, &run.href, &mut units)?;
@@ -2691,6 +2730,7 @@ struct ContainingBlock {
     y: f32,
     w: f32,
     h: f32,
+    height_is_definite: bool,
     clip: bool,
 }
 
@@ -3046,6 +3086,8 @@ impl Flow {
             self.cancel.as_deref(),
             self.experimental_shaping,
             &self.shaping_ns,
+            &mut self.warnings,
+            &self.source,
         )?;
         let height: f32 = lines.iter().map(|l| l.height).sum();
         let y = if name.starts_with("@top") {
@@ -3210,6 +3252,20 @@ impl Flow {
     }
     fn full_height(&self) -> f32 {
         self.limit() - self.page.margin[0]
+    }
+    fn definite_height_reference(&self) -> Option<f32> {
+        self.containing_blocks
+            .last()
+            .filter(|block| block.height_is_definite)
+            .map(|block| block.h)
+    }
+    fn resolve_height(&self, absolute: Option<f32>, percent: Option<f32>) -> Option<f32> {
+        absolute.or_else(|| {
+            percent.and_then(|percent| {
+                self.definite_height_reference()
+                    .map(|height| height * percent)
+            })
+        })
     }
     fn page_has_content(&self) -> bool {
         self.page_content
@@ -3587,6 +3643,7 @@ impl Flow {
             y: self.page.margin[0],
             w: self.page.width - self.page.margin[1] - self.page.margin[3],
             h: self.page.height - self.page.margin[0] - self.page.margin[2],
+            height_is_definite: true,
             clip: false,
         }
     }
@@ -3624,6 +3681,8 @@ impl Flow {
                 self.cancel.as_deref(),
                 self.experimental_shaping,
                 &self.shaping_ns,
+                &mut self.warnings,
+                &self.source,
             )?
             .iter()
             .map(|line| line.width)
@@ -3927,12 +3986,13 @@ impl Flow {
         };
         let establishes_containing_block = style.position != "static";
         if establishes_containing_block {
+            let containing_height = self.resolve_height(style.height, style.height_percent);
             self.containing_blocks.push(ContainingBlock {
                 x: self.frame.expect("block frame").0,
                 y: content_start,
                 w: inner_width,
-                h: resolved_dimension(style.height, style.height_percent, self.full_height())
-                    .unwrap_or_else(|| (self.limit() - content_start).max(EPS)),
+                h: containing_height.unwrap_or_else(|| (self.limit() - content_start).max(EPS)),
+                height_is_definite: containing_height.is_some(),
                 clip: style.overflow == "hidden",
             });
         }
@@ -4190,6 +4250,8 @@ impl Flow {
             self.cancel.as_deref(),
             self.experimental_shaping,
             &self.shaping_ns,
+            &mut self.warnings,
+            &self.source,
         )?;
         if lines.is_empty() {
             return Ok(());
@@ -4348,11 +4410,7 @@ impl Flow {
         let start_y = self.y;
         let start_page = self.pages.len();
         let old_frame = self.frame;
-        let declared_height = resolved_dimension(
-            node.style.height,
-            node.style.height_percent,
-            self.full_height(),
-        );
+        let declared_height = self.resolve_height(node.style.height, node.style.height_percent);
         let establishes = node.style.position != "static";
         if establishes {
             self.containing_blocks.push(ContainingBlock {
@@ -4360,6 +4418,7 @@ impl Flow {
                 y: start_y,
                 w: width,
                 h: declared_height.unwrap_or_else(|| (self.limit() - start_y).max(EPS)),
+                height_is_definite: declared_height.is_some(),
                 clip: node.style.overflow == "hidden",
             });
         }
@@ -4396,28 +4455,37 @@ impl Flow {
         } else {
             0.0
         };
+        let minimum_height =
+            self.resolve_height(node.style.min_height, node.style.min_height_percent);
+        let maximum_height =
+            self.resolve_height(node.style.max_height, node.style.max_height_percent);
         let height = constrained_dimension(
             declared_height.unwrap_or(used),
-            resolved_dimension(
-                node.style.min_height,
-                node.style.min_height_percent,
-                self.full_height(),
-            ),
-            resolved_dimension(
-                node.style.max_height,
-                node.style.max_height_percent,
-                self.full_height(),
-            ),
+            minimum_height,
+            maximum_height,
         );
-        let constrained = declared_height.is_some()
-            || node.style.min_height.is_some()
-            || node.style.min_height_percent.is_some()
-            || node.style.max_height.is_some()
-            || node.style.max_height_percent.is_some();
+        let constrained =
+            declared_height.is_some() || minimum_height.is_some() || maximum_height.is_some();
         if self.pages.len() != start_page && constrained {
-            return Err(Error(
-                "height-constrained flex container cannot split across pages".into(),
-            ));
+            let mut warning = Diagnostic::new(
+                "css-flex-fragmentation",
+                "height-constrained flex container split across pages; height alignment was omitted",
+            );
+            if let Some((line, column)) = node
+                .source_offset
+                .and_then(|offset| source_location_at(&self.source.html, offset))
+            {
+                warning.source = Some(
+                    self.source
+                        .source_name
+                        .as_deref()
+                        .unwrap_or("<html>")
+                        .to_owned(),
+                );
+                warning.line = Some(line);
+                warning.column = Some(column);
+            }
+            self.warnings.push(warning);
         }
         if self.pages.len() == start_page {
             self.y = start_y + used.max(height);
@@ -4522,7 +4590,6 @@ impl Flow {
             if self.y + estimate > self.limit() + EPS && self.page_has_content() {
                 self.new_page()?;
             }
-            let row_page = self.pages.len();
             let row_y = self.y;
             let row_start = self.pages.last().map_or(0, |page| page.items.len());
             let base_total: f32 = line.iter().map(|index| bases[*index]).sum();
@@ -4563,7 +4630,29 @@ impl Flow {
             };
             let mut ranges = Vec::new();
             let mut row_end = row_y;
+            let mut fragmented = false;
+            let base_pages = self.pages.clone();
+            let base_page_count = base_pages.len();
+            let base_page = self.page.clone();
+            let base_page_name = self.page_name.clone();
+            let base_page_content = self.page_content;
+            let base_page_counters = self.page_counters.clone();
+            let base_page_strings = self.page_strings.clone();
+            let base_page_running_elements = self.page_running_elements.clone();
+            let base_pending_break = self.pending_break;
+            let base_pending_break_side = self.pending_break_side.clone();
+            let mut lane_layouts = Vec::with_capacity(line.len());
+            let mut row_item_offset = 0;
             for ((index, child_index), item_width) in line.iter().enumerate().zip(sizes.drain(..)) {
+                self.pages = base_pages.clone();
+                self.page = base_page.clone();
+                self.page_name = base_page_name.clone();
+                self.page_content = base_page_content;
+                self.page_counters = base_page_counters.clone();
+                self.page_strings = base_page_strings.clone();
+                self.page_running_elements = base_page_running_elements.clone();
+                self.pending_break = base_pending_break;
+                self.pending_break_side = base_pending_break_side.clone();
                 self.y = row_y;
                 self.frame = Some((cursor, item_width));
                 let start = self.pages.last().map_or(0, |page| page.items.len());
@@ -4574,36 +4663,110 @@ impl Flow {
                 child.style.width_percent = None;
                 child.style.box_sizing = "border-box".into();
                 self.node(&child)?;
-                if self.pages.len() != row_page {
-                    return Err(Error("flex line cannot split across pages".into()));
+                if self.pages.len() != base_page_count {
+                    fragmented = true;
+                    let mut warning = Diagnostic::new(
+                        "css-flex-fragmentation",
+                        "flex line split across pages; row alignment was omitted",
+                    );
+                    if let Some((line, column)) = node
+                        .source_offset
+                        .and_then(|offset| source_location_at(&self.source.html, offset))
+                    {
+                        warning.source = Some(
+                            self.source
+                                .source_name
+                                .as_deref()
+                                .unwrap_or("<html>")
+                                .to_owned(),
+                        );
+                        warning.line = Some(line);
+                        warning.column = Some(column);
+                    }
+                    self.warnings.push(warning);
                 }
-                let end = self.pages.last().unwrap().items.len();
-                ranges.push((start, end, self.y, child.style.align_self.clone()));
-                row_end = row_end.max(self.y);
+                if self.pages.len() == base_page_count && !fragmented {
+                    let end = self.pages.last().unwrap().items.len();
+                    ranges.push((
+                        start + row_item_offset,
+                        end + row_item_offset,
+                        self.y,
+                        child.style.align_self.clone(),
+                    ));
+                    row_end = row_end.max(self.y);
+                    row_item_offset += end - start;
+                }
+                lane_layouts.push(FlexLaneLayout {
+                    pages: self.pages.clone(),
+                    y: self.y,
+                    page: self.page.clone(),
+                    page_name: self.page_name.clone(),
+                    page_content: self.page_content,
+                    page_counters: self.page_counters.clone(),
+                    page_strings: self.page_strings.clone(),
+                    page_running_elements: self.page_running_elements.clone(),
+                    pending_break: self.pending_break,
+                    pending_break_side: self.pending_break_side.clone(),
+                });
                 cursor += item_width;
                 if index + 1 < line.len() {
                     cursor += node.style.column_gap + extra_gap;
                 }
             }
-            for (start, end, child_end, align_self) in ranges {
-                let align = if align_self == "auto" {
-                    &node.style.align_items
-                } else {
-                    &align_self
-                };
-                let shift = match align.as_str() {
-                    "end" => row_end - child_end,
-                    "center" => (row_end - child_end) / 2.0,
-                    _ => 0.0,
-                };
-                if align == "stretch" {
-                    let height = row_end - row_y;
-                    for item in &mut self.pages.last_mut().unwrap().items[start..end] {
-                        stretch_box_item(item, row_y, height);
+            let longest_lane = lane_layouts
+                .iter()
+                .max_by_key(|lane| lane.pages.len())
+                .expect("flex line has at least one item");
+            let mut merged_pages = base_pages.clone();
+            for lane in &lane_layouts {
+                for (page_index, lane_page) in lane.pages.iter().enumerate() {
+                    if merged_pages.len() <= page_index {
+                        let mut page = lane_page.clone();
+                        page.items.clear();
+                        merged_pages.push(page);
                     }
-                } else if shift > EPS {
-                    for item in &mut self.pages.last_mut().unwrap().items[start..end] {
-                        shift_item(item, shift);
+                    let inherited_items = base_pages
+                        .get(page_index)
+                        .map_or(0, |page| page.items.len());
+                    merged_pages[page_index]
+                        .items
+                        .extend(lane_page.items.iter().skip(inherited_items).cloned());
+                }
+            }
+            self.pages = merged_pages;
+            self.y = longest_lane.y;
+            self.page = longest_lane.page.clone();
+            self.page_name = longest_lane.page_name.clone();
+            self.page_content = longest_lane.page_content;
+            self.page_counters = longest_lane.page_counters.clone();
+            self.page_strings = longest_lane.page_strings.clone();
+            self.page_running_elements = longest_lane.page_running_elements.clone();
+            self.pending_break = longest_lane.pending_break;
+            self.pending_break_side = longest_lane.pending_break_side.clone();
+            if fragmented {
+                row_end = self.y;
+            }
+            if !fragmented {
+                for (start, end, child_end, align_self) in ranges {
+                    let align = if align_self == "auto" {
+                        &node.style.align_items
+                    } else {
+                        &align_self
+                    };
+                    let shift = match align.as_str() {
+                        "end" => row_end - child_end,
+                        "center" => (row_end - child_end) / 2.0,
+                        _ => 0.0,
+                    };
+                    if align == "stretch" {
+                        let height = row_end - row_y;
+                        for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                            stretch_box_item(item, row_y, height);
+                        }
+                    } else if shift > EPS {
+                        for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                            shift_item(item, shift);
+                        }
                     }
                 }
             }
@@ -4885,6 +5048,7 @@ impl Flow {
                 y: start_y,
                 w: width,
                 h: declared_height.unwrap_or_else(|| (self.limit() - start_y).max(EPS)),
+                height_is_definite: declared_height.is_some(),
                 clip: node.style.overflow == "hidden",
             });
         }
@@ -5570,6 +5734,8 @@ impl Flow {
             self.cancel.as_deref(),
             self.experimental_shaping,
             &self.shaping_ns,
+            &mut self.warnings,
+            &self.source,
         )?;
         let body_height: f32 = lines.iter().map(|l| l.height).sum();
         let vertical_edges = padding[0] + padding[2] + borders[0] + borders[2];
@@ -6808,6 +6974,8 @@ impl Flow {
                     self.cancel.as_deref(),
                     self.experimental_shaping,
                     &self.shaping_ns,
+                    &mut self.warnings,
+                    &self.source,
                 )?;
                 let height = lines.iter().map(|line| line.height).sum();
                 (lines, vec![], height)

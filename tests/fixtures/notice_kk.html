@@ -1,0 +1,471 @@
+<!doctype html>
+<html><head><style>@page { size: A4; margin: 15mm; }
+
+/* Шрифт по умолчанию там, где font-family не задан явно: таблицы нарушений
+   (aliens/notice/pipeline.py) его не проставляют. Без этого правила WeasyPrint
+   разрешает `serif` через системные шрифты — в контейнере это DejaVu, на macOS
+   Georgia, — и вес PDF начинает зависеть от окружения (+2.3 КБ на фолбэки).
+   Инлайновые стили шаблона это правило не перебивает: у них приоритет выше. */
+body {
+  font-family: "Times Newer Roman", serif;
+}
+
+@page :first {
+  @bottom-right {
+    content: "" !important;
+  }
+  @bottom-left {
+    content: "" !important;
+  }
+  @bottom-center {
+    content: "" !important;
+  }
+  @top-right {
+    content: "" !important;
+  }
+  @top-left {
+    content: "" !important;
+  }
+  @top-center {
+    content: "" !important;
+  }
+}
+
+@page appendix_1_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение 1 к  уведомлению  № NT-2026-00042 от 08.10.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page esf_turnover_notice_appendix_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение к уведомлению № NT-2026-00042 от 08.10.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page esf_turnover_advice_appendix_ru {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение к извещению № NT-2026-00042 от 08.10.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+@page appendix_2_ru {
+  size: landscape !important;
+  page-orientation: rotate-right !important;
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Приложение 2 к  уведомлению  № NT-2026-00042 от 08.10.2026 г." !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "Лист " counter(page) " из " counter(pages) !important;
+  }
+}
+
+@page appendix_1_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "08.10.2026 ж. № NT-2026-00042  хабарламасына  1-қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page esf_turnover_notice_appendix_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "08.10.2026 ж. № NT-2026-00042 хабарламасына қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page esf_turnover_advice_appendix_kk {
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "08.10.2026 ж. № NT-2026-00042 хабархатқа қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@page appendix_2_kk {
+  size: landscape !important;
+  page-orientation: rotate-right !important;
+  @bottom-left {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: "08.10.2026 ж. № NT-2026-00042  хабарламасына  2-қосымша" !important;
+  }
+  @bottom-right {
+    font-size: 8pt;
+    font-family: "Times Newer Roman", serif;
+    color: gray;
+    content: counter(page) " беттің " counter(pages) !important;
+  }
+}
+@media print {
+  .appendix_1_kk {
+  }
+  .appendix_2_kk {
+  }
+  .appendix_1_ru {
+  }
+  .appendix_2_ru {
+  }
+  [data-print="paged"] > .appendix_1_kk {
+    page: appendix_1_kk !important;
+  }
+  [data-print="paged"] > .esf_turnover_notice_appendix_kk {
+    page: esf_turnover_notice_appendix_kk !important;
+  }
+  [data-print="paged"] > .esf_turnover_advice_appendix_kk {
+    page: esf_turnover_advice_appendix_kk !important;
+  }
+  [data-print="paged"] > .appendix_2_kk {
+    page: appendix_2_kk !important;
+  }
+  [data-print="paged"] > .appendix_1_ru {
+    page: appendix_1_ru !important;
+  }
+  [data-print="paged"] > .esf_turnover_notice_appendix_ru {
+    page: esf_turnover_notice_appendix_ru !important;
+  }
+  [data-print="paged"] > .esf_turnover_advice_appendix_ru {
+    page: esf_turnover_advice_appendix_ru !important;
+  }
+  [data-print="paged"] > .appendix_2_ru {
+    page: appendix_2_ru !important;
+  }
+}
+.qr {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-right: 10px;
+}
+.qr img {
+    width: 3cm;
+    height: auto;
+    aspect-ratio: 1;
+    max-width: 100%;
+    max-height: 100%;
+}
+.row{
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+}
+</style></head><body><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;margin-top:0.5rem;margin-bottom:0.5rem"><div><div style="position:relative;display:flex;width:100%;height:100%;gap:1rem;border-radius:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;width:33%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline-block"><span type="button" style="display:inline-block;cursor:pointer;border-radius:0.125rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;transition-property:all;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;border-color:rgba(147,197,253, 1)"><img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTMuMm1tIiBoZWlnaHQ9IjEzLjJtbSIgdmVyc2lvbj0iMS4xIiB2aWV3Qm94PSIwIDAgMTMuMiAxMy4yIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxwYXRoIGQ9Ik0wLjgsMC44SDEuMlYxLjJIMC44ek0xLjIsMC44SDEuNlYxLjJIMS4yek0xLjYsMC44SDJWMS4ySDEuNnpNMiwwLjhIMi40VjEuMkgyek0yLjQsMC44SDIuOFYxLjJIMi40ek0yLjgsMC44SDMuMlYxLjJIMi44ek0zLjIsMC44SDMuNlYxLjJIMy4yek01LjIsMC44SDUuNlYxLjJINS4yek01LjYsMC44SDZWMS4ySDUuNnpNNiwwLjhINi40VjEuMkg2ek02LjQsMC44SDYuOFYxLjJINi40ek02LjgsMC44SDcuMlYxLjJINi44ek03LjIsMC44SDcuNlYxLjJINy4yek03LjYsMC44SDhWMS4ySDcuNnpNOCwwLjhIOC40VjEuMkg4ek04LjQsMC44SDguOFYxLjJIOC40ek05LjYsMC44SDEwVjEuMkg5LjZ6TTEwLDAuOEgxMC40VjEuMkgxMHpNMTAuNCwwLjhIMTAuOFYxLjJIMTAuNHpNMTAuOCwwLjhIMTEuMlYxLjJIMTAuOHpNMTEuMiwwLjhIMTEuNlYxLjJIMTEuMnpNMTEuNiwwLjhIMTJWMS4ySDExLjZ6TTEyLDAuOEgxMi40VjEuMkgxMnpNMC44LDEuMkgxLjJWMS42SDAuOHpNMy4yLDEuMkgzLjZWMS42SDMuMnpNNC44LDEuMkg1LjJWMS42SDQuOHpNNS42LDEuMkg2VjEuNkg1LjZ6TTYuNCwxLjJINi44VjEuNkg2LjR6TTYuOCwxLjJINy4yVjEuNkg2Ljh6TTcuMiwxLjJINy42VjEuNkg3LjJ6TTgsMS4ySDguNFYxLjZIOHpNOS42LDEuMkgxMFYxLjZIOS42ek0xMiwxLjJIMTIuNFYxLjZIMTJ6TTAuOCwxLjZIMS4yVjJIMC44ek0xLjYsMS42SDJWMkgxLjZ6TTIsMS42SDIuNFYySDJ6TTIuNCwxLjZIMi44VjJIMi40ek0zLjIsMS42SDMuNlYySDMuMnpNNC40LDEuNkg0LjhWMkg0LjR6TTUuMiwxLjZINS42VjJINS4yek01LjYsMS42SDZWMkg1LjZ6TTYuNCwxLjZINi44VjJINi40ek02LjgsMS42SDcuMlYySDYuOHpNNy42LDEuNkg4VjJINy42ek04LjQsMS42SDguOFYySDguNHpNOC44LDEuNkg5LjJWMkg4Ljh6TTkuNiwxLjZIMTBWMkg5LjZ6TTEwLjQsMS42SDEwLjhWMkgxMC40ek0xMC44LDEuNkgxMS4yVjJIMTAuOHpNMTEuMiwxLjZIMTEuNlYySDExLjJ6TTEyLDEuNkgxMi40VjJIMTJ6TTAuOCwySDEuMlYyLjRIMC44ek0xLjYsMkgyVjIuNEgxLjZ6TTIsMkgyLjRWMi40SDJ6TTIuNCwySDIuOFYyLjRIMi40ek0zLjIsMkgzLjZWMi40SDMuMnpNNC40LDJINC44VjIuNEg0LjR6TTQuOCwySDUuMlYyLjRINC44ek02LjgsMkg3LjJWMi40SDYuOHpNNy4yLDJINy42VjIuNEg3LjJ6TTgsMkg4LjRWMi40SDh6TTkuNiwySDEwVjIuNEg5LjZ6TTEwLjQsMkgxMC44VjIuNEgxMC40ek0xMC44LDJIMTEuMlYyLjRIMTAuOHpNMTEuMiwySDExLjZWMi40SDExLjJ6TTEyLDJIMTIuNFYyLjRIMTJ6TTAuOCwyLjRIMS4yVjIuOEgwLjh6TTEuNiwyLjRIMlYyLjhIMS42ek0yLDIuNEgyLjRWMi44SDJ6TTIuNCwyLjRIMi44VjIuOEgyLjR6TTMuMiwyLjRIMy42VjIuOEgzLjJ6TTQuOCwyLjRINS4yVjIuOEg0Ljh6TTYsMi40SDYuNFYyLjhINnpNNi44LDIuNEg3LjJWMi44SDYuOHpNOS42LDIuNEgxMFYyLjhIOS42ek0xMC40LDIuNEgxMC44VjIuOEgxMC40ek0xMC44LDIuNEgxMS4yVjIuOEgxMC44ek0xMS4yLDIuNEgxMS42VjIuOEgxMS4yek0xMiwyLjRIMTIuNFYyLjhIMTJ6TTAuOCwyLjhIMS4yVjMuMkgwLjh6TTMuMiwyLjhIMy42VjMuMkgzLjJ6TTQsMi44SDQuNFYzLjJINHpNNC40LDIuOEg0LjhWMy4ySDQuNHpNNS42LDIuOEg2VjMuMkg1LjZ6TTYsMi44SDYuNFYzLjJINnpNNi40LDIuOEg2LjhWMy4ySDYuNHpNNi44LDIuOEg3LjJWMy4ySDYuOHpNOCwyLjhIOC40VjMuMkg4ek04LjQsMi44SDguOFYzLjJIOC40ek05LjYsMi44SDEwVjMuMkg5LjZ6TTEyLDIuOEgxMi40VjMuMkgxMnpNMC44LDMuMkgxLjJWMy42SDAuOHpNMS4yLDMuMkgxLjZWMy42SDEuMnpNMS42LDMuMkgyVjMuNkgxLjZ6TTIsMy4ySDIuNFYzLjZIMnpNMi40LDMuMkgyLjhWMy42SDIuNHpNMi44LDMuMkgzLjJWMy42SDIuOHpNMy4yLDMuMkgzLjZWMy42SDMuMnpNNCwzLjJINC40VjMuNkg0ek00LjgsMy4ySDUuMlYzLjZINC44ek01LjYsMy4ySDZWMy42SDUuNnpNNi40LDMuMkg2LjhWMy42SDYuNHpNNy4yLDMuMkg3LjZWMy42SDcuMnpNOCwzLjJIOC40VjMuNkg4ek04LjgsMy4ySDkuMlYzLjZIOC44ek05LjYsMy4ySDEwVjMuNkg5LjZ6TTEwLDMuMkgxMC40VjMuNkgxMHpNMTAuNCwzLjJIMTAuOFYzLjZIMTAuNHpNMTAuOCwzLjJIMTEuMlYzLjZIMTAuOHpNMTEuMiwzLjJIMTEuNlYzLjZIMTEuMnpNMTEuNiwzLjJIMTJWMy42SDExLjZ6TTEyLDMuMkgxMi40VjMuNkgxMnpNNC40LDMuNkg0LjhWNEg0LjR6TTQuOCwzLjZINS4yVjRINC44ek01LjIsMy42SDUuNlY0SDUuMnpNNS42LDMuNkg2VjRINS42ek03LjIsMy42SDcuNlY0SDcuMnpNNy42LDMuNkg4VjRINy42ek04LjQsMy42SDguOFY0SDguNHpNOC44LDMuNkg5LjJWNEg4Ljh6TTAuOCw0SDEuMlY0LjRIMC44ek0yLDRIMi40VjQuNEgyek0yLjgsNEgzLjJWNC40SDIuOHpNMy4yLDRIMy42VjQuNEgzLjJ6TTQsNEg0LjRWNC40SDR6TTYsNEg2LjRWNC40SDZ6TTguNCw0SDguOFY0LjRIOC40ek05LjIsNEg5LjZWNC40SDkuMnpNMTAsNEgxMC40VjQuNEgxMHpNMS4yLDQuNEgxLjZWNC44SDEuMnpNMS42LDQuNEgyVjQuOEgxLjZ6TTIsNC40SDIuNFY0LjhIMnpNMi40LDQuNEgyLjhWNC44SDIuNHpNMi44LDQuNEgzLjJWNC44SDIuOHpNMy42LDQuNEg0VjQuOEgzLjZ6TTQuOCw0LjRINS4yVjQuOEg0Ljh6TTUuNiw0LjRINlY0LjhINS42ek02LDQuNEg2LjRWNC44SDZ6TTYuNCw0LjRINi44VjQuOEg2LjR6TTkuNiw0LjRIMTBWNC44SDkuNnpNMTAuOCw0LjRIMTEuMlY0LjhIMTAuOHpNMTIsNC40SDEyLjRWNC44SDEyek0wLjgsNC44SDEuMlY1LjJIMC44ek0yLDQuOEgyLjRWNS4ySDJ6TTIuNCw0LjhIMi44VjUuMkgyLjR6TTIuOCw0LjhIMy4yVjUuMkgyLjh6TTMuMiw0LjhIMy42VjUuMkgzLjJ6TTMuNiw0LjhINFY1LjJIMy42ek02LDQuOEg2LjRWNS4ySDZ6TTYuNCw0LjhINi44VjUuMkg2LjR6TTgsNC44SDguNFY1LjJIOHpNOC40LDQuOEg4LjhWNS4ySDguNHpNOC44LDQuOEg5LjJWNS4ySDguOHpNMTAsNC44SDEwLjRWNS4ySDEwek0xMC40LDQuOEgxMC44VjUuMkgxMC40ek0xMC44LDQuOEgxMS4yVjUuMkgxMC44ek0xMS4yLDQuOEgxMS42VjUuMkgxMS4yek0xMS42LDQuOEgxMlY1LjJIMTEuNnpNMS4yLDUuMkgxLjZWNS42SDEuMnpNMS42LDUuMkgyVjUuNkgxLjZ6TTIsNS4ySDIuNFY1LjZIMnpNMi40LDUuMkgyLjhWNS42SDIuNHpNMi44LDUuMkgzLjJWNS42SDIuOHpNMy42LDUuMkg0VjUuNkgzLjZ6TTUuMiw1LjJINS42VjUuNkg1LjJ6TTUuNiw1LjJINlY1LjZINS42ek02LDUuMkg2LjRWNS42SDZ6TTYuNCw1LjJINi44VjUuNkg2LjR6TTYuOCw1LjJINy4yVjUuNkg2Ljh6TTgsNS4ySDguNFY1LjZIOHpNOC40LDUuMkg4LjhWNS42SDguNHpNOS4yLDUuMkg5LjZWNS42SDkuMnpNMTAsNS4ySDEwLjRWNS42SDEwek0xMC40LDUuMkgxMC44VjUuNkgxMC40ek0xMS4yLDUuMkgxMS42VjUuNkgxMS4yek0xMS42LDUuMkgxMlY1LjZIMTEuNnpNMC44LDUuNkgxLjJWNkgwLjh6TTIsNS42SDIuNFY2SDJ6TTIuOCw1LjZIMy4yVjZIMi44ek0zLjIsNS42SDMuNlY2SDMuMnpNNC44LDUuNkg1LjJWNkg0Ljh6TTUuMiw1LjZINS42VjZINS4yek01LjYsNS42SDZWNkg1LjZ6TTYsNS42SDYuNFY2SDZ6TTYuNCw1LjZINi44VjZINi40ek03LjYsNS42SDhWNkg3LjZ6TTkuMiw1LjZIOS42VjZIOS4yek05LjYsNS42SDEwVjZIOS42ek0xMC44LDUuNkgxMS4yVjZIMTAuOHpNMTEuNiw1LjZIMTJWNkgxMS42ek0xMiw1LjZIMTIuNFY2SDEyek0wLjgsNkgxLjJWNi40SDAuOHpNMS4yLDZIMS42VjYuNEgxLjJ6TTIsNkgyLjRWNi40SDJ6TTIuNCw2SDIuOFY2LjRIMi40ek0zLjYsNkg0VjYuNEgzLjZ6TTQsNkg0LjRWNi40SDR6TTQuNCw2SDQuOFY2LjRINC40ek01LjIsNkg1LjZWNi40SDUuMnpNNi40LDZINi44VjYuNEg2LjR6TTcuMiw2SDcuNlY2LjRINy4yek03LjYsNkg4VjYuNEg3LjZ6TTguNCw2SDguOFY2LjRIOC40ek04LjgsNkg5LjJWNi40SDguOHpNOS4yLDZIOS42VjYuNEg5LjJ6TTAuOCw2LjRIMS4yVjYuOEgwLjh6TTEuMiw2LjRIMS42VjYuOEgxLjJ6TTIsNi40SDIuNFY2LjhIMnpNMi40LDYuNEgyLjhWNi44SDIuNHpNMi44LDYuNEgzLjJWNi44SDIuOHpNMy4yLDYuNEgzLjZWNi44SDMuMnpNNCw2LjRINC40VjYuOEg0ek01LjIsNi40SDUuNlY2LjhINS4yek03LjIsNi40SDcuNlY2LjhINy4yek04LDYuNEg4LjRWNi44SDh6TTguOCw2LjRIOS4yVjYuOEg4Ljh6TTkuMiw2LjRIOS42VjYuOEg5LjJ6TTEwLjQsNi40SDEwLjhWNi44SDEwLjR6TTEwLjgsNi40SDExLjJWNi44SDEwLjh6TTExLjIsNi40SDExLjZWNi44SDExLjJ6TTExLjYsNi40SDEyVjYuOEgxMS42ek0xMiw2LjRIMTIuNFY2LjhIMTJ6TTIsNi44SDIuNFY3LjJIMnpNMi40LDYuOEgyLjhWNy4ySDIuNHpNNCw2LjhINC40VjcuMkg0ek00LjQsNi44SDQuOFY3LjJINC40ek00LjgsNi44SDUuMlY3LjJINC44ek01LjIsNi44SDUuNlY3LjJINS4yek02LDYuOEg2LjRWNy4ySDZ6TTcuNiw2LjhIOFY3LjJINy42ek04LDYuOEg4LjRWNy4ySDh6TTkuMiw2LjhIOS42VjcuMkg5LjJ6TTEwLDYuOEgxMC40VjcuMkgxMHpNMTAuOCw2LjhIMTEuMlY3LjJIMTAuOHpNMTEuNiw2LjhIMTJWNy4ySDExLjZ6TTAuOCw3LjJIMS4yVjcuNkgwLjh6TTEuNiw3LjJIMlY3LjZIMS42ek0yLjQsNy4ySDIuOFY3LjZIMi40ek0zLjIsNy4ySDMuNlY3LjZIMy4yek00LDcuMkg0LjRWNy42SDR6TTQuNCw3LjJINC44VjcuNkg0LjR6TTQuOCw3LjJINS4yVjcuNkg0Ljh6TTUuMiw3LjJINS42VjcuNkg1LjJ6TTYuNCw3LjJINi44VjcuNkg2LjR6TTcuMiw3LjJINy42VjcuNkg3LjJ6TTcuNiw3LjJIOFY3LjZINy42ek04LjQsNy4ySDguOFY3LjZIOC40ek05LjIsNy4ySDkuNlY3LjZIOS4yek0xMS42LDcuMkgxMlY3LjZIMTEuNnpNMS4yLDcuNkgxLjZWOEgxLjJ6TTIuNCw3LjZIMi44VjhIMi40ek0zLjYsNy42SDRWOEgzLjZ6TTQuNCw3LjZINC44VjhINC40ek00LjgsNy42SDUuMlY4SDQuOHpNNS4yLDcuNkg1LjZWOEg1LjJ6TTUuNiw3LjZINlY4SDUuNnpNNiw3LjZINi40VjhINnpNOS4yLDcuNkg5LjZWOEg5LjJ6TTkuNiw3LjZIMTBWOEg5LjZ6TTEwLDcuNkgxMC40VjhIMTB6TTEwLjgsNy42SDExLjJWOEgxMC44ek0xMiw3LjZIMTIuNFY4SDEyek0wLjgsOEgxLjJWOC40SDAuOHpNMiw4SDIuNFY4LjRIMnpNMi40LDhIMi44VjguNEgyLjR6TTIuOCw4SDMuMlY4LjRIMi44ek0zLjIsOEgzLjZWOC40SDMuMnpNNCw4SDQuNFY4LjRINHpNNC40LDhINC44VjguNEg0LjR6TTUuMiw4SDUuNlY4LjRINS4yek01LjYsOEg2VjguNEg1LjZ6TTkuMiw4SDkuNlY4LjRIOS4yek05LjYsOEgxMFY4LjRIOS42ek0xMC40LDhIMTAuOFY4LjRIMTAuNHpNMTEuNiw4SDEyVjguNEgxMS42ek0xMiw4SDEyLjRWOC40SDEyek0xLjYsOC40SDJWOC44SDEuNnpNMiw4LjRIMi40VjguOEgyek0yLjQsOC40SDIuOFY4LjhIMi40ek0zLjYsOC40SDRWOC44SDMuNnpNNi44LDguNEg3LjJWOC44SDYuOHpNNy42LDguNEg4VjguOEg3LjZ6TTgsOC40SDguNFY4LjhIOHpNOC44LDguNEg5LjJWOC44SDguOHpNOS42LDguNEgxMFY4LjhIOS42ek0xMCw4LjRIMTAuNFY4LjhIMTB6TTEwLjQsOC40SDEwLjhWOC44SDEwLjR6TTExLjYsOC40SDEyVjguOEgxMS42ek0xMiw4LjRIMTIuNFY4LjhIMTJ6TTAuOCw4LjhIMS4yVjkuMkgwLjh6TTEuNiw4LjhIMlY5LjJIMS42ek0yLjQsOC44SDIuOFY5LjJIMi40ek0yLjgsOC44SDMuMlY5LjJIMi44ek0zLjIsOC44SDMuNlY5LjJIMy4yek00LjQsOC44SDQuOFY5LjJINC40ek01LjYsOC44SDZWOS4ySDUuNnpNNiw4LjhINi40VjkuMkg2ek02LjgsOC44SDcuMlY5LjJINi44ek03LjIsOC44SDcuNlY5LjJINy4yek04LjgsOC44SDkuMlY5LjJIOC44ek05LjIsOC44SDkuNlY5LjJIOS4yek05LjYsOC44SDEwVjkuMkg5LjZ6TTEwLDguOEgxMC40VjkuMkgxMHpNMTAuNCw4LjhIMTAuOFY5LjJIMTAuNHpNMTEuMiw4LjhIMTEuNlY5LjJIMTEuMnpNNCw5LjJINC40VjkuNkg0ek00LjQsOS4ySDQuOFY5LjZINC40ek02LDkuMkg2LjRWOS42SDZ6TTYuNCw5LjJINi44VjkuNkg2LjR6TTcuNiw5LjJIOFY5LjZINy42ek04LDkuMkg4LjRWOS42SDh6TTguNCw5LjJIOC44VjkuNkg4LjR6TTguOCw5LjJIOS4yVjkuNkg4Ljh6TTEwLjQsOS4ySDEwLjhWOS42SDEwLjR6TTExLjIsOS4ySDExLjZWOS42SDExLjJ6TTExLjYsOS4ySDEyVjkuNkgxMS42ek0xMiw5LjJIMTIuNFY5LjZIMTJ6TTAuOCw5LjZIMS4yVjEwSDAuOHpNMS4yLDkuNkgxLjZWMTBIMS4yek0xLjYsOS42SDJWMTBIMS42ek0yLDkuNkgyLjRWMTBIMnpNMi40LDkuNkgyLjhWMTBIMi40ek0yLjgsOS42SDMuMlYxMEgyLjh6TTMuMiw5LjZIMy42VjEwSDMuMnpNNC44LDkuNkg1LjJWMTBINC44ek01LjYsOS42SDZWMTBINS42ek02LjQsOS42SDYuOFYxMEg2LjR6TTcuNiw5LjZIOFYxMEg3LjZ6TTgsOS42SDguNFYxMEg4ek04LjgsOS42SDkuMlYxMEg4Ljh6TTkuNiw5LjZIMTBWMTBIOS42ek0xMC40LDkuNkgxMC44VjEwSDEwLjR6TTExLjYsOS42SDEyVjEwSDExLjZ6TTAuOCwxMEgxLjJWMTAuNEgwLjh6TTMuMiwxMEgzLjZWMTAuNEgzLjJ6TTQsMTBINC40VjEwLjRINHpNNC40LDEwSDQuOFYxMC40SDQuNHpNNC44LDEwSDUuMlYxMC40SDQuOHpNNS4yLDEwSDUuNlYxMC40SDUuMnpNNiwxMEg2LjRWMTAuNEg2ek02LjQsMTBINi44VjEwLjRINi40ek02LjgsMTBINy4yVjEwLjRINi44ek03LjIsMTBINy42VjEwLjRINy4yek04LDEwSDguNFYxMC40SDh6TTguOCwxMEg5LjJWMTAuNEg4Ljh6TTEwLjQsMTBIMTAuOFYxMC40SDEwLjR6TTEwLjgsMTBIMTEuMlYxMC40SDEwLjh6TTExLjIsMTBIMTEuNlYxMC40SDExLjJ6TTExLjYsMTBIMTJWMTAuNEgxMS42ek0xMiwxMEgxMi40VjEwLjRIMTJ6TTAuOCwxMC40SDEuMlYxMC44SDAuOHpNMS42LDEwLjRIMlYxMC44SDEuNnpNMiwxMC40SDIuNFYxMC44SDJ6TTIuNCwxMC40SDIuOFYxMC44SDIuNHpNMy4yLDEwLjRIMy42VjEwLjhIMy4yek01LjIsMTAuNEg1LjZWMTAuOEg1LjJ6TTUuNiwxMC40SDZWMTAuOEg1LjZ6TTYuNCwxMC40SDYuOFYxMC44SDYuNHpNNy42LDEwLjRIOFYxMC44SDcuNnpNOCwxMC40SDguNFYxMC44SDh6TTguOCwxMC40SDkuMlYxMC44SDguOHpNOS4yLDEwLjRIOS42VjEwLjhIOS4yek05LjYsMTAuNEgxMFYxMC44SDkuNnpNMTAsMTAuNEgxMC40VjEwLjhIMTB6TTEwLjQsMTAuNEgxMC44VjEwLjhIMTAuNHpNMC44LDEwLjhIMS4yVjExLjJIMC44ek0xLjYsMTAuOEgyVjExLjJIMS42ek0yLDEwLjhIMi40VjExLjJIMnpNMi40LDEwLjhIMi44VjExLjJIMi40ek0zLjIsMTAuOEgzLjZWMTEuMkgzLjJ6TTQsMTAuOEg0LjRWMTEuMkg0ek00LjQsMTAuOEg0LjhWMTEuMkg0LjR6TTQuOCwxMC44SDUuMlYxMS4ySDQuOHpNNS4yLDEwLjhINS42VjExLjJINS4yek02LjgsMTAuOEg3LjJWMTEuMkg2Ljh6TTkuMiwxMC44SDkuNlYxMS4ySDkuMnpNOS42LDEwLjhIMTBWMTEuMkg5LjZ6TTEwLjQsMTAuOEgxMC44VjExLjJIMTAuNHpNMTAuOCwxMC44SDExLjJWMTEuMkgxMC44ek0xMS4yLDEwLjhIMTEuNlYxMS4ySDExLjJ6TTExLjYsMTAuOEgxMlYxMS4ySDExLjZ6TTAuOCwxMS4ySDEuMlYxMS42SDAuOHpNMS42LDExLjJIMlYxMS42SDEuNnpNMiwxMS4ySDIuNFYxMS42SDJ6TTIuNCwxMS4ySDIuOFYxMS42SDIuNHpNMy4yLDExLjJIMy42VjExLjZIMy4yek00LjQsMTEuMkg0LjhWMTEuNkg0LjR6TTUuMiwxMS4ySDUuNlYxMS42SDUuMnpNNiwxMS4ySDYuNFYxMS42SDZ6TTYuNCwxMS4ySDYuOFYxMS42SDYuNHpNNy4yLDExLjJINy42VjExLjZINy4yek04LjQsMTEuMkg4LjhWMTEuNkg4LjR6TTEwLjQsMTEuMkgxMC44VjExLjZIMTAuNHpNMTAuOCwxMS4ySDExLjJWMTEuNkgxMC44ek0xMS4yLDExLjJIMTEuNlYxMS42SDExLjJ6TTEyLDExLjJIMTIuNFYxMS42SDEyek0wLjgsMTEuNkgxLjJWMTJIMC44ek0zLjIsMTEuNkgzLjZWMTJIMy4yek00LjQsMTEuNkg0LjhWMTJINC40ek03LjIsMTEuNkg3LjZWMTJINy4yek03LjYsMTEuNkg4VjEySDcuNnpNOCwxMS42SDguNFYxMkg4ek04LjgsMTEuNkg5LjJWMTJIOC44ek05LjYsMTEuNkgxMFYxMkg5LjZ6TTExLjYsMTEuNkgxMlYxMkgxMS42ek0wLjgsMTJIMS4yVjEyLjRIMC44ek0xLjIsMTJIMS42VjEyLjRIMS4yek0xLjYsMTJIMlYxMi40SDEuNnpNMiwxMkgyLjRWMTIuNEgyek0yLjQsMTJIMi44VjEyLjRIMi40ek0yLjgsMTJIMy4yVjEyLjRIMi44ek0zLjIsMTJIMy42VjEyLjRIMy4yek00LDEySDQuNFYxMi40SDR6TTQuNCwxMkg0LjhWMTIuNEg0LjR6TTQuOCwxMkg1LjJWMTIuNEg0Ljh6TTYuOCwxMkg3LjJWMTIuNEg2Ljh6TTguOCwxMkg5LjJWMTIuNEg4Ljh6TTkuNiwxMkgxMFYxMi40SDkuNnpNMTAsMTJIMTAuNFYxMi40SDEwek0xMC40LDEySDEwLjhWMTIuNEgxMC40ek0xMC44LDEySDExLjJWMTIuNEgxMC44ek0xMS42LDEySDEyVjEyLjRIMTEuNnoiIGlkPSJxci1wYXRoIiBmaWxsPSIjMDAwMDAwIiBmaWxsLW9wYWNpdHk9IjEiIGZpbGwtcnVsZT0ibm9uemVybyIgc3Ryb2tlPSJub25lIiAvPjwvc3ZnPg==" alt="QR Code" style="width:2cm;height:auto;object-fit:contain;display:block;max-width:100%"></span><span style="height: 0px; color: transparent; outline: none; position: absolute;"><span><span><span></span></span></span></span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:26.28%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:39.72%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Қазақстан Реcпубликасының</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Қаржы министрі</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>2026 жылғы 20 ақпандағы № 111</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>бұйрығына қосымша</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Қазақстан Реcпубликасы </span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Қаржы министрінің</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>2025 жылғы 28 қазандағы</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>№ 633 бұйрығымен бектілген</span></span></span></div></div></div></div></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;margin-top:0.5rem;margin-bottom:0.5rem"><div><div style="position:relative;display:flex;width:100%;height:100%;gap:1rem;border-radius:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;width:33%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:51.2%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:14.8%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>нысан</span></span></span></div></div></div></div></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><strong style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span><br></span></strong></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><strong style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>Камералдық бақылау нәтижелері бойынша анықтаған алшақтықтар </span></strong></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><strong style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>туралы хабарлама </span></strong></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;margin-top:0.5rem;margin-bottom:0.5rem"><div><div style="position:relative;display:flex;width:100%;height:100%;gap:1rem;border-radius:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;width:50%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:left;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: none; vertical-align: baseline; font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;">08.10.2026</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><em style="font-family:&quot;Times Newer Roman&quot;, serif"><span> </span></em></span></span><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span>жылы</span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:50%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:right;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span>№ </span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: none; vertical-align: baseline; font-size: 12pt; font-family: &quot;Times Newer Roman&quot;, serif;">NT-2026-00042</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span></div></div></div></div></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span><br></span></u></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;line-height:1.2;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span></span></u></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">Алматы қаласы бойынша Мемлекеттік кірістер департаменті</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>, </span></u></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">6001</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>, </span></u></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">Алматы қ., Абылай хан даңғылы, 10</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span> </span></u></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> &nbsp;&nbsp;&nbsp; (мемлекеттік кірістер органының атауы, коды, мекенжайы)</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Қазақстан Республикасы Салық кодексінің (бұдан әрі – Салық кодексі) 82-бабының 1-тармағына және 137-бабының 3-тармағына сәйкес Сізге</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">«Үлгі» ЖШС</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;text-indent:40px;line-height:1.2;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(тегі, аты, әкесінің аты (егер жеке басын куәландыратын құжатта көрсетілсе))&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;немесе салық төлеушінің (салық агентінің) атауы </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">123456789012</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(жеке сәйкестендіру нөмірі/бизнес-сәйкестендіру нөмірі (ЖСН/БСН) </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;СЕН: </span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">300.00</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span> ; </span></u></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">01.01.2025 - 31.12.2025</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><u style="font-size:14pt;font-family:&quot;Times Newer Roman&quot;, serif"><span>&nbsp;&nbsp;</span></u></span></span><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> салықтық </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> (салықтық есептіліктің атауы және салықтық кезеңі)</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>есептілік бойынша </span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">08.10.2026</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span> жылғы анықталған алшақтықтар туралы хабарлайды.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Салық кодексінің 82-бабының 2-тармағына сәйкес Сізге осы хабарламаны ол табыс етілген күннен кейінгі күннен бастап 30 (отыз) жұмыс күні ішінде орындау қажет. </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>1. Салық кодексінің 137-бабының 4-тармағына сәйкес хабарламаны орындау болып танылады:</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>1) хабарламада көрсетілген алшақтықтармен келіскен жағдайда – салық төлеушінің (салық агентінің) Қазақстан Республикасы салық заңнамасының анықталған бұзушылықтарын:</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>алшақтықтар анықталған салықтық кезең үшін хабарлама бойынша салықтық есептілікті ұсыну;</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>қосылған құн салығын қайтару туралы салық төлеушінің (салық агентінің) талабы бойынша бюджеттен бұрын қайтарылған қосылған құн салығының сомасын, сондай-ақ осындай сомаларды салық төлеушіге (салық агентіне) аудару күнінен бастап төлеу күніне дейінгі әрбір күн үшін өсімпұлды бюджетке төлеу;</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>өзін-өзі жұмыспен қамтығандарға арналған арнаулы салық режимін қолданатын&nbsp;&nbsp;салық төлеушілер үшін – арнаулы мобильді қосымшада деректерді көрсету және (немесе) салық пен әлеуметтік төлемдерді төлеу;</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>тиісті салық режиміне көшу мақсатында Салық кодексінің 716-бабында көзделген әрекеттерді жасау арқылы жоюы;</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>2) хабарламада көрсетілген алшақтықтармен келіспеген жағдайда – Салық кодексінің 137-бабы 6-тармағының бірінші бөлігінде көзделген жағдайларды қоспағанда, салық төлеушінің (салық агентінің) хабарламаны ұсынған салық органына Қазақстан Республикасы салық заңнамасының бұзылуына алып келмейтін алшақтықтардың себептері туралы түсінік ұсынуы.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Хабарламада көрсетілген алшақтықтардың бір бөлігімен келіскен жағдайда, салық төлеушінің (салық агентінің) алшақтықтарды анықталған бөлігінде жоюы және қалған бөлікте алшақтықтардың жоқтығы жөнінде түсінікті ұсынуы хабарламаның орындалуы деп танылады.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>2. Салық кодексінің 137-бабының 9-тармағына сәйкес белгіленген мерзімде осы хабарламаны орындамау салық төлеушінің банктік шоттары бойынша шығыс операцияларын тоқтатуға, электрондық шот фактураларды жазып беруді тоқтатуға және Қазақстан Республикасы аумағында интернет-платформа арқылы қызметін жүзеге асыратын шетелдік компанияның интернет-ресурстарына және (немесе) интернет-платформасына қол жеткізуді шектеуге әкеп соғады, бұл Қазақстан Республикасының Салық кодексінің 86, 88 және 89-баптарына сәйкес жүзеге асырылады.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Салық кодексінің 137-бабының 10-тармағына сәйкес мемлекеттік кірістер органы камералдық бақылау нәтижелері бойынша анықталған алшақтықтарға қатысты салықтық тексеру жүргізуге құқылы.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Қазақстан Республикасының Салық кодексінің 137-бабының 7-тармағына сәйкес Сіз тауарларды, жұмыстарды, көрсетілетін қызметтерді нақты сатып алуды (алуды) растайтын жағдайларда, Салық кодексінің 137-бабының 6-тармағының 3) және 4) тармақшаларында көзделген жағдайларда осы хабарламаны сот тәртібімен даулауға құқығыңыз бар.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Шағымды іс жүргізуге қабылдау туралы сот актісінің көшірмесін салық төлеуші (салық агенті) хабарламаны ұсынған салық органына ұсынады.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Бұл ретте тоқтата тұру Салық кодексінің 137-бабының 7-тармақтың екінші бөлігінде көрсетілген сот актісі шығарылған күннен бастап ол заңды күшіне енгенге дейінгі кезеңге қолданылады.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Анықталған бұзушылықтар сипаттамасымен қосымша ___ парақта.</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;line-height:1;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Мемлекеттік кірістер органның басшысы (басшысының орынбасары)</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:center;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">Ә. Қасымов</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span> </span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(тегі, аты, әкесінің аты (егер ол жеке басын куәландыратын құжатта көрсетілсе)) (қолы) Мөр орны</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;line-height:1;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Хабарламаны алды ______________________________________________</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(салық төлеушінің (салық агентінің) тегі, аты, әкесінің аты егер ол жеке басын куәландыратын құжатта көрсетілсе))</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;text-indent:40px;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>(қолы, күні) Мөр орны (жеке кәсіпкерлік субъектілеріне жататын заңды тұлғаларды қоспағанда)</span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;line-height:1;position:relative"><span><span style="font-size: 10pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;margin-top:0.5rem;margin-bottom:0.5rem"><div><div style="position:relative;display:flex;width:100%;height:100%;gap:1rem;border-radius:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;width:46.36%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Хабарлама салық төлеушіге (салық </span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>агентіне) табысталды </span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>_______________________________</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>хабарламаны табыстаған мемлекеттік&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;кірістер органы лауазымды адамының&nbsp;&nbsp;&nbsp;&nbsp;тегі, аты, әкесінің аты (егер жеке басын&nbsp;&nbsp;куәландыратын құжатта көрсетілген&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;болса), қолы, күні</span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:10%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div></div><div style="font-size:12pt;font-family:Inter, sans-serif;width:42.64%;position:relative;border-radius:0.5rem;border-top-width:1px;border-bottom-width:1px;border-left-width:1px;border-right-width:1px;padding:0.25rem"><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Тегі, аты, әкесінің аты (егер жеке басын&nbsp;&nbsp;&nbsp;куәландыратын құжатта көрсетілген болса) немесе салық төлеушінің (салық агентінің) атауы:</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">«Үлгі» ЖШС</span></div><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;line-height:1;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Мекенжайы:</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-family: &quot;Times Newer Roman&quot;, serif;"><span></span></span></span><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative;display:inline;cursor:pointer;border-radius:0.375rem;word-break:break-all"><span style="font-weight: normal; font-style: normal; text-decoration: underline; vertical-align: baseline; font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;">Алматы қ., Абай даңғылы, 25</span></div><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;line-height:1;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span><br></span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;text-align:justify;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>Хабарлама салық төлеушіге (салық агентіне) жіберілді</span></span></span></div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span style="font-size: 14pt; font-family: &quot;Times Newer Roman&quot;, serif;"><span>___________________________
+(жөнелту және (немесе) оны алу фактісін растайтын құжат)</span></span></span></div></div></div></div></div></div></div><div style="position:relative;padding-top:0px;padding-left:0px;padding-right:0px;padding-bottom:0px"><div><div style="font-size:12pt;font-family:Inter, sans-serif;position:relative"><span><span><span><br></span></span></span></div></div></div></body></html>
+<article id="print-area" data-print="paged">
+<section id="appendix_1_kk" class="appendix_1_kk">
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="a1ypMt3piT" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 8px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="qE-36a2l0P" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">08.10.2026 ж. № NT-2026-00042 <br></span>
+            
+              <span data-slate-string="true">камералдық бақылау нәтижесінде анықталған бұзушылықтар туралы хабарламаға</span>
+            
+            
+              <span data-slate-string="true">1-қосымша</span>
+            
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="QdFN65shVu" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="BLgwnoN4Cp" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">Анықталған қателердің хаттамасы:</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="cXzldeF7hI">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="20-e_Un0p8">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">Камералдық бақылаумен қамтылған кезең: 01.01.2025 - 31.12.2025;</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="TKOakI7Z0Y">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="Tl6LDXyXO0" style="text-align: justify;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">N 1. «Электрондық шот-фактуралар бойынша мәліметтерде алшақтық анықталды»</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="_1xV4RRXq2">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+              
+                <span data-slate-string="true">Бұзушылық сомасы: 1 250 000 теңге</span>
+              
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-selectable" placeholder="Пустой абзац" data-block-id="fKnfQW8Egl">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+
+</section>
+<section id="appendix_2_kk" class="appendix_2_kk">
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="B2BMIdkZno" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="qE-36a2l0P" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">08.10.2026 ж. № NT-2026-00042 <br></span>
+            
+              <span data-slate-string="true">камералдық бақылау нәтижесінде анықталған бұзушылықтар туралы хабарламаға</span>
+            
+            
+              <span data-slate-string="true">2-қосымша</span>
+            
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="ogfMx5v9s7" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="nbUgPIz5gW" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-left slate-selectable" placeholder="Пустой абзац" data-block-id="ah4vv86RAL" style="text-align: left;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">Камералдық бақылаумен қамтылған кезең: 01.01.2025 - 31.12.2025;<br></span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-left slate-selectable" placeholder="Пустой абзац" data-block-id="p3PHzpSSgi" style="text-align: justify;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-string="true">Қате бойынша қосымша мәліметтер № 1. «Электрондық шот-фактуралар бойынша мәліметтерде алшақтық анықталды»<br></span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="relative group [&amp;_.slate-gutterLeft]:pt-0 [&amp;_.slate-gutterLeft]:px-0 [&amp;_.slate-gutterLeft]:pb-0">
+    <div class="slate-blockWrapper">
+      <div data-slate-node="element" class="relative slate-p slate-align-center slate-selectable" placeholder="Пустой абзац" data-block-id="QdFN65shVu" style="text-align: center;">
+        <span data-slate-node="text">
+          <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+            <span data-slate-zero-width="n" data-slate-length="0">
+              <br>
+            </span>
+          </span>
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <div data-slate-node="element" class="relative m-0 px-0 py-1 slate-p" data-block-id="NWRv8Vw_su">
+    <span data-slate-node="text">
+      <span data-slate-leaf="true" class="" style="font-size: 12px; font-family: &quot;Times Newer Roman&quot;, serif;">
+        <span data-slate-string="true">Кесте «Анықталған алшақтық туралы мәліметтер»</span>
+      </span>
+    </span>
+  </div>
+  
+  <div data-slate-node="element" class="relative m-0 px-0 py-1 slate-p" data-block-id="Jj-R5acSNS">
+    <span data-slate-node="text">
+      <span data-slate-leaf="true" class="" style="color: rgb(0, 0, 0); font-size: 12px;">
+        <span data-slate-string="true"><table cellpadding="1" cellspacing="0" style="vertical-align: baseline; width: 100%; font-size: 70%; border-collapse: collapse; border: 1px; table-layout: fixed; word-break: break-all; overflow-wrap: anywhere;">
+  <thead>
+    <tr style="text-align: center; vertical-align: middle; border: 1px solid;">
+      <th style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">№</th>
+      <th style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">ЭШФ нөмірі</th>
+      <th style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">Жеткізушінің БСН</th>
+      <th style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">Сомасы, теңге</th>
+    </tr>
+  </thead>
+  <tbody style="border-collapse: collapse; border: 1px;">
+    <tr style="text-align: center; vertical-align: middle; border: 1px solid;">
+      <td style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">1</td>
+      <td style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">ESF-2025-000184</td>
+      <td style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">123456789012</td>
+      <td style="text-align: center; vertical-align: middle; border: 1px solid; word-break: break-all; overflow-wrap: anywhere;">1 250 000</td>
+    </tr>
+  </tbody>
+</table></span>
+      </span>
+    </span>
+  </div>
+  
+</section>
+</article>
+</div>
