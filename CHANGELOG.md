@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 — 2026-10-09
+
+- Keep PDF rendering successful when an image uses an unsupported `data:` URI media type; omit that image and emit a source-located `image-data-uri-media-type` warning.
+
 ## 0.9.0 — 2026-10-08
 
 - Keep inline-blocks with no usable content width renderable and emit a source-located `inline-block-width` warning when their contents must be omitted.

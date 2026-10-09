@@ -5910,12 +5910,38 @@ impl Flow {
             .attr("src")
             .ok_or_else(|| Error("img needs src".into()))?;
         let (bytes, svg) = if src.starts_with("data:") {
-            let (bytes, format) = data_image(
+            let parsed = data_image(
                 src,
                 self.limits
                     .max_resource_bytes
                     .saturating_sub(self.resource_bytes),
-            )?;
+            );
+            let (bytes, format) = match parsed {
+                Ok(image) => image,
+                Err(error) if error.0 == "unsupported image data URI media type" => {
+                    let mut warning = Diagnostic::new(
+                        "image-data-uri-media-type",
+                        "unsupported image data URI media type; image was omitted",
+                    );
+                    if let Some((line, column)) = node
+                        .source_offset
+                        .and_then(|offset| source_location_at(&self.source.html, offset))
+                    {
+                        warning.source = Some(
+                            self.source
+                                .source_name
+                                .as_deref()
+                                .unwrap_or("<html>")
+                                .to_owned(),
+                        );
+                        warning.line = Some(line);
+                        warning.column = Some(column);
+                    }
+                    self.warnings.push(warning);
+                    return Ok(());
+                }
+                Err(error) => return Err(error),
+            };
             (bytes, matches!(format, ImageFormat::Svg))
         } else {
             if src.contains("://") {
