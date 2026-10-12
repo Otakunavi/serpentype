@@ -1,3 +1,5 @@
+use base64::Engine;
+
 #[test]
 fn parses_page_definition_fixture() {
     let source =
@@ -248,4 +250,28 @@ fn qr_flex_and_five_column_grid_position_items() {
         .collect();
     assert_eq!(letters.len(), 5);
     assert!(letters.windows(2).all(|pair| pair[0].1 < pair[1].1));
+}
+
+#[test]
+fn inline_block_renders_nested_block_display_svg_image() {
+    let svg = base64::engine::general_purpose::STANDARD.encode(
+        b"<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><rect width='200' height='200' fill='white'/><path d='M20 20h60v60H20zM120 20h60v60h-60z' fill='black'/></svg>",
+    );
+    let html = format!(
+        "<div style='display:inline-block'><span style='display:inline-block'><img src='data:image/svg+xml;base64,{svg}' alt='QR' style='width:2cm;height:auto;object-fit:contain;display:block;max-width:100%'></span></div>"
+    );
+    let renderer = serpentype::layout::Renderer::new(
+        font_registry(),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures").into(),
+        true,
+    );
+    let document = renderer.layout(&html, "").unwrap();
+    let pdf = document.to_pdf().unwrap();
+    assert!(pdf
+        .windows(b"/Subtype /Form".len())
+        .any(|window| window == b"/Subtype /Form"));
+    assert!(!document
+        .warnings
+        .iter()
+        .any(|warning| warning.code == "inline-block-width"));
 }

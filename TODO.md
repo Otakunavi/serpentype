@@ -36,13 +36,13 @@ WeasyPrint remains outside the production API.
   fixtures. Serpentype now emits an `inline-block-width` warning instead of
   failing PDF generation; both templates render in Serpentype and WeasyPrint
   to four pages each, with matching page dimensions.
-- [ ] **Restore content and improve text-flow parity in the production
-  templates.** Serpentype currently omits the QR placeholder's inline-block
-  content after warning. With the shared Noto Sans font, word sequence
-  similarity is 96.51% for the notice and 99.30% for the appendix; normalized
-  line sequence similarity is 57.91% and 79.88%. The page counts match, but
-  line wrapping and some extracted text still differ. See the per-line details
-  in the JSON report.
+- [ ] **Improve text-flow parity in the production templates.** The QR
+  placeholder now renders as an SVG inside nested inline-blocks, including
+  when the image uses `display:block`. Remaining text-flow differences from the
+  previous comparison include word sequence similarity of 96.51% for the
+  notice and 99.30% for the appendix, with normalized line sequence similarity
+  of 57.91% and 79.88%. The page counts match, but line wrapping and some
+  extracted text still differ. See the per-line details in the JSON report.
 
 ### Comparison coverage and reproducibility
 

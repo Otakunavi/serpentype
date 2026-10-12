@@ -138,15 +138,11 @@ class WeasyCompatTests(unittest.TestCase):
                     stylesheets=[native_css], font_config=native_fonts
                 )
                 diagnostic_codes = {diagnostic.code for diagnostic in document.diagnostics}
-                self.assertIn("inline-block-width", diagnostic_codes)
-                width_warning = next(
-                    diagnostic for diagnostic in document.diagnostics
-                    if diagnostic.code == "inline-block-width"
-                )
-                self.assertEqual(width_warning.severity, "warning")
+                self.assertNotIn("inline-block-width", diagnostic_codes)
                 self.assertGreater(len(document.pages), 0)
                 native_pdf = document.write_pdf()
                 self.assertTrue(native_pdf.startswith(b"%PDF-"))
+                self.assertIn(b"/Subtype /Form", native_pdf)
 
                 weasy_fonts = WeasyFontConfiguration()
                 weasy_css = WeasyCSS(

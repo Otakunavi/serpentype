@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.2 — 2026-10-12
+
+- Render SVG images inside inline-blocks, including `<img>` elements styled with `display: block`; this restores QR-code drawing in the supplied production templates.
+- Add regression coverage for nested block-display SVG images and both production QR fixtures.
+
 ## 0.9.1 — 2026-10-09
 
 - Keep PDF rendering successful when an image uses an unsupported `data:` URI media type; omit that image and emit a source-located `image-data-uri-media-type` warning.

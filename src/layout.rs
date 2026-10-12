@@ -1573,6 +1573,7 @@ struct InlineRun {
 #[derive(Clone)]
 struct InlineBox {
     lines: Vec<Line>,
+    image_node: Option<Node>,
     style: Style,
     width: f32,
     height: f32,
@@ -1793,6 +1794,20 @@ fn inline_runs(
         .filter(|name| !name.is_empty())
         .map(str::to_owned)
         .or(inherited_destination);
+    if !root && node.tag == "img" {
+        out.push(InlineRun {
+            text: String::new(),
+            style: run_style.clone(),
+            href,
+            inline_box: Some(node.clone()),
+            destination,
+            inline_struts: inline_struts.clone(),
+        });
+        if adds_inline_strut {
+            inline_struts.pop();
+        }
+        return;
+    }
     if !root && node.tag != "#text" && node.style.display == "inline-block" {
         out.push(InlineRun {
             text: String::new(),
@@ -1931,6 +1946,45 @@ fn inline_box_has_in_flow_content(node: &Node) -> bool {
         || node.children.iter().any(inline_box_has_in_flow_content)
 }
 
+fn inline_image_aspect_ratio(node: &Node) -> f32 {
+    if let Some(ratio) = node.style.aspect_ratio.filter(|ratio| *ratio > EPS) {
+        return ratio;
+    }
+    let attr_dimension = |name: &str| {
+        node.attr(name)
+            .and_then(|value| value.parse::<f32>().ok())
+            .filter(|value| *value > EPS)
+    };
+    if let (Some(width), Some(height)) = (attr_dimension("width"), attr_dimension("height")) {
+        return width / height;
+    }
+    if let Some(src) = node.attr("src").filter(|src| src.starts_with("data:")) {
+        const MAX_INLINE_IMAGE_METADATA_BYTES: usize = 8 * 1024 * 1024;
+        if let Ok((bytes, format)) = data_image(src, MAX_INLINE_IMAGE_METADATA_BYTES) {
+            let dimensions = match format {
+                ImageFormat::Svg => {
+                    svg2pdf::usvg::Tree::from_data(&bytes, &svg2pdf::usvg::Options::default())
+                        .ok()
+                        .map(|tree| (tree.size().width(), tree.size().height()))
+                }
+                ImageFormat::Raster(_) => image::ImageReader::new(std::io::Cursor::new(bytes))
+                    .with_guessed_format()
+                    .ok()
+                    .and_then(|reader| reader.into_dimensions().ok())
+                    .map(|(width, height)| (width as f32, height as f32)),
+            };
+            if let Some((width, height)) = dimensions.filter(|(width, height)| {
+                width.is_finite() && height.is_finite() && *width > EPS && *height > EPS
+            }) {
+                return width / height;
+            }
+        }
+    }
+    // HTML's default object size has a 2:1 ratio when no intrinsic ratio is
+    // available. SVG QR codes above provide their actual square ratio.
+    2.0
+}
+
 #[allow(clippy::too_many_arguments)] // Kept explicit: these values are the inline layout context.
 fn inline_box_glyph(
     node: &Node,
@@ -1945,6 +1999,7 @@ fn inline_box_glyph(
     source: &SourceContext,
 ) -> Result<Glyph> {
     let style = &node.style;
+    let image_node = (node.tag == "img").then(|| node.clone());
     let mut content_node = node.clone();
     if href.is_some() {
         content_node.attrs.remove("href");
@@ -1958,6 +2013,10 @@ fn inline_box_glyph(
     let maximum = resolved_dimension(style.max_width, style.max_width_percent, containing_width);
     let sizing_width = if let Some(declared) = declared {
         declared
+    } else if image_node.is_some() {
+        resolved_dimension(style.height, style.height_percent, containing_width)
+            .map(|height| height * inline_image_aspect_ratio(node))
+            .unwrap_or(225.0)
     } else if !has_content {
         horizontal_edges
     } else {
@@ -2004,7 +2063,9 @@ fn inline_box_glyph(
         }
         warnings.push(warning);
     }
-    let lines = if can_layout_content {
+    let lines = if image_node.is_some() {
+        Vec::new()
+    } else if can_layout_content {
         lines_for(
             &content_node,
             inner_width,
@@ -2019,7 +2080,11 @@ fn inline_box_glyph(
     } else {
         Vec::new()
     };
-    let body_height: f32 = lines.iter().map(|line| line.height).sum();
+    let body_height: f32 = if image_node.is_some() {
+        (width - horizontal_edges).max(0.0) / inline_image_aspect_ratio(node)
+    } else {
+        lines.iter().map(|line| line.height).sum()
+    };
     let vertical_edges = style.padding[0] + style.padding[2] + 2.0 * style.border_width;
     let natural_height = body_height + vertical_edges;
     let declared_height = resolved_dimension(style.height, style.height_percent, natural_height);
@@ -2087,6 +2152,7 @@ fn inline_box_glyph(
         soft_hyphen_advance: 0.0,
         inline_box: Some(Arc::new(InlineBox {
             lines,
+            image_node,
             style: style.clone(),
             width,
             height,
@@ -5544,6 +5610,77 @@ impl Flow {
             });
         }
     }
+    fn draw_inline_image(&mut self, node: &Node, x: f32, y: f32, w: f32, h: f32) {
+        let style = &node.style;
+        let horizontal_edges = style.padding[1] + style.padding[3] + 2.0 * style.border_width;
+        let vertical_edges = style.padding[0] + style.padding[2] + 2.0 * style.border_width;
+        let content_width = (w - horizontal_edges).max(0.0);
+        let content_height = (h - vertical_edges).max(0.0);
+        if content_width <= EPS || content_height <= EPS {
+            return;
+        }
+
+        let mut image = node.clone();
+        image.style.width = Some(content_width);
+        image.style.width_percent = None;
+        image.style.height = Some(content_height);
+        image.style.height_percent = None;
+        image.style.min_width = None;
+        image.style.min_width_percent = None;
+        image.style.max_width = None;
+        image.style.max_width_percent = None;
+        image.style.min_height = None;
+        image.style.min_height_percent = None;
+        image.style.max_height = None;
+        image.style.max_height_percent = None;
+        image.style.margin = [0.0; 4];
+        image.style.margin_percent = [None; 4];
+
+        let saved_y = self.y;
+        let saved_frame = self.frame;
+        let saved_center_children = self.center_children;
+        let saved_pending_break = self.pending_break;
+        let saved_pending_break_side = self.pending_break_side.clone();
+        self.frame = Some((x + style.border_width + style.padding[3], content_width));
+        self.y = y + style.border_width + style.padding[0];
+        self.center_children = false;
+        self.containing_blocks.push(ContainingBlock {
+            x,
+            y,
+            w,
+            h,
+            height_is_definite: true,
+            clip: false,
+        });
+        let result = self.image(&image);
+        self.containing_blocks.pop();
+        self.y = saved_y;
+        self.frame = saved_frame;
+        self.center_children = saved_center_children;
+        self.pending_break = saved_pending_break;
+        self.pending_break_side = saved_pending_break_side;
+        if let Err(error) = result {
+            let mut warning = Diagnostic::new(
+                "inline-image",
+                format!("inline image could not be rendered; image was omitted: {error}"),
+            );
+            if let Some((line, column)) = node
+                .source_offset
+                .and_then(|offset| source_location_at(&self.source.html, offset))
+            {
+                warning.source = Some(
+                    self.source
+                        .source_name
+                        .as_deref()
+                        .unwrap_or("<html>")
+                        .to_owned(),
+                );
+                warning.line = Some(line);
+                warning.column = Some(column);
+            }
+            self.warnings.push(warning);
+        }
+    }
     fn draw_line(&mut self, line: &Line, x: f32, y: f32, width: f32, align: &str, last: bool) {
         let has_visible_glyph = line.glyphs.iter().any(|glyph| glyph.visible);
         if has_visible_glyph {
@@ -5599,16 +5736,29 @@ impl Flow {
                 self.paint_box(box_x, box_y, inline.width, inline.height, &inline.style);
                 let content_x = box_x + inline.style.border_width + inline.style.padding[3];
                 let mut content_y = box_y + inline.style.border_width + inline.style.padding[0];
-                for (line_index, nested) in inline.lines.iter().enumerate() {
-                    self.draw_line(
-                        nested,
+                if let Some(image) = &inline.image_node {
+                    self.draw_inline_image(
+                        image,
                         content_x,
                         content_y,
                         inline.inner_width,
-                        &inline.style.text_align,
-                        line_index + 1 == inline.lines.len(),
+                        inline.height
+                            - inline.style.padding[0]
+                            - inline.style.padding[2]
+                            - 2.0 * inline.style.border_width,
                     );
-                    content_y += nested.height;
+                } else {
+                    for (line_index, nested) in inline.lines.iter().enumerate() {
+                        self.draw_line(
+                            nested,
+                            content_x,
+                            content_y,
+                            inline.inner_width,
+                            &inline.style.text_align,
+                            line_index + 1 == inline.lines.len(),
+                        );
+                        content_y += nested.height;
+                    }
                 }
                 if inline.style.visibility == "visible" {
                     if let Some(target) = &inline.href {
