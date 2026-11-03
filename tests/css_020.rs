@@ -647,13 +647,10 @@ fn data_uri_image_inside_nested_inline_blocks_is_painted() {
          <img src='{uri}' style='display:block;width:20pt;height:auto'></span></div>"
     );
     let doc = renderer().layout(&html, "").unwrap();
-    let image = doc.pages[0]
-        .items
-        .iter()
-        .find_map(|item| match item {
-            Item::Image { w, h, .. } => Some((*w, *h)),
-            _ => None,
-        });
+    let image = doc.pages[0].items.iter().find_map(|item| match item {
+        Item::Image { w, h, .. } => Some((*w, *h)),
+        _ => None,
+    });
 
     assert_eq!(image, Some((20.0, 20.0)));
 }

@@ -785,13 +785,7 @@ impl Sheet {
         index: usize,
         blank: bool,
     ) -> HashMap<String, MarginBox> {
-        self.margin_boxes_for_with_defaults(
-            name,
-            index,
-            blank,
-            &["serif".into()],
-            12.0,
-        )
+        self.margin_boxes_for_with_defaults(name, index, blank, &["serif".into()], 12.0)
     }
 
     /// Resolve margin boxes using the page context's inherited text properties.

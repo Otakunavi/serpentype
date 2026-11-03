@@ -112,14 +112,22 @@ fn margin_boxes_use_page_context_font_and_keep_explicit_overrides() {
         }
     "#;
     let fonts = serpentype::font::FontRegistry::new(2_000_000);
-    let noto = concat!(env!("CARGO_MANIFEST_DIR"), "/serpentype/assets/NotoSans-Regular.ttf");
-    let serif_font = if std::path::Path::new("/System/Library/Fonts/Times.ttc").is_file()
-    {
+    let noto = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/serpentype/assets/NotoSans-Regular.ttf"
+    );
+    let serif_font = if std::path::Path::new("/System/Library/Fonts/Times.ttc").is_file() {
         "/System/Library/Fonts/Times.ttc".to_owned()
     } else {
-        concat!(env!("CARGO_MANIFEST_DIR"), "/serpentype/assets/NotoSans-Bold.ttf").to_owned()
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/serpentype/assets/NotoSans-Bold.ttf"
+        )
+        .to_owned()
     };
-    fonts.register_file(noto, "Noto Sans", 400, "normal").unwrap();
+    fonts
+        .register_file(noto, "Noto Sans", 400, "normal")
+        .unwrap();
     fonts
         .register_file(&serif_font, "serif", 400, "normal")
         .unwrap();
