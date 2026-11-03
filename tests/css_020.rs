@@ -632,6 +632,30 @@ fn inline_images_follow_the_inherited_text_alignment() {
 }
 
 #[test]
+fn data_uri_image_inside_nested_inline_blocks_is_painted() {
+    let pixels = vec![0; 16 * 16 * 3];
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png)
+        .write_image(&pixels, 16, 16, image::ExtendedColorType::Rgb8)
+        .unwrap();
+    let uri = format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(png)
+    );
+    let html = format!(
+        "<div style='display:inline-block'><span style='display:inline-block'>\
+         <img src='{uri}' style='display:block;width:20pt;height:auto'></span></div>"
+    );
+    let doc = renderer().layout(&html, "").unwrap();
+    let image = doc.pages[0].items.iter().find_map(|item| match item {
+        Item::Image { w, h, .. } => Some((*w, *h)),
+        _ => None,
+    });
+
+    assert_eq!(image, Some((20.0, 20.0)));
+}
+
+#[test]
 fn raster_images_can_be_downsampled_to_a_configured_dpi() {
     let pixels = vec![128; 100 * 50 * 3];
     let mut png = Vec::new();

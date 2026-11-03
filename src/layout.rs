@@ -1460,6 +1460,7 @@ impl Renderer {
         }
         cancelled(token.as_deref())?;
         let layout_start = Instant::now();
+        let margin_box_defaults = MarginBox::default();
         let mut flow = Flow::new(
             sheet.clone(),
             fonts,
@@ -1469,6 +1470,8 @@ impl Renderer {
             self.limits.clone(),
             token,
             SourceContext::new(html, self.source_name.clone()),
+            margin_box_defaults.family,
+            margin_box_defaults.font_size,
         );
         flow.experimental_shaping = true;
         flow.svg_dpi = self.svg_dpi;
@@ -2788,6 +2791,8 @@ struct Flow {
     positioned_layers: Vec<PositionedLayer>,
     layer_order: usize,
     source: SourceContext,
+    margin_box_family: Vec<String>,
+    margin_box_font_size: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -3256,12 +3261,20 @@ impl Flow {
         limits: RenderLimits,
         cancel: Option<Arc<AtomicBool>>,
         source: SourceContext,
+        margin_box_family: Vec<String>,
+        margin_box_font_size: f32,
     ) -> Self {
         let mut page = sheet.page_style_for(None, 0, false);
         if page.landscape_size_keyword {
             page.rotation = 0;
         }
-        page.boxes = sheet.margin_boxes_for(None, 0, false);
+        page.boxes = sheet.margin_boxes_for_with_defaults(
+            None,
+            0,
+            false,
+            &margin_box_family,
+            margin_box_font_size,
+        );
         Self {
             pages: vec![Page {
                 items: vec![],
@@ -3303,6 +3316,8 @@ impl Flow {
             positioned_layers: vec![],
             layer_order: 0,
             source,
+            margin_box_family,
+            margin_box_font_size,
         }
     }
     fn content_width(&self) -> f32 {
@@ -3372,7 +3387,13 @@ impl Flow {
         if style.landscape_size_keyword {
             style.rotation = 0;
         }
-        style.boxes = self.sheet.margin_boxes_for(name, index, blank);
+        style.boxes = self.sheet.margin_boxes_for_with_defaults(
+            name,
+            index,
+            blank,
+            &self.margin_box_family,
+            self.margin_box_font_size,
+        );
         style
     }
     fn switch_page(&mut self, name: Option<&str>) -> Result<()> {
@@ -7047,6 +7068,8 @@ impl Flow {
             self.limits.clone(),
             self.cancel.clone(),
             self.source.clone(),
+            self.margin_box_family.clone(),
+            self.margin_box_font_size,
         );
         let local_page = PageStyle {
             width,

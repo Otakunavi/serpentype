@@ -369,8 +369,10 @@ impl Default for MarginBox {
     fn default() -> Self {
         Self {
             content: String::new(),
-            family: vec!["Noto Sans".into()],
-            font_size: 10.0,
+            // Margin boxes inherit the page context. Its initial values match
+            // the root element's CSS defaults: serif and medium (12pt).
+            family: vec!["serif".into()],
+            font_size: 12.0,
             color: Color(0.0, 0.0, 0.0),
         }
     }
@@ -783,6 +785,18 @@ impl Sheet {
         index: usize,
         blank: bool,
     ) -> HashMap<String, MarginBox> {
+        self.margin_boxes_for_with_defaults(name, index, blank, &["serif".into()], 12.0)
+    }
+
+    /// Resolve margin boxes using the page context's inherited text properties.
+    pub fn margin_boxes_for_with_defaults(
+        &self,
+        name: Option<&str>,
+        index: usize,
+        blank: bool,
+        family: &[String],
+        font_size: f32,
+    ) -> HashMap<String, MarginBox> {
         type Priority = (bool, bool, usize, usize, usize);
         let mut winners: HashMap<(String, String), (Priority, &str)> = HashMap::new();
         for (rule_index, rule) in self.margin_rules.iter().enumerate() {
@@ -827,7 +841,11 @@ impl Sheet {
         }
         let mut boxes = HashMap::new();
         for ((box_name, property), (_, raw)) in winners {
-            let box_style: &mut MarginBox = boxes.entry(box_name).or_default();
+            let box_style: &mut MarginBox = boxes.entry(box_name).or_insert_with(|| MarginBox {
+                family: family.to_vec(),
+                font_size,
+                ..MarginBox::default()
+            });
             let value = value_without_important(raw);
             match property.as_str() {
                 "content" => box_style.content = value.into(),

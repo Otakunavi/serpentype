@@ -17,7 +17,7 @@ fn font_registry() -> serpentype::font::FontRegistry {
         env!("CARGO_MANIFEST_DIR"),
         "/serpentype/assets/NotoSans-Regular.ttf"
     );
-    for family in ["Noto Sans", "Times Newer Roman", "serif"] {
+    for family in ["Noto Sans", "Times Newer Roman", "Times New Roman", "serif"] {
         fonts.register_file(path, family, 400, "normal").unwrap();
     }
     fonts
@@ -100,6 +100,51 @@ fn margin_box_font_shorthand_sets_size_and_family_without_warning() {
     let footer = boxes.get("@bottom-right").unwrap();
     assert_eq!(footer.font_size, 8.0);
     assert_eq!(footer.family, ["Times Newer Roman"]);
+}
+
+#[test]
+fn margin_boxes_use_page_context_font_and_keep_explicit_overrides() {
+    let css = r#"
+        body { font-family: "Noto Sans"; font-size: 15pt }
+        @page {
+            @bottom-left { content: "INHERIT" }
+            @bottom-right { content: "OVERRIDE"; font: 8pt "Times Newer Roman" }
+        }
+    "#;
+    let fonts = serpentype::font::FontRegistry::new(2_000_000);
+    let noto = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/serpentype/assets/NotoSans-Regular.ttf"
+    );
+    let serif_font = if std::path::Path::new("/System/Library/Fonts/Times.ttc").is_file() {
+        "/System/Library/Fonts/Times.ttc".to_owned()
+    } else {
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/serpentype/assets/NotoSans-Bold.ttf"
+        )
+        .to_owned()
+    };
+    fonts
+        .register_file(noto, "Noto Sans", 400, "normal")
+        .unwrap();
+    fonts
+        .register_file(&serif_font, "serif", 400, "normal")
+        .unwrap();
+    let renderer = serpentype::layout::Renderer::new(fonts, ".".into(), true);
+    let doc = renderer.layout("<p>content</p>", css).unwrap();
+    let boxes = &doc.pages[0].style.boxes;
+    let inherited = boxes.get("@bottom-left").unwrap();
+    assert_eq!(inherited.family, ["serif"]);
+    assert_eq!(inherited.font_size, 12.0);
+    let overridden = boxes.get("@bottom-right").unwrap();
+    assert_eq!(overridden.family, ["Times Newer Roman"]);
+    assert_eq!(overridden.font_size, 8.0);
+    let footer_font = doc.pages[0].items.iter().find_map(|item| match item {
+        serpentype::layout::Item::Text { ch: 'I', font, .. } => Some(font.bytes.as_ref()),
+        _ => None,
+    });
+    assert_eq!(footer_font, Some(&std::fs::read(serif_font).unwrap()));
 }
 
 #[test]
