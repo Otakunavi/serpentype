@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0 — 2026-11-03
+
+- Render embedded raster and SVG data-URI images inside nested inline-blocks, including images with `display: block`; this preserves QR codes in production-shaped notice PDFs.
+- Resolve page margin-box default font properties from the page context and keep explicit margin-box font overrides intact.
+- Add an end-to-end Russian/Kazakh notice PDF pipeline fixture and an optional `test-pdfpipe` dependency extra.
+- Add regressions for nested data-URI images and margin-box font selection, including a source-font check for rendered footer text.
+
+
 ## 0.9.2 — 2026-10-12
 
 - Render SVG images inside inline-blocks, including `<img>` elements styled with `display: block`; this restores QR-code drawing in the supplied production templates.

@@ -2,7 +2,7 @@
 
 > **AI-generated software:** Serpentype was generated with AI assistance. It is provided as-is; use it at your own risk. Review and validate its output before relying on it, especially for legal, financial, regulatory, or production documents.
 
-Latest release: **0.9.2**. The `HTML`/`CSS` API always uses Serpentype's Rust renderer. It preserves common WeasyPrint call signatures while supporting Serpentype's documented HTML/CSS subset; WeasyPrint is used only as an optional visual test reference. See the [compatibility report](docs/compatibility-progress.md), [capability matrix](docs/capabilities.md), and [API compatibility limits](docs/weasyprint_compat.md).
+Latest release: **0.10.0**. The `HTML`/`CSS` API always uses Serpentype's Rust renderer. It preserves common WeasyPrint call signatures while supporting Serpentype's documented HTML/CSS subset; WeasyPrint is used only as an optional visual test reference. See the [compatibility report](docs/compatibility-progress.md), [capability matrix](docs/capabilities.md), and [API compatibility limits](docs/weasyprint_compat.md).
 
 Serpentype is a Rust document layout engine with a Python API. It accepts a **controlled** HTML/CSS subset, calculates page breaks, then exports the prepared pages as a vector/text PDF. The direct `Renderer` uses registered fonts and bundled fallbacks. A prebuilt platform wheel needs only Python ≥3.10.
 
@@ -68,3 +68,5 @@ The development CI workflow targets manylinux 2.17 and musllinux on x86_64/aarch
 For the `cameral-control` WeasyPrint call sites, Serpentype also exports `HTML`, `CSS`, and `serpentype.text.fonts.FontConfiguration`. See the [API compatibility and migration limits](docs/weasyprint_compat.md).
 
 See [capability matrix](docs/capabilities.md), [architecture](docs/architecture.md), [benchmark procedure and results](docs/benchmark.md), [page-definition stress test](output/benchmark/page_definition_stress/comparison.md), and [example invoice](examples/invoice.py). Fonts in `serpentype/assets` are Noto Sans under [SIL OFL 1.1](serpentype/assets/OFL.txt); the library code is MIT licensed.
+
+The local Russian/Kazakh notice pipeline can be run with `python3 tests/pdfpipe/render.py both`. To include its end-to-end PDF check in the unittest suite, install `python3 -m pip install '.[test-pdfpipe]'` and run `python3 -m unittest discover -s tests -p 'test_pdfpipe.py' -v`.

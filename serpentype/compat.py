@@ -143,6 +143,15 @@ class FontConfiguration:
         bold = str(files("serpentype").joinpath("assets", "NotoSans-Bold.ttf"))
         self.registry.register_file(regular, family="Noto Sans")
         self.registry.register_file(bold, family="Noto Sans", weight=700)
+        system_serif = Path("/System/Library/Fonts/Times.ttc")
+        if system_serif.is_file():
+            # WeasyPrint's macOS generic serif resolves to the Times family in
+            # Times.ttc, not the separate Times New Roman supplemental fonts.
+            self.registry.register_file(str(system_serif), family="serif")
+        else:
+            self.registry.register_file(regular, family="serif")
+            self.registry.register_file(bold, family="serif", weight=700)
+
         system_times = Path("/System/Library/Fonts/Supplemental")
         times_faces = (
             (system_times / "Times New Roman.ttf", 400, "normal"),
@@ -151,13 +160,14 @@ class FontConfiguration:
             (system_times / "Times New Roman Bold Italic.ttf", 700, "italic"),
         )
         if all(path.is_file() for path, _, _ in times_faces):
-            for family in ("serif", "Times Newer Roman"):
-                for path, weight, style in times_faces:
-                    self.registry.register_file(
-                        str(path), family=family, weight=weight, style=style
-                    )
+            for path, weight, style in times_faces:
+                self.registry.register_file(
+                    str(path), family="Times Newer Roman", weight=weight, style=style
+                )
         else:
             for family in ("serif", "Times Newer Roman"):
+                if family == "serif" and system_serif.is_file():
+                    continue
                 self.registry.register_file(regular, family=family)
                 self.registry.register_file(bold, family=family, weight=700)
 
