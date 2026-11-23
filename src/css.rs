@@ -356,6 +356,7 @@ pub struct PageStyle {
     pub landscape_size_keyword: bool,
     pub bleed: f32,
     pub crop_marks: bool,
+    pub background: PageBackground,
     pub boxes: HashMap<String, MarginBox>,
 }
 #[derive(Clone, Debug)]
@@ -364,7 +365,57 @@ pub struct MarginBox {
     pub family: Vec<String>,
     pub font_size: f32,
     pub color: Color,
+    pub width: Option<PageLength>,
+    pub line_height: Option<PageLength>,
 }
+
+#[derive(Clone, Copy, Debug)]
+pub enum PageLength {
+    Points(f32),
+    Fraction(f32),
+}
+
+impl PageLength {
+    fn parse(value: &str) -> Option<Self> {
+        length(value).map(Self::Points).or_else(|| {
+            value
+                .strip_suffix('%')
+                .and_then(finite_f32)
+                .map(|value| Self::Fraction(value / 100.0))
+        })
+    }
+
+    pub fn resolve(self, reference: f32) -> f32 {
+        match self {
+            Self::Points(value) => value,
+            Self::Fraction(value) => value * reference,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum PageBackgroundSize {
+    Dimensions([Option<PageLength>; 2]),
+    Contain,
+    Cover,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PageBackground {
+    pub(crate) images: Vec<Option<String>>,
+    pub(crate) sizes: Vec<PageBackgroundSize>,
+    pub(crate) positions: Vec<[(f32, f32); 2]>,
+    pub(crate) repeats: Vec<[bool; 2]>,
+    pub(crate) content_origins: Vec<bool>,
+    pub(crate) content_clips: Vec<bool>,
+}
+
+fn margin_box_line_height(value: &str) -> Option<PageLength> {
+    PageLength::parse(value)
+        .or_else(|| finite_f32(value).map(PageLength::Fraction))
+        .filter(|height| height.resolve(1.0) >= 0.0)
+}
+
 impl Default for MarginBox {
     fn default() -> Self {
         Self {
@@ -374,6 +425,8 @@ impl Default for MarginBox {
             family: vec!["serif".into()],
             font_size: 12.0,
             color: Color(0.0, 0.0, 0.0),
+            width: None,
+            line_height: None,
         }
     }
 }
@@ -405,6 +458,7 @@ impl Default for PageStyle {
             landscape_size_keyword: false,
             bleed: 0.0,
             crop_marks: false,
+            background: PageBackground::default(),
             boxes: HashMap::new(),
         }
     }
@@ -821,6 +875,12 @@ impl Sheet {
                     "font" => margin_box_font(value).is_some(),
                     "font-size" => length(value).is_some(),
                     "color" => color(value).is_some(),
+                    "width" => {
+                        value == "auto"
+                            || PageLength::parse(value)
+                                .is_some_and(|width| width.resolve(1.0) >= 0.0)
+                    }
+                    "line-height" => value == "normal" || margin_box_line_height(value).is_some(),
                     _ => false,
                 };
                 if !valid {
@@ -871,6 +931,8 @@ impl Sheet {
                         box_style.color = value;
                     }
                 }
+                "width" => box_style.width = PageLength::parse(value),
+                "line-height" => box_style.line_height = margin_box_line_height(value),
                 _ => {}
             }
         }
@@ -879,10 +941,19 @@ impl Sheet {
 }
 
 pub fn declarations(body: &str) -> Vec<(String, String)> {
+    split_css_list(body, ';')
+        .into_iter()
+        .filter_map(|part| part.split_once(':'))
+        .map(|(key, value)| (key.trim().to_ascii_lowercase(), value.trim().to_owned()))
+        .collect()
+}
+
+fn split_css_list(body: &str, delimiter: char) -> Vec<&str> {
     let mut result = Vec::new();
     let mut start = 0;
     let mut quote = None;
     let mut escaped = false;
+    let mut parentheses = 0usize;
     for (i, ch) in body.char_indices() {
         if escaped {
             escaped = false;
@@ -900,16 +971,19 @@ pub fn declarations(body: &str) -> Vec<(String, String)> {
             quote = Some(ch);
             continue;
         }
-        if ch == ';' && quote.is_none() {
-            if let Some((k, v)) = body[start..i].split_once(':') {
-                result.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
+        if quote.is_none() {
+            if ch == delimiter && parentheses == 0 {
+                result.push(body[start..i].trim());
+                start = i + 1;
             }
-            start = i + 1;
+            match ch {
+                '(' => parentheses += 1,
+                ')' => parentheses = parentheses.saturating_sub(1),
+                _ => {}
+            }
         }
     }
-    if let Some((k, v)) = body[start..].split_once(':') {
-        result.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
-    }
+    result.push(body[start..].trim());
     result
 }
 pub fn value_without_important(value: &str) -> &str {
@@ -1123,6 +1197,124 @@ fn blocks(input: &str) -> Result<(Vec<(&str, &str)>, String)> {
     Ok((found, loose))
 }
 
+fn background_values<T>(
+    target: &mut Vec<T>,
+    value: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> bool {
+    if let Some(values) = split_css_list(value, ',')
+        .into_iter()
+        .map(parse)
+        .collect::<Option<Vec<_>>>()
+    {
+        *target = values;
+        true
+    } else {
+        false
+    }
+}
+
+fn background_size(value: &str) -> Option<PageBackgroundSize> {
+    use PageBackgroundSize::*;
+    let dimension = |value| {
+        if value == "auto" {
+            Some(None)
+        } else {
+            PageLength::parse(value)
+                .filter(|size| size.resolve(1.0) >= 0.0)
+                .map(Some)
+        }
+    };
+    match value.split_whitespace().collect::<Vec<_>>().as_slice() {
+        ["contain"] => Some(Contain),
+        ["cover"] => Some(Cover),
+        [x] => Some(Dimensions([dimension(x)?, None])),
+        [x, y] => Some(Dimensions([dimension(x)?, dimension(y)?])),
+        _ => None,
+    }
+}
+
+fn css_position(value: &str, font_size: f32) -> Option<[(f32, f32); 2]> {
+    let component = |value: &str, horizontal: bool| match value {
+        "left" if horizontal => Some((0.0, 0.0)),
+        "right" if horizontal => Some((1.0, 0.0)),
+        "top" if !horizontal => Some((0.0, 0.0)),
+        "bottom" if !horizontal => Some((1.0, 0.0)),
+        "center" => Some((0.5, 0.0)),
+        _ => value
+            .strip_suffix('%')
+            .and_then(finite_f32)
+            .map(|p| (p / 100.0, 0.0))
+            .or_else(|| computed_length(value, font_size).map(|offset| (0.0, offset))),
+    };
+    match value.split_whitespace().collect::<Vec<_>>().as_slice() {
+        [one] => component(one, true)
+            .map(|x| [x, (0.5, 0.0)])
+            .or_else(|| component(one, false).map(|y| [(0.5, 0.0), y])),
+        [first, second] => component(first, true)
+            .zip(component(second, false))
+            .map(|(x, y)| [x, y])
+            .or_else(|| {
+                component(first, false)
+                    .zip(component(second, true))
+                    .map(|(y, x)| [x, y])
+            }),
+        _ => None,
+    }
+}
+
+fn background_repeat(value: &str) -> Option<[bool; 2]> {
+    let axis = |value| match value {
+        "repeat" => Some(true),
+        "no-repeat" => Some(false),
+        _ => None,
+    };
+    match value.split_whitespace().collect::<Vec<_>>().as_slice() {
+        ["repeat-x"] => Some([true, false]),
+        ["repeat-y"] => Some([false, true]),
+        [both] => Some([axis(both)?; 2]),
+        [x, y] => Some([axis(x)?, axis(y)?]),
+        _ => None,
+    }
+}
+
+fn apply_page_background(background: &mut PageBackground, key: &str, value: &str) -> bool {
+    let content_box = |value: &str| match value {
+        "border-box" | "padding-box" => Some(false),
+        "content-box" => Some(true),
+        _ => None,
+    };
+    match key {
+        "background-image" => background_values(&mut background.images, value, |part| {
+            if part == "none" {
+                return Some(None);
+            }
+            let url = part
+                .strip_prefix("url(")?
+                .strip_suffix(')')?
+                .trim()
+                .trim_matches(['\'', '"']);
+            (!url.is_empty()).then(|| Some(url.to_owned()))
+        }),
+        "background-position" => background_values(&mut background.positions, value, |part| {
+            css_position(part, 12.0)
+        }),
+        "background-repeat" => background_values(&mut background.repeats, value, background_repeat),
+        "background-size" => background_values(&mut background.sizes, value, background_size),
+        "background-origin" => {
+            background_values(&mut background.content_origins, value, content_box)
+        }
+        "background-clip" => background_values(&mut background.content_clips, value, content_box),
+        // Fixed and scrolling backgrounds share the same page positioning area.
+        "background-attachment" => split_css_list(value, ',')
+            .iter()
+            .all(|part| matches!(*part, "fixed" | "scroll")),
+        _ => false,
+    }
+}
+
+const PAGE_MARGIN_SIDES: [&str; 4] = ["margin-top", "margin-right", "margin-bottom", "margin-left"];
+
 fn parse_page_declarations(
     page: &mut PageStyle,
     decl: Vec<(String, String)>,
@@ -1166,6 +1358,21 @@ fn parse_page_declarations(
                     );
                 }
             }
+            side if PAGE_MARGIN_SIDES.contains(&side) => {
+                if let Some(margin) = length(value) {
+                    page.margin[PAGE_MARGIN_SIDES
+                        .iter()
+                        .position(|name| *name == side)
+                        .unwrap()] = margin;
+                } else {
+                    unsupported(
+                        warnings,
+                        "css-value",
+                        format!("invalid @page {side}: {value}"),
+                    );
+                }
+            }
+            key if apply_page_background(&mut page.background, key, value) => {}
             "page-orientation" if value == "rotate-right" => page.rotation = 90,
             "page-orientation" if value == "rotate-left" => page.rotation = 270,
             "page-orientation" if value == "upright" => page.rotation = 0,
@@ -1235,6 +1442,15 @@ fn parse_margin_box(body: &str, warnings: &mut Vec<Diagnostic>) -> MarginBox {
                         format!("invalid margin box color: {value}"),
                     );
                 }
+            }
+            "width"
+                if value == "auto"
+                    || PageLength::parse(value).is_some_and(|width| width.resolve(1.0) >= 0.0) =>
+            {
+                box_style.width = PageLength::parse(value);
+            }
+            "line-height" if value == "normal" || margin_box_line_height(value).is_some() => {
+                box_style.line_height = margin_box_line_height(value);
             }
             _ => unsupported(
                 warnings,
@@ -1307,7 +1523,29 @@ fn parse_rules(input: &str, sheet: &mut Sheet) -> Result<()> {
             sheet.page_rules.push(PageRule {
                 page_name: (!page_name.is_empty()).then(|| page_name.to_owned()),
                 pseudos: pseudos.clone(),
-                declarations: page_declarations,
+                declarations: page_declarations
+                    .into_iter()
+                    .flat_map(|(key, raw)| {
+                        let value = value_without_important(&raw);
+                        if key == "margin" {
+                            if let Some(sides) = box_values(value) {
+                                let important = if raw.ends_with("!important") {
+                                    " !important"
+                                } else {
+                                    ""
+                                };
+                                return PAGE_MARGIN_SIDES
+                                    .into_iter()
+                                    .zip(sides)
+                                    .map(|(name, size)| {
+                                        (name.to_owned(), format!("{size}pt{important}"))
+                                    })
+                                    .collect();
+                            }
+                        }
+                        vec![(key, raw)]
+                    })
+                    .collect(),
             });
             for (box_name, box_body) in nested {
                 if matches!(
@@ -2490,38 +2728,7 @@ pub fn apply(style: &mut Style, key: &str, value: &str, warnings: &mut Vec<Diagn
             style.object_fit = v.into();
         }
         "object-position" => {
-            let position_component = |value: &str, horizontal: bool| -> Option<(f32, f32)> {
-                match value {
-                    "left" if horizontal => Some((0.0, 0.0)),
-                    "right" if horizontal => Some((1.0, 0.0)),
-                    "top" if !horizontal => Some((0.0, 0.0)),
-                    "bottom" if !horizontal => Some((1.0, 0.0)),
-                    "center" => Some((0.5, 0.0)),
-                    _ => value
-                        .strip_suffix('%')
-                        .and_then(finite_f32)
-                        .map(|value| (value / 100.0, 0.0))
-                        .or_else(|| {
-                            computed_length(value, style.font_size).map(|offset| (0.0, offset))
-                        }),
-                }
-            };
-            let values: Vec<_> = v.split_whitespace().collect();
-            let parsed = match values.as_slice() {
-                [one] => position_component(one, true)
-                    .map(|x| [x, (0.5, 0.0)])
-                    .or_else(|| position_component(one, false).map(|y| [(0.5, 0.0), y])),
-                [first, second] => position_component(first, true)
-                    .zip(position_component(second, false))
-                    .map(|(x, y)| [x, y])
-                    .or_else(|| {
-                        position_component(first, false)
-                            .zip(position_component(second, true))
-                            .map(|(y, x)| [x, y])
-                    }),
-                _ => None,
-            };
-            if let Some(position) = parsed {
+            if let Some(position) = css_position(v, style.font_size) {
                 style.object_position = position.map(|component| component.0);
                 style.object_position_offset = position.map(|component| component.1);
             } else {

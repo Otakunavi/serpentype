@@ -5,10 +5,10 @@ class GeneralNoticeCase:
     """Return the GeneralNoticeCase context shape with local sample values."""
 
     @staticmethod
-    def get_document_dict(xml_qr_ru: str, xml_qr_kk: str) -> dict[str, dict]:
+    def get_document_dict() -> dict[str, dict]:
         appendix = {
             "violation_sum": "123 457",
-            "row_number": 1,
+            "row_number": 0,
             "fno_code": "100.00",
             "period": "01.01.2025 - 31.01.2025",
             "violation_text": "Тестовое расхождение",
@@ -51,8 +51,6 @@ class GeneralNoticeCase:
                 "appendix": [appendix],
                 "has_itemization_file": False,
             },
-            "PAGE_BREAKER_AFTER": '<p style="page-break-after:always">',
-            "signed_xml_qr_codes": xml_qr_ru,
         }
 
         kk = {
@@ -80,7 +78,5 @@ class GeneralNoticeCase:
                     ),
                 }],
             },
-            "PAGE_BREAKER_AFTER": ru["PAGE_BREAKER_AFTER"],
-            "signed_xml_qr_codes": xml_qr_kk,
         }
         return {"ru": ru, "kk": kk}

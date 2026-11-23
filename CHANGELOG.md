@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.0 — 2026-11-24
+
+- Paint layered SVG and raster backgrounds in `@page` rules, including
+  named and landscape pages.
+- Recover from malformed inline images with a diagnostic and accept the
+  legacy SVG MIME declarations used by notice drafts.
+- Keep a fitting flex row together across page breaks and honor explicit
+  margin-box widths, line heights, and page margin overrides.
+- Compare RU and KK draft and signed notices against WeasyPrint 64.1,
+  including both watermark layers, footer geometry, and decoded QR URLs.
+
 ## 0.10.0 — 2026-11-03
 
 - Render embedded raster and SVG data-URI images inside nested inline-blocks, including images with `display: block`; this preserves QR codes in production-shaped notice PDFs.
