@@ -249,6 +249,110 @@ fn all_six_margin_boxes_have_separate_regions_and_first_page_override() {
 }
 
 #[test]
+fn grid_moves_qr_and_its_sibling_cells_to_the_next_page() {
+    use serpentype::layout::Item;
+
+    let css = "
+        @page { size:500pt 200pt; margin:10pt }
+        p { margin:0 }
+        .lead { height:110pt }
+        .row { display:grid; grid-template-columns:repeat(5,1fr); align-items:center }
+        .qr { display:flex; flex-direction:column; align-items:center; padding-right:10px }
+        .qr img { width:3cm; height:auto; aspect-ratio:1; max-width:100% }
+    ";
+    let html = "
+        <p class='lead'>X</p>
+        <div class='row'>
+            <p id='first-cell'>A</p><p>B</p><p>C</p><p>D</p>
+            <div class='qr'><img src='blue.png'></div>
+        </div>
+        <p>Z</p>
+    ";
+    let mut renderer = serpentype::layout::Renderer::new(
+        font_registry(),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures").into(),
+        true,
+    );
+    renderer.limits.max_pages = 2;
+    renderer.limits.max_resource_bytes = include_bytes!("fixtures/blue.png").len();
+    let doc = renderer.layout(html, css).unwrap();
+    assert_eq!(doc.page_count(), 2);
+
+    let text_on = |page: usize| {
+        doc.pages[page]
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Text { ch, .. } => Some(*ch),
+                _ => None,
+            })
+            .collect::<String>()
+    };
+    assert_eq!(text_on(0), "X");
+    assert_eq!(text_on(1), "ABCDZ");
+    assert!(!doc.pages[0]
+        .items
+        .iter()
+        .any(|item| matches!(item, Item::Image { .. } | Item::Destination { .. })));
+    assert!(doc.pages[1].items.iter().any(|item| matches!(
+        item,
+        Item::Destination { name, .. } if name == "first-cell"
+    )));
+    let images: Vec<_> = doc.pages[1]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Image { x, y, w, h, .. } => Some((*x, *y, *w, *h)),
+            _ => None,
+        })
+        .collect();
+    let [(x, y, width, height)] = images.as_slice() else {
+        panic!("expected exactly one grid image");
+    };
+    assert!(*x >= 394.0, "image must stay in the fifth column");
+    assert!(*y >= 10.0 && *y + *height <= 190.0);
+    assert!((*width - serpentype::css::length("3cm").unwrap()).abs() < 0.01);
+    assert!((*height - *width).abs() < 0.01);
+    doc.to_pdf().unwrap();
+}
+
+#[test]
+fn figure_keeps_the_notice_header_image_and_caption() {
+    use serpentype::layout::Item;
+
+    let html = r#"
+        <div style="display:flex">
+            <div style="width:120pt;position:relative">
+                <figure style="position:relative;margin:0">
+                    <div style="width:93px;position:relative">
+                        <img src="blue.png" alt="QR Code" style="display:block;width:100%;object-fit:contain">
+                    </div>
+                    <figcaption>QR Code</figcaption>
+                </figure>
+            </div>
+            <p>Notice</p>
+        </div>
+    "#;
+    let renderer = serpentype::layout::Renderer::new(
+        font_registry(),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures").into(),
+        true,
+    );
+    let doc = renderer.layout(html, "").unwrap();
+
+    assert_eq!(doc.page_count(), 1);
+    assert!(doc.pages[0].items.iter().any(|item| matches!(
+        item,
+        Item::Image { w, h, .. } if (*w - 69.75).abs() < 0.01 && (*h - *w * 0.75).abs() < 0.01
+    )));
+    assert!(page_text(&doc.pages[0]).contains("QR Code"));
+    assert!(!doc
+        .warnings
+        .iter()
+        .any(|warning| warning.code == "html-tag"));
+}
+
+#[test]
 fn qr_flex_and_five_column_grid_position_items() {
     let css = r#"
        .qr { display:flex; flex-direction:column; align-items:center; justify-content:center; padding-right:10px }
