@@ -214,7 +214,7 @@ struct SourceContext {
     source_name: Option<Arc<str>>,
     limits: RenderLimits,
     resource_bytes: Rc<Budget<usize>>,
-    node_images: Rc<RefCell<LoadedNodeImages>>,
+    node_images: Rc<RefCell<Rc<LoadedNodeImages>>>,
     svg_dpi: f32,
     base_dir: PathBuf,
     images: Arc<Mutex<ImageCache>>,
@@ -2264,10 +2264,7 @@ fn load_node_image(
         return result.clone();
     }
     let result = source.load_image(src, fonts, token);
-    source
-        .node_images
-        .borrow_mut()
-        .insert(offset, result.clone());
+    Rc::make_mut(&mut source.node_images.borrow_mut()).insert(offset, result.clone());
     result
 }
 
@@ -3089,6 +3086,95 @@ struct Flow {
     source: SourceContext,
     margin_box_family: Vec<String>,
     margin_box_font_size: f32,
+}
+
+struct GridRowCheckpoint {
+    page_count: usize,
+    item_count: usize,
+    page: PageStyle,
+    page_name: Option<String>,
+    page_counters: HashMap<String, Vec<i32>>,
+    page_strings: HashMap<String, String>,
+    page_running_elements: HashMap<String, String>,
+    counter_scopes: Vec<HashMap<String, Vec<i32>>>,
+    strings: HashMap<String, String>,
+    running_elements: HashMap<String, String>,
+    frame: Option<(f32, f32)>,
+    responsive_frame_insets: Option<(f32, f32)>,
+    center_children: bool,
+    containing_blocks: Vec<ContainingBlock>,
+    pending_break: bool,
+    pending_break_side: Option<String>,
+    outlines: usize,
+    fixed_nodes: usize,
+    positioned_layers: usize,
+    layer_order: usize,
+    warnings: usize,
+    resource_bytes: usize,
+    node_images: Rc<LoadedNodeImages>,
+}
+
+impl GridRowCheckpoint {
+    fn capture(flow: &Flow) -> Self {
+        let last = flow.pages.len() - 1;
+        Self {
+            page_count: last + 1,
+            item_count: flow.pages[last].items.len(),
+            page: flow.page.clone(),
+            page_name: flow.page_name.clone(),
+            page_counters: flow.page_counters[last].clone(),
+            page_strings: flow.page_strings[last].clone(),
+            page_running_elements: flow.page_running_elements[last].clone(),
+            counter_scopes: flow.counter_scopes.clone(),
+            strings: flow.strings.clone(),
+            running_elements: flow.running_elements.clone(),
+            frame: flow.frame,
+            responsive_frame_insets: flow.responsive_frame_insets,
+            center_children: flow.center_children,
+            containing_blocks: flow.containing_blocks.clone(),
+            pending_break: flow.pending_break,
+            pending_break_side: flow.pending_break_side.clone(),
+            outlines: flow.outlines.len(),
+            fixed_nodes: flow.fixed_nodes.len(),
+            positioned_layers: flow.positioned_layers.len(),
+            layer_order: flow.layer_order,
+            warnings: flow.warnings.len(),
+            resource_bytes: flow.source.resource_bytes.get(),
+            node_images: flow.source.node_images.borrow().clone(),
+        }
+    }
+
+    fn restore(self, flow: &mut Flow) {
+        flow.pages.truncate(self.page_count);
+        let last = self.page_count - 1;
+        flow.pages[last].items.truncate(self.item_count);
+        flow.pages[last].style = self.page.clone();
+        flow.pages[last].name = self.page_name.clone();
+        flow.page = self.page;
+        flow.page_name = self.page_name;
+        flow.page_counters.truncate(last);
+        flow.page_counters.push(self.page_counters);
+        flow.page_strings.truncate(last);
+        flow.page_strings.push(self.page_strings);
+        flow.page_running_elements.truncate(last);
+        flow.page_running_elements.push(self.page_running_elements);
+        flow.counter_scopes = self.counter_scopes;
+        flow.strings = self.strings;
+        flow.running_elements = self.running_elements;
+        flow.frame = self.frame;
+        flow.responsive_frame_insets = self.responsive_frame_insets;
+        flow.center_children = self.center_children;
+        flow.containing_blocks = self.containing_blocks;
+        flow.pending_break = self.pending_break;
+        flow.pending_break_side = self.pending_break_side;
+        flow.outlines.truncate(self.outlines);
+        flow.fixed_nodes.truncate(self.fixed_nodes);
+        flow.positioned_layers.truncate(self.positioned_layers);
+        flow.layer_order = self.layer_order;
+        flow.warnings.truncate(self.warnings);
+        flow.source.resource_bytes.set(self.resource_bytes);
+        *flow.source.node_images.borrow_mut() = self.node_images;
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -5795,14 +5881,9 @@ impl Flow {
         self.y = start_y;
         let initial_page_count = self.pages.len();
         let mut row_records = Vec::new();
-        for (row, row_size) in row_sizes.iter().copied().enumerate().take(row_count) {
-            let estimate = row_size.unwrap_or(40.0);
-            if self.y + estimate > self.limit() + EPS && self.page_has_content() {
-                self.new_page()?;
-            }
-            let row_page = self.pages.len();
-            let row_y = self.y;
-            let row_item_start = self.pages.last().map_or(0, |page| page.items.len());
+        let layout_row = |flow: &mut Self, row: usize, row_size: Option<f32>| -> Result<f32> {
+            let row_page = flow.pages.len();
+            let row_y = flow.y;
             let mut row_end = row_y + row_size.unwrap_or(0.0);
             let mut ranges = Vec::new();
             for (child, _, column, row_span, column_span) in
@@ -5832,9 +5913,9 @@ impl Flow {
                     "center" => (cell_width - item_width) / 2.0,
                     _ => 0.0,
                 };
-                self.y = row_y;
-                self.frame = Some((cell_x + offset.max(0.0), item_width));
-                let start = self.pages.last().unwrap().items.len();
+                flow.y = row_y;
+                flow.frame = Some((cell_x + offset.max(0.0), item_width));
+                let start = flow.pages.last().unwrap().items.len();
                 let mut clone = (*child).clone();
                 clone.style.margin = [0.0; 4];
                 clone.style.margin_percent = [None; 4];
@@ -5855,18 +5936,15 @@ impl Flow {
                         clone.style.box_sizing = "border-box".into();
                     }
                 }
-                self.node(&clone)?;
-                if self.pages.len() != row_page {
+                flow.node(&clone)?;
+                if flow.pages.len() != row_page {
                     return Err(Error("grid row cannot split across pages".into()));
                 }
-                let end = self.pages.last().unwrap().items.len();
-                let child_end = self.y;
+                let end = flow.pages.last().unwrap().items.len();
+                let child_end = flow.y;
                 let contribution = (child_end - row_y) / *row_span as f32;
                 row_end = row_end.max(row_y + contribution.max(0.0));
                 ranges.push((start, end, child_end, align));
-            }
-            if row_end <= row_y + EPS {
-                row_end = row_y + row_size.unwrap_or(0.0);
             }
             for (start, end, child_end, align) in ranges {
                 let shift = match align.as_str() {
@@ -5876,21 +5954,43 @@ impl Flow {
                 };
                 if align == "stretch" {
                     let height = row_end - row_y;
-                    for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                    for item in &mut flow.pages.last_mut().unwrap().items[start..end] {
                         stretch_box_item(item, row_y, height);
                     }
                 } else if shift > EPS {
-                    for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                    for item in &mut flow.pages.last_mut().unwrap().items[start..end] {
                         shift_item(item, shift);
                     }
                 }
             }
-            row_records.push((
-                row_page - 1,
-                row_item_start,
-                self.pages.last().map_or(0, |page| page.items.len()),
-            ));
-            self.y = row_end;
+            Ok(row_end)
+        };
+        for (row, row_size) in row_sizes.iter().copied().enumerate() {
+            if row_size.is_some_and(|height| self.y + height > self.limit() + EPS)
+                && self.page_has_content()
+            {
+                self.new_page()?;
+            }
+            let checkpoint = self
+                .page_has_content()
+                .then(|| GridRowCheckpoint::capture(self));
+            let mut row_page = self.pages.len() - 1;
+            let mut row_item_start = self.pages[row_page].items.len();
+            let mut result = layout_row(self, row, row_size);
+            if let Some(checkpoint) = checkpoint.filter(|checkpoint| {
+                self.pages.len() != checkpoint.page_count
+                    || result.as_ref().is_ok_and(|end| *end > self.limit() + EPS)
+            }) {
+                // A cell can run out of room after earlier cells have painted.
+                // Rewind the whole row before laying it out on an empty page.
+                checkpoint.restore(self);
+                self.new_page()?;
+                row_page = self.pages.len() - 1;
+                row_item_start = 0;
+                result = layout_row(self, row, row_size);
+            }
+            self.y = result?;
+            row_records.push((row_page, row_item_start, self.pages[row_page].items.len()));
             if row + 1 < row_count {
                 self.y += node.style.row_gap;
             }
