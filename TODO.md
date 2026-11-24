@@ -1,5 +1,55 @@
 # TODO
 
+## 0.11.0 — Notice PDF pipeline compatibility
+
+Baseline from 2026-11-23. The [local PDF pipeline](tests/pdfpipe/README.md)
+reproduces dev notice template 7 (`4ea5b32d`) with synthetic RU and KK data.
+The run used Serpentype 0.10.0, WeasyPrint 64.1, Python 3.12 on macOS arm64,
+and the bundled Noto Sans font profile. Both engines received the same
+assembled HTML and font CSS in each case. From `tests/pdfpipe`, run
+`python render.py --renderer both --mode both --output-dir /tmp/pdfpipe-011`.
+
+| Check | WeasyPrint 64.1 | Serpentype 0.10.0 |
+| --- | --- | --- |
+| Pages and orientation | Six pages in all four RU/KK × draft/signed cases. Appendix 1 is portrait on page 5, and appendix 2 is landscape on page 6. | Same page counts, dimensions, orientation, and appendix order. |
+| Watermark (both modes, both languages) | Centered SVG emblem and repeating JPEG texture paint behind content on all six pages, including the landscape appendix. | Both layers are absent on all pages. |
+| Draft QR placeholders | Both SVG placeholders paint on pages 1 and 4. | Both placeholders are missing. The top URI declares `image/png` for SVG bytes, and the lower URI uses `image/svg` instead of `image/svg+xml`. Changing each MIME type independently restores the corresponding placeholder. |
+| Signed QR codes | The 20 mm PDF QR paints on page 1, and the 30 mm XML QR paints on page 4. | Same page numbers and dimensions. The rasterized 45 × 45 module grids match the expected PDF/XML links in both engines. The XML QR sits about 169 pt higher in RU and 238 pt higher in KK than in WeasyPrint. |
+| Body flow | The delivery section starts on page 4 in RU and KK. | The delivery section starts on page 3 and continues onto page 4. The line wraps differ despite matching page counts. |
+| Footers and counters | The legal footer appears on all pages. Localized counters on pages 5 and 6 are correct. On the landscape RU page, the legal footer uses two lines. | The footer and counters are present with the same text and values. The landscape RU footer wraps onto three lines, and its last line sits lower. |
+
+### 0.11.0 verification
+
+The compatibility suite generated and inspected all eight PDFs with the
+original dev MIME declarations. It checks A4 page geometry, both
+watermark layers, the two draft placeholders, delivery text order, footer
+counters, and QR URLs read by ZXing from page rasters at 216 dpi. The bundled
+Noto Sans profile was used. The dev font profile and the optional lower QR
+for signature data remain outside this fixture.
+
+- [x] **Recover from an invalid inline image.** The `HTML.render()` regression
+  test verifies an image diagnostic and a valid PDF. Resource and pixel
+  limits remain fatal, and rendering still checks cancellation.
+- [x] **Paint layered `@page` backgrounds.** Both SVG and JPEG layers paint
+  behind the content on all six pages, including `:first` and the named
+  landscape appendix. Each layer has an independent raster assertion.
+- [x] **Accept the captured SVG MIME variants in Serpentype.** Legacy
+  `image/svg` and SVG bytes labeled `image/png` produce the same PDF as
+  `image/svg+xml` in the library-level regression. The notice fixture passes
+  its dev input directly to the renderer. Both engines decode the signed
+  QR payloads from genuine PNG images.
+- [x] **Keep the delivery section together on page 4.** Both languages retain
+  the order of the delivery and dispatch columns. The lower QR is roughly
+  18 pt below WeasyPrint 64.1 in both languages, within the 20 pt regression
+  tolerance. WeasyPrint 64.1 ignores flex `gap` and wraps one fewer line in
+  this layout.
+- [x] **Match appendix margin boxes.** Named pages honor footer widths,
+  line height, and bottom margin. The landscape footer uses two lines in
+  both languages, with a 2 pt baseline tolerance. Localized counters and
+  the first-page legal footer are covered.
+- [x] **Update the PDF pipeline integration test.** The test uses the CLI's
+  current output paths and decodes both signed QR URLs from each PDF.
+
 ## Align the Serpentype renderer with the reference
 
 WeasyPrint 64.1 is the canonical reference implementation. Detailed
@@ -36,13 +86,12 @@ WeasyPrint remains outside the production API.
   fixtures. Serpentype now emits an `inline-block-width` warning instead of
   failing PDF generation; both templates render in Serpentype and WeasyPrint
   to four pages each, with matching page dimensions.
-- [ ] **Improve text-flow parity in the production templates.** The QR
-  placeholder now renders as an SVG inside nested inline-blocks, including
-  when the image uses `display:block`. Remaining text-flow differences from the
-  previous comparison include word sequence similarity of 96.51% for the
-  notice and 99.30% for the appendix, with normalized line sequence similarity
-  of 57.91% and 79.88%. The page counts match, but line wrapping and some
-  extracted text still differ. See the per-line details in the JSON report.
+- [ ] **Improve text-flow parity in the original production fixtures.** In the
+  comparison with the shared Noto Sans font, word sequence similarity is 96.51%
+  for the notice and 99.30% for the appendix. Normalized line sequence
+  similarity is 57.91% and 79.88%. Page counts match. The JSON report records
+  the line wrapping and extracted text differences, including omitted
+  inline-block content. See the 0.11.0 section for the current dev pipeline.
 
 ### Comparison coverage and reproducibility
 

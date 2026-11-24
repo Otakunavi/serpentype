@@ -6,8 +6,11 @@ use crate::{Diagnostic, Error, Result};
 use base64::Engine as _;
 use image::{GenericImageView, ImageDecoder};
 use sha2::{Digest, Sha256};
+use std::cell::{Cell as Budget, RefCell};
 use std::collections::{HashMap, VecDeque};
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -203,18 +206,233 @@ fn add_missing_glyph_source_location(error: Error, source: &str, label: &str) ->
     Error(format!("{}; location {label} {line} {column}", error.0))
 }
 
+type LoadedNodeImages = HashMap<usize, Result<Arc<ImageData>>>;
+
 #[derive(Clone)]
 struct SourceContext {
     html: Arc<str>,
     source_name: Option<Arc<str>>,
+    limits: RenderLimits,
+    resource_bytes: Rc<Budget<usize>>,
+    node_images: Rc<RefCell<LoadedNodeImages>>,
+    svg_dpi: f32,
+    base_dir: PathBuf,
+    images: Arc<Mutex<ImageCache>>,
 }
 
 impl SourceContext {
-    fn new(html: &str, source_name: Option<String>) -> Self {
+    fn new(
+        html: &str,
+        source_name: Option<String>,
+        limits: RenderLimits,
+        resources: usize,
+        svg_dpi: f32,
+        base_dir: PathBuf,
+        images: Arc<Mutex<ImageCache>>,
+    ) -> Self {
         Self {
             html: Arc::from(html),
             source_name: source_name.map(Arc::from),
+            limits,
+            resource_bytes: Rc::new(Budget::new(resources)),
+            node_images: Rc::default(),
+            svg_dpi,
+            base_dir,
+            images,
         }
+    }
+
+    fn load_image(
+        &self,
+        src: &str,
+        fonts: &FontRegistry,
+        token: Option<&AtomicBool>,
+    ) -> Result<Arc<ImageData>> {
+        cancelled(token)?;
+        let (bytes, svg) = if src.starts_with("data:") {
+            let (bytes, format) = data_image(src, self.remaining_resource_bytes())?;
+            (bytes, matches!(format, ImageFormat::Svg))
+        } else {
+            let source = local_image_source(src)?;
+            let path = local_resource_path(&self.base_dir, &source, self.limits.restrict_base_dir)?;
+            let file_size = std::fs::metadata(&path)
+                .map_err(|e| Error(format!("image {}: {e}", path.display())))?
+                .len() as usize;
+            if file_size > self.remaining_resource_bytes() {
+                return Err(Error("render limit exceeded: max_resource_bytes".into()));
+            }
+            let mut bytes = Vec::new();
+            let file = std::fs::File::open(&path)
+                .map_err(|e| Error(format!("image {}: {e}", path.display())))?;
+            file.take(self.remaining_resource_bytes().saturating_add(1) as u64)
+                .read_to_end(&mut bytes)
+                .map_err(|e| Error(format!("image {}: {e}", path.display())))?;
+            let svg = path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"));
+            (bytes, svg)
+        };
+        self.charge_resource(bytes.len())?;
+        let dimensions = if svg {
+            None
+        } else {
+            let dimensions = image::ImageReader::new(std::io::Cursor::new(&bytes))
+                .with_guessed_format()
+                .map_err(|e| Error(format!("image format: {e}")))?
+                .into_dimensions()
+                .map_err(|e| Error(format!("image dimensions: {e}")))?;
+            if u64::from(dimensions.0) * u64::from(dimensions.1) > self.limits.max_image_pixels {
+                return Err(Error("render limit exceeded: max_image_pixels".into()));
+            }
+            Some(dimensions)
+        };
+        cancelled(token)?;
+        let digest = if svg {
+            let mut hash = Sha256::new();
+            hash.update(&bytes);
+            hash.update(self.svg_dpi.to_bits().to_be_bytes());
+            hash.update(self.limits.max_image_pixels.to_be_bytes());
+            for font_digest in fonts.source_digests()? {
+                hash.update(font_digest);
+            }
+            hash.finalize().into()
+        } else {
+            Sha256::digest(&bytes).into()
+        };
+        let hit = {
+            let mut cache = self.images.lock().map_err(|e| Error(e.to_string()))?;
+            let hit = cache.entries.get(&digest).cloned();
+            if hit.is_some() {
+                cache.hits += 1;
+            } else {
+                cache.misses += 1;
+            }
+            hit
+        };
+        let data = if let Some(hit) = hit {
+            hit
+        } else {
+            let data = if svg {
+                Arc::new(render_svg(
+                    &bytes,
+                    digest,
+                    self.svg_dpi,
+                    self.limits.max_image_pixels,
+                    fonts,
+                )?)
+            } else {
+                let dimensions = dimensions.expect("raster dimensions");
+                let jpeg_metadata =
+                    if image::guess_format(&bytes).ok() == Some(image::ImageFormat::Jpeg) {
+                        let mut decoder =
+                            image::codecs::jpeg::JpegDecoder::new(std::io::Cursor::new(&bytes))
+                                .map_err(|e| Error(format!("JPEG metadata: {e}")))?;
+                        Some((
+                            decoder
+                                .orientation()
+                                .map_err(|e| Error(format!("JPEG orientation: {e}")))?,
+                            decoder.color_type(),
+                        ))
+                    } else {
+                        None
+                    };
+                let data = if jpeg_metadata
+                    == Some((
+                        image::metadata::Orientation::NoTransforms,
+                        image::ColorType::Rgb8,
+                    )) {
+                    Arc::new(ImageData {
+                        rgb: Vec::new(),
+                        alpha: None,
+                        jpeg: Some(bytes),
+                        width: dimensions.0,
+                        height: dimensions.1,
+                        display_width: dimensions.0 as f32 * 0.75,
+                        display_height: dimensions.1 as f32 * 0.75,
+                        digest,
+                        svg: None,
+                    })
+                } else {
+                    let mut image = image::load_from_memory(&bytes)
+                        .map_err(|e| Error(format!("image decode: {e}")))?;
+                    if let Some((orientation, _)) = jpeg_metadata {
+                        image.apply_orientation(orientation);
+                    }
+                    let (iw, ih) = image.dimensions();
+                    let rgba = image.to_rgba8();
+                    let mut rgb = Vec::with_capacity((iw as usize) * (ih as usize) * 3);
+                    let mut alpha = Vec::with_capacity((iw as usize) * (ih as usize));
+                    for pixel in rgba.pixels() {
+                        rgb.extend_from_slice(&pixel.0[..3]);
+                        alpha.push(pixel[3]);
+                    }
+                    let alpha = alpha.iter().any(|value| *value != 255).then_some(alpha);
+                    Arc::new(ImageData {
+                        rgb,
+                        alpha,
+                        jpeg: None,
+                        width: iw,
+                        height: ih,
+                        display_width: iw as f32 * 0.75,
+                        display_height: ih as f32 * 0.75,
+                        digest,
+                        svg: None,
+                    })
+                };
+                data
+            };
+            let mut cache = self.images.lock().map_err(|e| Error(e.to_string()))?;
+            let size = data.retained_bytes();
+            if size <= IMAGE_CACHE_LIMIT {
+                while cache.bytes + size > IMAGE_CACHE_LIMIT {
+                    let Some(old) = cache.order.pop_front() else {
+                        break;
+                    };
+                    if let Some(item) = cache.entries.remove(&old) {
+                        cache.bytes -= item.retained_bytes();
+                    }
+                }
+                cache.bytes += size;
+                cache.order.push_back(digest);
+                cache.entries.insert(digest, data.clone());
+            }
+            data
+        };
+        Ok(data)
+    }
+
+    fn remaining_resource_bytes(&self) -> usize {
+        self.limits
+            .max_resource_bytes
+            .saturating_sub(self.resource_bytes.get())
+    }
+
+    fn charge_resource(&self, size: usize) -> Result<()> {
+        if size > self.remaining_resource_bytes() {
+            return Err(Error("render limit exceeded: max_resource_bytes".into()));
+        }
+        self.resource_bytes.set(self.resource_bytes.get() + size);
+        Ok(())
+    }
+
+    fn image_warning(&self, node: &Node, error: &Error) -> Diagnostic {
+        let mut warning = if error.0 == "unsupported image data URI media type" {
+            Diagnostic::new(
+                "image-data-uri-media-type",
+                "unsupported image data URI media type; image was omitted",
+            )
+        } else {
+            Diagnostic::new("image-decode", format!("{}; image was omitted", error.0))
+        };
+        if let Some((line, column)) = node
+            .source_offset
+            .and_then(|offset| source_location_at(&self.html, offset))
+        {
+            warning.source = Some(self.source_name.as_deref().unwrap_or("<html>").to_owned());
+            warning.line = Some(line);
+            warning.column = Some(column);
+        }
+        warning
     }
 }
 
@@ -689,6 +907,39 @@ fn local_resource_path(base_dir: &Path, src: &str, restrict: bool) -> Result<Pat
     }
     Ok(resolved)
 }
+
+fn local_image_source(src: &str) -> Result<String> {
+    let Some(path) = src.strip_prefix("file://") else {
+        return if src.contains("://") {
+            Err(Error("only local files and data URIs are supported".into()))
+        } else {
+            Ok(src.to_owned())
+        };
+    };
+    if !path.starts_with('/') || path.starts_with("//") || path.contains(['?', '#']) {
+        return Err(Error("invalid local file URI".into()));
+    }
+    let mut bytes = Vec::with_capacity(path.len());
+    let mut input = path.bytes();
+    while let Some(byte) = input.next() {
+        if byte == b'%' {
+            let high = input.next().and_then(|byte| char::from(byte).to_digit(16));
+            let low = input.next().and_then(|byte| char::from(byte).to_digit(16));
+            let decoded = high.zip(low).map(|(high, low)| ((high << 4) | low) as u8);
+            bytes.push(decoded.ok_or_else(|| Error("invalid local file URI escape".into()))?);
+        } else {
+            bytes.push(byte);
+        }
+    }
+    let path = String::from_utf8(bytes).map_err(|_| Error("invalid local file URI path".into()))?;
+    #[cfg(windows)]
+    let path = if path.as_bytes().get(2) == Some(&b':') {
+        path[1..].to_owned()
+    } else {
+        path
+    };
+    Ok(path)
+}
 enum ImageFormat {
     Raster(image::ImageFormat),
     Svg,
@@ -709,7 +960,7 @@ fn data_image(src: &str, remaining: usize) -> Result<(Vec<u8>, ImageFormat)> {
         "image/jpeg" => ImageFormat::Raster(image::ImageFormat::Jpeg),
         "image/gif" => ImageFormat::Raster(image::ImageFormat::Gif),
         "image/webp" => ImageFormat::Raster(image::ImageFormat::WebP),
-        "image/svg+xml" => ImageFormat::Svg,
+        "image/svg+xml" | "image/svg" => ImageFormat::Svg,
         _ => return Err(Error("unsupported image data URI media type".into())),
     };
     if !parts.any(|part| part.eq_ignore_ascii_case("base64")) {
@@ -724,8 +975,22 @@ fn data_image(src: &str, remaining: usize) -> Result<(Vec<u8>, ImageFormat)> {
     if bytes.len() > remaining {
         return Err(Error("render limit exceeded: max_resource_bytes".into()));
     }
-    if matches!(format, ImageFormat::Raster(expected) if image::guess_format(&bytes).ok() != Some(expected))
-    {
+    if let ImageFormat::Raster(expected) = format {
+        if image::guess_format(&bytes).ok() == Some(expected) {
+            return Ok((bytes, format));
+        }
+        if expected == image::ImageFormat::Png
+            && std::str::from_utf8(&bytes).ok().is_some_and(|xml| {
+                xml.trim_start_matches('\u{feff}')
+                    .trim_start()
+                    .starts_with('<')
+                    && svg2pdf::usvg::roxmltree::Document::parse(xml)
+                        .ok()
+                        .is_some_and(|doc| doc.root_element().tag_name().name() == "svg")
+            })
+        {
+            return Ok((bytes, ImageFormat::Svg));
+        }
         return Err(Error(
             "image data URI media type does not match content".into(),
         ));
@@ -966,6 +1231,35 @@ impl ImageData {
             + self.svg.as_ref().map_or(0, |svg| svg.chunk.len())
     }
 }
+fn image_paint_geometry(
+    style: &Style,
+    data: &ImageData,
+    box_width: f32,
+    box_height: f32,
+) -> [f32; 4] {
+    let (iw, ih) = (data.display_width, data.display_height);
+    let (paint_width, paint_height) = match style.object_fit.as_str() {
+        "contain" => {
+            let scale = (box_width / iw).min(box_height / ih);
+            (iw * scale, ih * scale)
+        }
+        "cover" => {
+            let scale = (box_width / iw).max(box_height / ih);
+            (iw * scale, ih * scale)
+        }
+        "none" => (iw, ih),
+        "scale-down" => {
+            let scale = 1.0_f32.min((box_width / iw).min(box_height / ih));
+            (iw * scale, ih * scale)
+        }
+        _ => (box_width, box_height),
+    };
+    let x = (box_width - paint_width) * style.object_position[0] + style.object_position_offset[0];
+    let y =
+        (box_height - paint_height) * style.object_position[1] + style.object_position_offset[1];
+    [paint_width, paint_height, x, y]
+}
+
 fn downsample_image(data: &ImageData, max_dpi: f32, width: f32, height: f32) -> Result<ImageData> {
     let target_width = ((width / 72.0) * max_dpi).ceil().max(1.0) as u32;
     let target_height = ((height / 72.0) * max_dpi).ceil().max(1.0) as u32;
@@ -1464,24 +1758,29 @@ impl Renderer {
         let mut flow = Flow::new(
             sheet.clone(),
             fonts,
-            self.base_dir.clone(),
-            self.images.clone(),
             warnings,
             self.limits.clone(),
             token,
-            SourceContext::new(html, self.source_name.clone()),
+            SourceContext::new(
+                html,
+                self.source_name.clone(),
+                self.limits.clone(),
+                font_resource_bytes,
+                self.svg_dpi,
+                self.base_dir.clone(),
+                self.images.clone(),
+            ),
             margin_box_defaults.family,
             margin_box_defaults.font_size,
         );
         flow.experimental_shaping = true;
-        flow.svg_dpi = self.svg_dpi;
         flow.max_image_dpi = self.max_image_dpi;
-        flow.resource_bytes = font_resource_bytes;
         flow.node(&root)
             .map_err(|error| add_html_location(error, html, self.source_name.as_deref()))?;
         flow.render_fixed_nodes()
             .map_err(|error| add_html_location(error, html, self.source_name.as_deref()))?;
         flow.compose_positioned_layers();
+        flow.render_page_backgrounds()?;
         flow.render_margin_boxes().map_err(|error| {
             let css_error = add_missing_glyph_source_location(error, css_text, "<css>");
             add_html_location(css_error, html, self.source_name.as_deref())
@@ -1576,11 +1875,11 @@ struct InlineRun {
 #[derive(Clone)]
 struct InlineBox {
     lines: Vec<Line>,
-    image_node: Option<Node>,
     style: Style,
     width: f32,
     height: f32,
     inner_width: f32,
+    image: Option<Arc<ImageData>>,
     href: Option<Arc<str>>,
     destination: Option<String>,
 }
@@ -1800,7 +2099,7 @@ fn inline_runs(
     if !root && node.tag == "img" {
         out.push(InlineRun {
             text: String::new(),
-            style: run_style.clone(),
+            style: run_style,
             href,
             inline_box: Some(node.clone()),
             destination,
@@ -1949,43 +2248,27 @@ fn inline_box_has_in_flow_content(node: &Node) -> bool {
         || node.children.iter().any(inline_box_has_in_flow_content)
 }
 
-fn inline_image_aspect_ratio(node: &Node) -> f32 {
-    if let Some(ratio) = node.style.aspect_ratio.filter(|ratio| *ratio > EPS) {
-        return ratio;
-    }
-    let attr_dimension = |name: &str| {
-        node.attr(name)
-            .and_then(|value| value.parse::<f32>().ok())
-            .filter(|value| *value > EPS)
+fn load_node_image(
+    node: &Node,
+    fonts: &FontRegistry,
+    source: &SourceContext,
+    token: Option<&AtomicBool>,
+) -> Result<Arc<ImageData>> {
+    let src = node
+        .attr("src")
+        .ok_or_else(|| Error("img needs src".into()))?;
+    let Some(offset) = node.source_offset else {
+        return source.load_image(src, fonts, token);
     };
-    if let (Some(width), Some(height)) = (attr_dimension("width"), attr_dimension("height")) {
-        return width / height;
+    if let Some(result) = source.node_images.borrow().get(&offset) {
+        return result.clone();
     }
-    if let Some(src) = node.attr("src").filter(|src| src.starts_with("data:")) {
-        const MAX_INLINE_IMAGE_METADATA_BYTES: usize = 8 * 1024 * 1024;
-        if let Ok((bytes, format)) = data_image(src, MAX_INLINE_IMAGE_METADATA_BYTES) {
-            let dimensions = match format {
-                ImageFormat::Svg => {
-                    svg2pdf::usvg::Tree::from_data(&bytes, &svg2pdf::usvg::Options::default())
-                        .ok()
-                        .map(|tree| (tree.size().width(), tree.size().height()))
-                }
-                ImageFormat::Raster(_) => image::ImageReader::new(std::io::Cursor::new(bytes))
-                    .with_guessed_format()
-                    .ok()
-                    .and_then(|reader| reader.into_dimensions().ok())
-                    .map(|(width, height)| (width as f32, height as f32)),
-            };
-            if let Some((width, height)) = dimensions.filter(|(width, height)| {
-                width.is_finite() && height.is_finite() && *width > EPS && *height > EPS
-            }) {
-                return width / height;
-            }
-        }
-    }
-    // HTML's default object size has a 2:1 ratio when no intrinsic ratio is
-    // available. SVG QR codes above provide their actual square ratio.
-    2.0
+    let result = source.load_image(src, fonts, token);
+    source
+        .node_images
+        .borrow_mut()
+        .insert(offset, result.clone());
+    result
 }
 
 #[allow(clippy::too_many_arguments)] // Kept explicit: these values are the inline layout context.
@@ -2002,7 +2285,19 @@ fn inline_box_glyph(
     source: &SourceContext,
 ) -> Result<Glyph> {
     let style = &node.style;
-    let image_node = (node.tag == "img").then(|| node.clone());
+    let image = if node.tag == "img" {
+        cancelled(token)?;
+        match load_node_image(node, fonts, source, token) {
+            Ok(data) => Some(data),
+            Err(error) if !error.0.starts_with("render limit exceeded:") => {
+                warnings.push(source.image_warning(node, &error));
+                None
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        None
+    };
     let mut content_node = node.clone();
     if href.is_some() {
         content_node.attrs.remove("href");
@@ -2016,27 +2311,27 @@ fn inline_box_glyph(
     let maximum = resolved_dimension(style.max_width, style.max_width_percent, containing_width);
     let sizing_width = if let Some(declared) = declared {
         declared
-    } else if image_node.is_some() {
-        resolved_dimension(style.height, style.height_percent, containing_width)
-            .map(|height| height * inline_image_aspect_ratio(node))
-            .unwrap_or(225.0)
     } else if !has_content {
         horizontal_edges
     } else {
-        let intrinsic = lines_for(
-            &content_node,
-            1_000_000.0,
-            0.0,
-            fonts,
-            token,
-            experimental_shaping,
-            shaping_ns,
-            warnings,
-            source,
-        )?
-        .iter()
-        .map(|line| line.width)
-        .fold(0.0, f32::max);
+        let intrinsic = if let Some(image) = &image {
+            image.display_width
+        } else {
+            lines_for(
+                &content_node,
+                1_000_000.0,
+                0.0,
+                fonts,
+                token,
+                experimental_shaping,
+                shaping_ns,
+                warnings,
+                source,
+            )?
+            .iter()
+            .map(|line| line.width)
+            .fold(0.0, f32::max)
+        };
         if style.box_sizing == "border-box" {
             (intrinsic + horizontal_edges).min(available_outer)
         } else {
@@ -2066,9 +2361,7 @@ fn inline_box_glyph(
         }
         warnings.push(warning);
     }
-    let lines = if image_node.is_some() {
-        Vec::new()
-    } else if can_layout_content {
+    let lines = if can_layout_content {
         lines_for(
             &content_node,
             inner_width,
@@ -2083,8 +2376,15 @@ fn inline_box_glyph(
     } else {
         Vec::new()
     };
-    let body_height: f32 = if image_node.is_some() {
-        (width - horizontal_edges).max(0.0) / inline_image_aspect_ratio(node)
+    let body_height: f32 = if let Some(image) = &image {
+        if image.display_width > EPS {
+            inner_width
+                / style
+                    .aspect_ratio
+                    .unwrap_or(image.display_width / image.display_height)
+        } else {
+            image.display_height
+        }
     } else {
         lines.iter().map(|line| line.height).sum()
     };
@@ -2155,11 +2455,11 @@ fn inline_box_glyph(
         soft_hyphen_advance: 0.0,
         inline_box: Some(Arc::new(InlineBox {
             lines,
-            image_node,
             style: style.clone(),
             width,
             height,
             inner_width,
+            image,
             href,
             destination: destination.or_else(|| {
                 node.attr("id")
@@ -2769,17 +3069,13 @@ struct Flow {
     sheet: Sheet,
     page_name: Option<String>,
     fonts: FontRegistry,
-    base_dir: PathBuf,
-    images: Arc<Mutex<ImageCache>>,
     warnings: Vec<Diagnostic>,
     limits: RenderLimits,
     cancel: Option<Arc<AtomicBool>>,
     experimental_shaping: bool,
-    svg_dpi: f32,
     max_image_dpi: Option<f32>,
     shaping_ns: AtomicU64,
     iterations: usize,
-    resource_bytes: usize,
     pending_break: bool,
     pending_break_side: Option<String>,
     frame: Option<(f32, f32)>,
@@ -2818,6 +3114,13 @@ struct ContainerGeometry {
     outer: f32,
     width: f32,
     x: f32,
+}
+
+fn flow_breaks(node: &Node) -> bool {
+    node.style.break_before
+        || node.style.break_after
+        || node.style.page_name.is_some()
+        || node.children.iter().any(flow_breaks)
 }
 
 fn resolved_dimension(fixed: Option<f32>, percent: Option<f32>, reference: f32) -> Option<f32> {
@@ -3111,7 +3414,11 @@ impl Flow {
         };
         let align = ["left", "center", "right"][slot];
         let count = occupied.iter().filter(|&&value| value).count();
-        let (x, w) = if slot == 1 && (occupied[0] || occupied[2]) {
+        let (x, w) = if let Some(width) = box_style.width {
+            let width = width.resolve(span).clamp(0.0, span.max(0.0));
+            let x = page.margin[3] + (span - width) * (slot as f32 / 2.0);
+            (x, width)
+        } else if slot == 1 && (occupied[0] || occupied[2]) {
             // Keep the center box on the page's center axis while bounding
             // its content to the middle third when side boxes are present.
             (page.margin[3] + span / 3.0, span / 3.0)
@@ -3134,10 +3441,16 @@ impl Flow {
         } else {
             (page.margin[3], span)
         };
+        if w <= EPS {
+            return Ok(());
+        }
         let style = Style {
             family: box_style.family.clone(),
             font_size: box_style.font_size,
-            line_height: box_style.font_size * 1.2,
+            line_height: box_style
+                .line_height
+                .map(|height| height.resolve(box_style.font_size))
+                .unwrap_or(box_style.font_size * 1.2),
             color: box_style.color,
             ..Style::default()
         };
@@ -3251,12 +3564,150 @@ impl Flow {
         }
         Ok(())
     }
+
+    fn render_page_backgrounds(&mut self) -> Result<()> {
+        use css::PageBackgroundSize::{Contain, Cover, Dimensions};
+
+        fn for_layer<T: Copy>(values: &[T], index: usize, default: T) -> T {
+            values
+                .get(index.checked_rem(values.len()).unwrap_or(0))
+                .copied()
+                .unwrap_or(default)
+        }
+
+        let mut images = HashMap::<String, Arc<ImageData>>::new();
+        for page_index in 0..self.pages.len() {
+            let page = self.pages[page_index].style.clone();
+            let background = page.background;
+            let area = |content_box| {
+                if content_box {
+                    [
+                        page.margin[3],
+                        page.margin[0],
+                        page.width - page.margin[1],
+                        page.height - page.margin[2],
+                    ]
+                } else {
+                    [0.0, 0.0, page.width, page.height]
+                }
+            };
+            let mut items = Vec::new();
+            for (index, source) in background.images.iter().enumerate().rev() {
+                let Some(source) = source else { continue };
+                cancelled(self.cancel.as_deref())?;
+                let data = if let Some(data) = images.get(source) {
+                    data.clone()
+                } else {
+                    let data =
+                        self.source
+                            .load_image(source, &self.fonts, self.cancel.as_deref())?;
+                    images.insert(source.to_owned(), data.clone());
+                    data
+                };
+                let [left, top, right, bottom] =
+                    area(for_layer(&background.content_origins, index, false));
+                let [clip_x, clip_y, clip_right, clip_bottom] =
+                    area(for_layer(&background.content_clips, index, false));
+                let available = [right - left, bottom - top];
+                let intrinsic = [data.display_width, data.display_height];
+                let size = for_layer(&background.sizes, index, Dimensions([None; 2]));
+                let [w, h] = match size {
+                    Dimensions(dimensions) => {
+                        let [w, h] = std::array::from_fn(|axis| {
+                            dimensions[axis].map(|length| length.resolve(available[axis]))
+                        });
+                        match (w, h) {
+                            (None, None) => intrinsic,
+                            (Some(w), None) => [w, w * intrinsic[1] / intrinsic[0]],
+                            (None, Some(h)) => [h * intrinsic[0] / intrinsic[1], h],
+                            (Some(w), Some(h)) => [w, h],
+                        }
+                    }
+                    Contain | Cover => {
+                        let sx = available[0] / intrinsic[0];
+                        let sy = available[1] / intrinsic[1];
+                        let scale = if matches!(size, Cover) {
+                            sx.max(sy)
+                        } else {
+                            sx.min(sy)
+                        };
+                        intrinsic.map(|axis| axis * scale)
+                    }
+                };
+                if !w.is_finite()
+                    || !h.is_finite()
+                    || w <= 0.0
+                    || h <= 0.0
+                    || clip_right <= clip_x
+                    || clip_bottom <= clip_y
+                {
+                    continue;
+                }
+                let [(x_fraction, x_offset), (y_fraction, y_offset)] =
+                    for_layer(&background.positions, index, [(0.0, 0.0); 2]);
+                let [repeat_x, repeat_y] = for_layer(&background.repeats, index, [true; 2]);
+                let tile_axis = |start: f32, length: f32, low: f32, high: f32, repeat| {
+                    if repeat {
+                        let start = low - (low - start).rem_euclid(length);
+                        (start, ((high - start) / length).ceil() as usize)
+                    } else {
+                        (start, usize::from(start < high && start + length > low))
+                    }
+                };
+                let (x, columns) = tile_axis(
+                    left + (available[0] - w) * x_fraction + x_offset,
+                    w,
+                    clip_x,
+                    clip_right,
+                    repeat_x,
+                );
+                let (y, rows) = tile_axis(
+                    top + (available[1] - h) * y_fraction + y_offset,
+                    h,
+                    clip_y,
+                    clip_bottom,
+                    repeat_y,
+                );
+                let tiles = rows.saturating_mul(columns);
+                if tiles == 0 {
+                    continue;
+                }
+                self.iterations = self.iterations.saturating_add(tiles);
+                if self.iterations > self.limits.max_layout_iterations {
+                    return Err(Error("render limit exceeded: max_layout_iterations".into()));
+                }
+                items.push(Item::BeginClip {
+                    x: clip_x,
+                    y: clip_y,
+                    w: clip_right - clip_x,
+                    h: clip_bottom - clip_y,
+                    radius: [0.0; 4],
+                });
+                for row in 0..rows {
+                    cancelled(self.cancel.as_deref())?;
+                    for column in 0..columns {
+                        items.push(Item::Image {
+                            data: data.clone(),
+                            x: x + column as f32 * w,
+                            y: y + row as f32 * h,
+                            w,
+                            h,
+                        });
+                    }
+                }
+                items.push(Item::EndClip);
+            }
+            if !items.is_empty() {
+                items.append(&mut self.pages[page_index].items);
+                self.pages[page_index].items = items;
+            }
+        }
+        Ok(())
+    }
     #[allow(clippy::too_many_arguments)]
     fn new(
         sheet: Sheet,
         fonts: FontRegistry,
-        base_dir: PathBuf,
-        images: Arc<Mutex<ImageCache>>,
         warnings: Vec<Diagnostic>,
         limits: RenderLimits,
         cancel: Option<Arc<AtomicBool>>,
@@ -3294,17 +3745,13 @@ impl Flow {
             sheet,
             page_name: None,
             fonts,
-            base_dir,
-            images,
             warnings,
             limits,
             cancel,
             experimental_shaping: false,
-            svg_dpi: 144.0,
             max_image_dpi: None,
             shaping_ns: AtomicU64::new(0),
             iterations: 0,
-            resource_bytes: 0,
             pending_break: false,
             pending_break_side: None,
             frame: None,
@@ -4606,7 +5053,19 @@ impl Flow {
                 child.style.flex_basis_percent,
                 width,
             )
-            .or_else(|| resolved_dimension(child.style.width, child.style.width_percent, width));
+            .or_else(|| resolved_dimension(child.style.width, child.style.width_percent, width))
+            .map(|basis| {
+                if child.style.box_sizing == "border-box" {
+                    return basis;
+                }
+                let padding =
+                    resolved_edges(child.style.padding, child.style.padding_percent, width);
+                basis
+                    + padding[1]
+                    + padding[3]
+                    + child.style.border_widths[1]
+                    + child.style.border_widths[3]
+            });
             let intrinsic = if explicit.is_none()
                 && matches!(child.style.display.as_str(), "inline" | "inline-block")
             {
@@ -4677,8 +5136,6 @@ impl Flow {
             if self.y + estimate > self.limit() + EPS && self.page_has_content() {
                 self.new_page()?;
             }
-            let row_y = self.y;
-            let row_start = self.pages.last().map_or(0, |page| page.items.len());
             let base_total: f32 = line.iter().map(|index| bases[*index]).sum();
             let gaps = node.style.column_gap * line.len().saturating_sub(1) as f32;
             let free = width - base_total - gaps;
@@ -4690,7 +5147,7 @@ impl Flow {
                 .iter()
                 .map(|index| children[*index].style.flex_shrink * bases[*index])
                 .sum();
-            let mut sizes: Vec<f32> = line
+            let sizes: Vec<f32> = line
                 .iter()
                 .map(|index| {
                     let mut value = bases[*index];
@@ -4705,7 +5162,7 @@ impl Flow {
                 .collect();
             let used_main: f32 = sizes.iter().sum::<f32>() + gaps;
             let remaining = (width - used_main).max(0.0);
-            let (mut cursor, extra_gap) = match node.style.justify_content.as_str() {
+            let (start_x, extra_gap) = match node.style.justify_content.as_str() {
                 "end" => (x + remaining, 0.0),
                 "center" => (x + remaining / 2.0, 0.0),
                 "space-between" if line.len() > 1 => (x, remaining / (line.len() - 1) as f32),
@@ -4715,153 +5172,218 @@ impl Flow {
                 }
                 _ => (x, 0.0),
             };
-            let mut ranges = Vec::new();
-            let mut row_end = row_y;
-            let mut fragmented = false;
-            let base_pages = self.pages.clone();
-            let base_page_count = base_pages.len();
-            let base_page = self.page.clone();
-            let base_page_name = self.page_name.clone();
-            let base_page_content = self.page_content;
-            let base_page_counters = self.page_counters.clone();
-            let base_page_strings = self.page_strings.clone();
-            let base_page_running_elements = self.page_running_elements.clone();
-            let base_pending_break = self.pending_break;
-            let base_pending_break_side = self.pending_break_side.clone();
-            let mut lane_layouts = Vec::with_capacity(line.len());
-            let mut row_item_offset = 0;
-            for ((index, child_index), item_width) in line.iter().enumerate().zip(sizes.drain(..)) {
-                self.pages = base_pages.clone();
-                self.page = base_page.clone();
-                self.page_name = base_page_name.clone();
-                self.page_content = base_page_content;
-                self.page_counters = base_page_counters.clone();
-                self.page_strings = base_page_strings.clone();
-                self.page_running_elements = base_page_running_elements.clone();
-                self.pending_break = base_pending_break;
-                self.pending_break_side = base_pending_break_side.clone();
-                self.y = row_y;
-                self.frame = Some((cursor, item_width));
-                let start = self.pages.last().map_or(0, |page| page.items.len());
-                let mut child = children[*child_index].clone();
-                child.style.margin = [0.0; 4];
-                child.style.margin_percent = [None; 4];
-                child.style.width = Some(item_width);
-                child.style.width_percent = None;
-                child.style.box_sizing = "border-box".into();
-                self.node(&child)?;
-                if self.pages.len() != base_page_count {
-                    fragmented = true;
-                    let mut warning = Diagnostic::new(
-                        "css-flex-fragmentation",
-                        "flex line split across pages; row alignment was omitted",
-                    );
-                    if let Some((line, column)) = node
-                        .source_offset
-                        .and_then(|offset| source_location_at(&self.source.html, offset))
-                    {
-                        warning.source = Some(
-                            self.source
-                                .source_name
-                                .as_deref()
-                                .unwrap_or("<html>")
-                                .to_owned(),
+            let mut moved_to_fresh_page = false;
+            loop {
+                let mut cursor = start_x;
+                let row_y = self.y;
+                let row_start = self.pages.last().map_or(0, |page| page.items.len());
+                let mut ranges = Vec::new();
+                let mut row_end = row_y;
+                let mut fragmented = false;
+                let base_pages = self.pages.clone();
+                let base_page_count = base_pages.len();
+                let base_page = self.page.clone();
+                let base_page_name = self.page_name.clone();
+                let base_page_content = self.page_content;
+                let base_page_counters = self.page_counters.clone();
+                let base_page_strings = self.page_strings.clone();
+                let base_page_running_elements = self.page_running_elements.clone();
+                let base_pending_break = self.pending_break;
+                let base_pending_break_side = self.pending_break_side.clone();
+                let counters_before_row = self.counter_scopes.clone();
+                let strings_before_row = self.strings.clone();
+                let running_before_row = self.running_elements.clone();
+                let outlines_before_row = self.outlines.len();
+                let fixed_before_row = self.fixed_nodes.len();
+                let positioned_before_row = self.positioned_layers.len();
+                let order_before_row = self.layer_order;
+                let warnings_before_row = self.warnings.len();
+                let mut lane_layouts = Vec::with_capacity(line.len());
+                let mut row_item_offset = 0;
+                for ((index, child_index), item_width) in
+                    line.iter().enumerate().zip(sizes.iter().copied())
+                {
+                    self.pages = base_pages.clone();
+                    self.page = base_page.clone();
+                    self.page_name = base_page_name.clone();
+                    self.page_content = base_page_content;
+                    self.page_counters = base_page_counters.clone();
+                    self.page_strings = base_page_strings.clone();
+                    self.page_running_elements = base_page_running_elements.clone();
+                    self.pending_break = base_pending_break;
+                    self.pending_break_side = base_pending_break_side.clone();
+                    self.y = row_y;
+                    self.frame = Some((cursor, item_width));
+                    let start = self.pages.last().map_or(0, |page| page.items.len());
+                    let mut child = children[*child_index].clone();
+                    child.style.margin = [0.0; 4];
+                    child.style.margin_percent = [None; 4];
+                    child.style.width = Some(item_width);
+                    child.style.width_percent = None;
+                    child.style.box_sizing = "border-box".into();
+                    self.node(&child)?;
+                    if self.pages.len() != base_page_count {
+                        fragmented = true;
+                        let mut warning = Diagnostic::new(
+                            "css-flex-fragmentation",
+                            "flex line split across pages; row alignment was omitted",
                         );
-                        warning.line = Some(line);
-                        warning.column = Some(column);
-                    }
-                    self.warnings.push(warning);
-                }
-                if self.pages.len() == base_page_count && !fragmented {
-                    let end = self.pages.last().unwrap().items.len();
-                    ranges.push((
-                        start + row_item_offset,
-                        end + row_item_offset,
-                        self.y,
-                        child.style.align_self.clone(),
-                    ));
-                    row_end = row_end.max(self.y);
-                    row_item_offset += end - start;
-                }
-                lane_layouts.push(FlexLaneLayout {
-                    pages: self.pages.clone(),
-                    y: self.y,
-                    page: self.page.clone(),
-                    page_name: self.page_name.clone(),
-                    page_content: self.page_content,
-                    page_counters: self.page_counters.clone(),
-                    page_strings: self.page_strings.clone(),
-                    page_running_elements: self.page_running_elements.clone(),
-                    pending_break: self.pending_break,
-                    pending_break_side: self.pending_break_side.clone(),
-                });
-                cursor += item_width;
-                if index + 1 < line.len() {
-                    cursor += node.style.column_gap + extra_gap;
-                }
-            }
-            let longest_lane = lane_layouts
-                .iter()
-                .max_by_key(|lane| lane.pages.len())
-                .expect("flex line has at least one item");
-            let mut merged_pages = base_pages.clone();
-            for lane in &lane_layouts {
-                for (page_index, lane_page) in lane.pages.iter().enumerate() {
-                    if merged_pages.len() <= page_index {
-                        let mut page = lane_page.clone();
-                        page.items.clear();
-                        merged_pages.push(page);
-                    }
-                    let inherited_items = base_pages
-                        .get(page_index)
-                        .map_or(0, |page| page.items.len());
-                    merged_pages[page_index]
-                        .items
-                        .extend(lane_page.items.iter().skip(inherited_items).cloned());
-                }
-            }
-            self.pages = merged_pages;
-            self.y = longest_lane.y;
-            self.page = longest_lane.page.clone();
-            self.page_name = longest_lane.page_name.clone();
-            self.page_content = longest_lane.page_content;
-            self.page_counters = longest_lane.page_counters.clone();
-            self.page_strings = longest_lane.page_strings.clone();
-            self.page_running_elements = longest_lane.page_running_elements.clone();
-            self.pending_break = longest_lane.pending_break;
-            self.pending_break_side = longest_lane.pending_break_side.clone();
-            if fragmented {
-                row_end = self.y;
-            }
-            if !fragmented {
-                for (start, end, child_end, align_self) in ranges {
-                    let align = if align_self == "auto" {
-                        &node.style.align_items
-                    } else {
-                        &align_self
-                    };
-                    let shift = match align.as_str() {
-                        "end" => row_end - child_end,
-                        "center" => (row_end - child_end) / 2.0,
-                        _ => 0.0,
-                    };
-                    if align == "stretch" {
-                        let height = row_end - row_y;
-                        for item in &mut self.pages.last_mut().unwrap().items[start..end] {
-                            stretch_box_item(item, row_y, height);
+                        if let Some((line, column)) = node
+                            .source_offset
+                            .and_then(|offset| source_location_at(&self.source.html, offset))
+                        {
+                            warning.source = Some(
+                                self.source
+                                    .source_name
+                                    .as_deref()
+                                    .unwrap_or("<html>")
+                                    .to_owned(),
+                            );
+                            warning.line = Some(line);
+                            warning.column = Some(column);
                         }
-                    } else if shift > EPS {
-                        for item in &mut self.pages.last_mut().unwrap().items[start..end] {
-                            shift_item(item, shift);
+                        self.warnings.push(warning);
+                    }
+                    if self.pages.len() == base_page_count && !fragmented {
+                        let end = self.pages.last().unwrap().items.len();
+                        ranges.push((
+                            start + row_item_offset,
+                            end + row_item_offset,
+                            self.y,
+                            child.style.align_self.clone(),
+                        ));
+                        row_end = row_end.max(self.y);
+                        row_item_offset += end - start;
+                    }
+                    lane_layouts.push(FlexLaneLayout {
+                        pages: self.pages.clone(),
+                        y: self.y,
+                        page: self.page.clone(),
+                        page_name: self.page_name.clone(),
+                        page_content: self.page_content,
+                        page_counters: self.page_counters.clone(),
+                        page_strings: self.page_strings.clone(),
+                        page_running_elements: self.page_running_elements.clone(),
+                        pending_break: self.pending_break,
+                        pending_break_side: self.pending_break_side.clone(),
+                    });
+                    cursor += item_width;
+                    if index + 1 < line.len() {
+                        cursor += node.style.column_gap + extra_gap;
+                    }
+                }
+                let longest_lane = lane_layouts
+                    .iter()
+                    .max_by(|left, right| {
+                        left.pages
+                            .len()
+                            .cmp(&right.pages.len())
+                            .then_with(|| left.y.total_cmp(&right.y))
+                    })
+                    .expect("flex line has at least one item");
+                let can_move = !moved_to_fresh_page
+                    && base_page_content
+                    && longest_lane.pages.len() == base_page_count + 1
+                    && longest_lane.page_name == base_page_name
+                    && longest_lane.page.margin == base_page.margin
+                    && longest_lane.page.width == base_page.width
+                    && longest_lane.page.height == base_page.height
+                    && longest_lane.y <= row_y + EPS
+                    && line.iter().all(|index| !flow_breaks(children[*index]));
+                if can_move {
+                    // A row which fits a fresh page can move as a unit. This
+                    // avoids splitting its parallel columns near the page foot.
+                    self.pages = base_pages;
+                    self.page = base_page;
+                    self.page_name = base_page_name;
+                    self.page_content = base_page_content;
+                    self.page_counters = base_page_counters;
+                    self.page_strings = base_page_strings;
+                    self.page_running_elements = base_page_running_elements;
+                    self.pending_break = base_pending_break;
+                    self.pending_break_side = base_pending_break_side;
+                    self.counter_scopes = counters_before_row;
+                    self.strings = strings_before_row;
+                    self.running_elements = running_before_row;
+                    self.outlines.truncate(outlines_before_row);
+                    self.fixed_nodes.truncate(fixed_before_row);
+                    self.positioned_layers.truncate(positioned_before_row);
+                    self.layer_order = order_before_row;
+                    self.warnings.truncate(warnings_before_row);
+                    self.new_page()?;
+                    if node.style.position != "static" {
+                        let block = self
+                            .containing_blocks
+                            .last_mut()
+                            .expect("flex containing block");
+                        block.y = self.y;
+                        if !block.height_is_definite {
+                            block.h = (self.page.height - self.page.margin[2] - self.y).max(EPS);
+                        }
+                    }
+                    moved_to_fresh_page = true;
+                    continue;
+                }
+                let mut merged_pages = base_pages.clone();
+                for lane in &lane_layouts {
+                    for (page_index, lane_page) in lane.pages.iter().enumerate() {
+                        if merged_pages.len() <= page_index {
+                            let mut page = lane_page.clone();
+                            page.items.clear();
+                            merged_pages.push(page);
+                        }
+                        let inherited_items = base_pages
+                            .get(page_index)
+                            .map_or(0, |page| page.items.len());
+                        merged_pages[page_index]
+                            .items
+                            .extend(lane_page.items.iter().skip(inherited_items).cloned());
+                    }
+                }
+                self.pages = merged_pages;
+                self.y = longest_lane.y;
+                self.page = longest_lane.page.clone();
+                self.page_name = longest_lane.page_name.clone();
+                self.page_content = longest_lane.page_content;
+                self.page_counters = longest_lane.page_counters.clone();
+                self.page_strings = longest_lane.page_strings.clone();
+                self.page_running_elements = longest_lane.page_running_elements.clone();
+                self.pending_break = longest_lane.pending_break;
+                self.pending_break_side = longest_lane.pending_break_side.clone();
+                if fragmented {
+                    row_end = self.y;
+                }
+                if !fragmented {
+                    for (start, end, child_end, align_self) in ranges {
+                        let align = if align_self == "auto" {
+                            &node.style.align_items
+                        } else {
+                            &align_self
+                        };
+                        let shift = match align.as_str() {
+                            "end" => row_end - child_end,
+                            "center" => (row_end - child_end) / 2.0,
+                            _ => 0.0,
+                        };
+                        if align == "stretch" {
+                            let height = row_end - row_y;
+                            for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                                stretch_box_item(item, row_y, height);
+                            }
+                        } else if shift > EPS {
+                            for item in &mut self.pages.last_mut().unwrap().items[start..end] {
+                                shift_item(item, shift);
+                            }
                         }
                     }
                 }
-            }
-            let row_end_index = self.pages.last().unwrap().items.len();
-            line_records.push((row_start, row_end_index, row_y, row_end - row_y));
-            self.y = row_end;
-            if line_number + 1 < lines.len() {
-                self.y += node.style.row_gap;
+                let row_end_index = self.pages.last().unwrap().items.len();
+                line_records.push((row_start, row_end_index, row_y, row_end - row_y));
+                self.y = row_end;
+                if line_number + 1 < lines.len() {
+                    self.y += node.style.row_gap;
+                }
+                break;
             }
         }
         if let Some(height) = declared_height.filter(|_| self.pages.len() == initial_page_count) {
@@ -5631,77 +6153,6 @@ impl Flow {
             });
         }
     }
-    fn draw_inline_image(&mut self, node: &Node, x: f32, y: f32, w: f32, h: f32) {
-        let style = &node.style;
-        let horizontal_edges = style.padding[1] + style.padding[3] + 2.0 * style.border_width;
-        let vertical_edges = style.padding[0] + style.padding[2] + 2.0 * style.border_width;
-        let content_width = (w - horizontal_edges).max(0.0);
-        let content_height = (h - vertical_edges).max(0.0);
-        if content_width <= EPS || content_height <= EPS {
-            return;
-        }
-
-        let mut image = node.clone();
-        image.style.width = Some(content_width);
-        image.style.width_percent = None;
-        image.style.height = Some(content_height);
-        image.style.height_percent = None;
-        image.style.min_width = None;
-        image.style.min_width_percent = None;
-        image.style.max_width = None;
-        image.style.max_width_percent = None;
-        image.style.min_height = None;
-        image.style.min_height_percent = None;
-        image.style.max_height = None;
-        image.style.max_height_percent = None;
-        image.style.margin = [0.0; 4];
-        image.style.margin_percent = [None; 4];
-
-        let saved_y = self.y;
-        let saved_frame = self.frame;
-        let saved_center_children = self.center_children;
-        let saved_pending_break = self.pending_break;
-        let saved_pending_break_side = self.pending_break_side.clone();
-        self.frame = Some((x + style.border_width + style.padding[3], content_width));
-        self.y = y + style.border_width + style.padding[0];
-        self.center_children = false;
-        self.containing_blocks.push(ContainingBlock {
-            x,
-            y,
-            w,
-            h,
-            height_is_definite: true,
-            clip: false,
-        });
-        let result = self.image(&image);
-        self.containing_blocks.pop();
-        self.y = saved_y;
-        self.frame = saved_frame;
-        self.center_children = saved_center_children;
-        self.pending_break = saved_pending_break;
-        self.pending_break_side = saved_pending_break_side;
-        if let Err(error) = result {
-            let mut warning = Diagnostic::new(
-                "inline-image",
-                format!("inline image could not be rendered; image was omitted: {error}"),
-            );
-            if let Some((line, column)) = node
-                .source_offset
-                .and_then(|offset| source_location_at(&self.source.html, offset))
-            {
-                warning.source = Some(
-                    self.source
-                        .source_name
-                        .as_deref()
-                        .unwrap_or("<html>")
-                        .to_owned(),
-                );
-                warning.line = Some(line);
-                warning.column = Some(column);
-            }
-            self.warnings.push(warning);
-        }
-    }
     fn draw_line(&mut self, line: &Line, x: f32, y: f32, width: f32, align: &str, last: bool) {
         let has_visible_glyph = line.glyphs.iter().any(|glyph| glyph.visible);
         if has_visible_glyph {
@@ -5757,17 +6208,39 @@ impl Flow {
                 self.paint_box(box_x, box_y, inline.width, inline.height, &inline.style);
                 let content_x = box_x + inline.style.border_width + inline.style.padding[3];
                 let mut content_y = box_y + inline.style.border_width + inline.style.padding[0];
-                if let Some(image) = &inline.image_node {
-                    self.draw_inline_image(
-                        image,
-                        content_x,
-                        content_y,
-                        inline.inner_width,
-                        inline.height
-                            - inline.style.padding[0]
-                            - inline.style.padding[2]
-                            - 2.0 * inline.style.border_width,
-                    );
+                if let Some(data) = &inline.image {
+                    let image_height = (inline.height
+                        - inline.style.border_width * 2.0
+                        - inline.style.padding[0]
+                        - inline.style.padding[2])
+                        .max(0.0);
+                    let [w, h, dx, dy] =
+                        image_paint_geometry(&inline.style, data, inline.inner_width, image_height);
+                    if inline.style.object_fit != "fill" {
+                        self.visible_item(Item::BeginClip {
+                            x: content_x,
+                            y: content_y,
+                            w: inline.inner_width,
+                            h: image_height,
+                            radius: [0.0; 4],
+                        });
+                    }
+                    if inline.style.opacity < 1.0 - EPS {
+                        self.visible_item(Item::BeginOpacity(inline.style.opacity));
+                    }
+                    self.visible_item(Item::Image {
+                        data: data.clone(),
+                        x: content_x + dx,
+                        y: content_y + dy,
+                        w,
+                        h,
+                    });
+                    if inline.style.opacity < 1.0 - EPS {
+                        self.visible_item(Item::EndOpacity);
+                    }
+                    if inline.style.object_fit != "fill" {
+                        self.visible_item(Item::EndClip);
+                    }
                 } else {
                     for (line_index, nested) in inline.lines.iter().enumerate() {
                         self.draw_line(
@@ -6077,188 +6550,14 @@ impl Flow {
     }
     fn image(&mut self, node: &Node) -> Result<()> {
         self.begin(&node.style)?;
-        let src = node
-            .attr("src")
-            .ok_or_else(|| Error("img needs src".into()))?;
-        let (bytes, svg) = if src.starts_with("data:") {
-            let parsed = data_image(
-                src,
-                self.limits
-                    .max_resource_bytes
-                    .saturating_sub(self.resource_bytes),
-            );
-            let (bytes, format) = match parsed {
-                Ok(image) => image,
-                Err(error) if error.0 == "unsupported image data URI media type" => {
-                    let mut warning = Diagnostic::new(
-                        "image-data-uri-media-type",
-                        "unsupported image data URI media type; image was omitted",
-                    );
-                    if let Some((line, column)) = node
-                        .source_offset
-                        .and_then(|offset| source_location_at(&self.source.html, offset))
-                    {
-                        warning.source = Some(
-                            self.source
-                                .source_name
-                                .as_deref()
-                                .unwrap_or("<html>")
-                                .to_owned(),
-                        );
-                        warning.line = Some(line);
-                        warning.column = Some(column);
-                    }
-                    self.warnings.push(warning);
-                    return Ok(());
-                }
-                Err(error) => return Err(error),
-            };
-            (bytes, matches!(format, ImageFormat::Svg))
-        } else {
-            if src.contains("://") {
-                return Err(Error("only local files and data URIs are supported".into()));
+        let data = match load_node_image(node, &self.fonts, &self.source, self.cancel.as_deref()) {
+            Ok(data) => data,
+            Err(error) if error.0 == "unsupported image data URI media type" => {
+                self.warnings.push(self.source.image_warning(node, &error));
+                self.finish(&node.style);
+                return Ok(());
             }
-            let path = local_resource_path(&self.base_dir, src, self.limits.restrict_base_dir)?;
-            let file_size = std::fs::metadata(&path)
-                .map_err(|e| Error(format!("image {}: {e}", path.display())))?
-                .len() as usize;
-            if self.resource_bytes.saturating_add(file_size) > self.limits.max_resource_bytes {
-                return Err(Error("render limit exceeded: max_resource_bytes".into()));
-            }
-            let bytes = std::fs::read(&path)
-                .map_err(|e| Error(format!("image {}: {e}", path.display())))?;
-            let svg = path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"));
-            (bytes, svg)
-        };
-        self.resource_bytes = self.resource_bytes.saturating_add(bytes.len());
-        if self.resource_bytes > self.limits.max_resource_bytes {
-            return Err(Error("render limit exceeded: max_resource_bytes".into()));
-        }
-        let dimensions = if svg {
-            None
-        } else {
-            let dimensions = image::ImageReader::new(std::io::Cursor::new(&bytes))
-                .with_guessed_format()
-                .map_err(|e| Error(format!("image format: {e}")))?
-                .into_dimensions()
-                .map_err(|e| Error(format!("image dimensions: {e}")))?;
-            if u64::from(dimensions.0) * u64::from(dimensions.1) > self.limits.max_image_pixels {
-                return Err(Error("render limit exceeded: max_image_pixels".into()));
-            }
-            Some(dimensions)
-        };
-        cancelled(self.cancel.as_deref())?;
-        let digest = if svg {
-            let mut hash = Sha256::new();
-            hash.update(&bytes);
-            hash.update(self.svg_dpi.to_bits().to_be_bytes());
-            for font_digest in self.fonts.source_digests()? {
-                hash.update(font_digest);
-            }
-            hash.finalize().into()
-        } else {
-            Sha256::digest(&bytes).into()
-        };
-        let hit = {
-            let mut cache = self.images.lock().map_err(|e| Error(e.to_string()))?;
-            let hit = cache.entries.get(&digest).cloned();
-            if hit.is_some() {
-                cache.hits += 1;
-            } else {
-                cache.misses += 1;
-            }
-            hit
-        };
-        let data = if let Some(hit) = hit {
-            hit
-        } else {
-            let data = if svg {
-                Arc::new(render_svg(
-                    &bytes,
-                    digest,
-                    self.svg_dpi,
-                    self.limits.max_image_pixels,
-                    &self.fonts,
-                )?)
-            } else {
-                let dimensions = dimensions.expect("raster dimensions");
-                let jpeg_metadata =
-                    if image::guess_format(&bytes).ok() == Some(image::ImageFormat::Jpeg) {
-                        let mut decoder =
-                            image::codecs::jpeg::JpegDecoder::new(std::io::Cursor::new(&bytes))
-                                .map_err(|e| Error(format!("JPEG metadata: {e}")))?;
-                        Some((
-                            decoder
-                                .orientation()
-                                .map_err(|e| Error(format!("JPEG orientation: {e}")))?,
-                            decoder.color_type(),
-                        ))
-                    } else {
-                        None
-                    };
-                let data = if jpeg_metadata
-                    == Some((
-                        image::metadata::Orientation::NoTransforms,
-                        image::ColorType::Rgb8,
-                    )) {
-                    Arc::new(ImageData {
-                        rgb: Vec::new(),
-                        alpha: None,
-                        jpeg: Some(bytes),
-                        width: dimensions.0,
-                        height: dimensions.1,
-                        display_width: dimensions.0 as f32 * 0.75,
-                        display_height: dimensions.1 as f32 * 0.75,
-                        digest,
-                        svg: None,
-                    })
-                } else {
-                    let mut image = image::load_from_memory(&bytes)
-                        .map_err(|e| Error(format!("image decode: {e}")))?;
-                    if let Some((orientation, _)) = jpeg_metadata {
-                        image.apply_orientation(orientation);
-                    }
-                    let (iw, ih) = image.dimensions();
-                    let rgba = image.to_rgba8();
-                    let mut rgb = Vec::with_capacity((iw as usize) * (ih as usize) * 3);
-                    let mut alpha = Vec::with_capacity((iw as usize) * (ih as usize));
-                    for pixel in rgba.pixels() {
-                        rgb.extend_from_slice(&pixel.0[..3]);
-                        alpha.push(pixel[3]);
-                    }
-                    let alpha = alpha.iter().any(|value| *value != 255).then_some(alpha);
-                    Arc::new(ImageData {
-                        rgb,
-                        alpha,
-                        jpeg: None,
-                        width: iw,
-                        height: ih,
-                        display_width: iw as f32 * 0.75,
-                        display_height: ih as f32 * 0.75,
-                        digest,
-                        svg: None,
-                    })
-                };
-                data
-            };
-            let mut cache = self.images.lock().map_err(|e| Error(e.to_string()))?;
-            let size = data.retained_bytes();
-            if size <= IMAGE_CACHE_LIMIT {
-                while cache.bytes + size > IMAGE_CACHE_LIMIT {
-                    let Some(old) = cache.order.pop_front() else {
-                        break;
-                    };
-                    if let Some(item) = cache.entries.remove(&old) {
-                        cache.bytes -= item.retained_bytes();
-                    }
-                }
-                cache.bytes += size;
-                cache.order.push_back(digest);
-                cache.entries.insert(digest, data.clone());
-            }
-            data
+            Err(error) => return Err(error),
         };
         let (iw, ih) = (data.display_width, data.display_height);
         let mut box_width = node
@@ -6325,28 +6624,9 @@ impl Flow {
             } else {
                 inline_alignment
             };
-        let (paint_width, paint_height) = match node.style.object_fit.as_str() {
-            "contain" => {
-                let scale = (box_width / iw).min(box_height / ih);
-                (iw * scale, ih * scale)
-            }
-            "cover" => {
-                let scale = (box_width / iw).max(box_height / ih);
-                (iw * scale, ih * scale)
-            }
-            "none" => (iw, ih),
-            "scale-down" => {
-                let scale = 1.0_f32.min((box_width / iw).min(box_height / ih));
-                (iw * scale, ih * scale)
-            }
-            _ => (box_width, box_height),
-        };
-        let paint_x = box_x
-            + (box_width - paint_width) * node.style.object_position[0]
-            + node.style.object_position_offset[0];
-        let paint_y = self.y
-            + (box_height - paint_height) * node.style.object_position[1]
-            + node.style.object_position_offset[1];
+        let [paint_width, paint_height, dx, dy] =
+            image_paint_geometry(&node.style, &data, box_width, box_height);
+        let (paint_x, paint_y) = (box_x + dx, self.y + dy);
         let data = if let Some(max_dpi) = self.max_image_dpi.filter(|_| data.svg.is_none()) {
             match downsample_image(&data, max_dpi, paint_width, paint_height) {
                 Ok(downsampled) => Arc::new(downsampled),
@@ -7062,8 +7342,6 @@ impl Flow {
         let mut local = Flow::new(
             self.sheet.clone(),
             self.fonts.clone(),
-            self.base_dir.clone(),
-            self.images.clone(),
             vec![],
             self.limits.clone(),
             self.cancel.clone(),
@@ -7086,8 +7364,6 @@ impl Flow {
         local.y = 0.0;
         local.frame = Some((0.0, width));
         local.experimental_shaping = self.experimental_shaping;
-        local.svg_dpi = self.svg_dpi;
-        local.resource_bytes = self.resource_bytes;
         let mut container = cell.clone();
         container.tag = "div".into();
         container.attrs.clear();
@@ -7115,7 +7391,6 @@ impl Flow {
                 "nested table exceeds the containing table cell".into(),
             ));
         }
-        self.resource_bytes = local.resource_bytes;
         self.iterations = self.iterations.saturating_add(local.iterations);
         self.shaping_ns
             .fetch_add(local.shaping_ns.load(Ordering::Relaxed), Ordering::Relaxed);

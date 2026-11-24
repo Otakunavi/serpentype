@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "serpentype"
-version = "0.10.0"
+version = "0.11.0"
 description = "Controlled HTML/CSS to PDF with paginated Rust layout"
 requires-python = ">=3.10"
 license = "MIT"
@@ -16,7 +16,7 @@ Source = "https://github.com/Otakunavi/serpentype"
 
 [project.optional-dependencies]
 test-weasy = ["weasyprint==64.1"]
-test-pdfpipe = ["Jinja2>=3.1,<4", "qrcode[pil]>=8,<9"]
+test-pdfpipe = ["Jinja2>=3.1,<4", "weasyprint==64.1", "pypdf>=6,<7", "pypdfium2>=4,<6", "Pillow>=10,<13", "zxing-cpp>=2.3,<3"]
 
 [tool.maturin]
 features = ["python"]
