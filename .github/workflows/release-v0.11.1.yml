@@ -1,0 +1,71 @@
+name: Release Serpentype 0.11.1
+on:
+  push:
+    branches: ['codex/publish-0.11.1']
+    paths: ['.github/workflows/release-v0.11.1.yml']
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    permissions:
+      actions: write
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: v0.11.1
+      RELEASE_SHA: 927ec9a5603edb62ebc258e2be04f4dbf3ba60c8
+      WHEEL_RUN: '45371020450'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 927ec9a5603edb62ebc258e2be04f4dbf3ba60c8
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+      - name: Collect distributions from the verified release commit
+        run: |
+          gh run watch "$WHEEL_RUN" --exit-status --interval 15
+          test "$(gh run view "$WHEEL_RUN" --json headSha --jq .headSha)" = "$RELEASE_SHA"
+          gh run download "$WHEEL_RUN" --pattern 'wheel-*' --dir wheels
+          mkdir dist
+          for wheel in wheels/*/*.whl; do cp "$wheel" dist/; done
+          python -m pip install 'maturin==1.16.0'
+          python -m maturin sdist --out dist
+          python - <<'PY'
+          from pathlib import Path
+
+          files = {path.name for path in Path('dist').iterdir()}
+          wheels = files - {'serpentype-0.11.1.tar.gz'}
+          platforms = [
+              ('manylinux', 'x86_64'), ('manylinux', 'aarch64'),
+              ('musllinux', 'x86_64'), ('musllinux', 'aarch64'),
+              ('macosx', 'x86_64'), ('macosx', 'arm64'), ('win_amd64',),
+          ]
+          assert len(files) == 8 and len(wheels) == 7, files
+          assert all(wheel.startswith('serpentype-0.11.1-') and wheel.endswith('.whl')
+                     for wheel in wheels), wheels
+          assert all(any(all(part in wheel for part in platform) for wheel in wheels)
+                     for platform in platforms), wheels
+          PY
+      - name: Publish the GitHub release and dispatch the trusted PyPI workflow
+        run: |
+          for attempt in $(seq 1 40); do
+            if gh api "repos/$GH_REPO/compare/$RELEASE_SHA...main" \
+              --jq 'select(.status == "ahead" or .status == "identical") | .status' |
+              grep -Eq '^(ahead|identical)$'; then
+              break
+            fi
+            test "$attempt" -lt 40
+            sleep 15
+          done
+          gh release create "$RELEASE_TAG" dist/* --target "$RELEASE_SHA" \
+            --title "Serpentype 0.11.1" --notes-file docs/release-0.11.1.md
+          gh workflow run publish-pypi.yml --ref main -f tag="$RELEASE_TAG"
