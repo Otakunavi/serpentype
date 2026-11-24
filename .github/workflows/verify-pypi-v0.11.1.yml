@@ -1,0 +1,73 @@
+name: Verify Serpentype 0.11.1 on PyPI
+on:
+  push:
+    branches: ['codex/publish-0.11.1']
+    paths: ['.github/workflows/verify-pypi-v0.11.1.yml']
+
+permissions: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify all public distributions and install the Linux wheel
+        run: |
+          python - <<'PY'
+          from json import load
+          from time import sleep
+          from urllib.error import HTTPError
+          from urllib.request import urlopen
+
+          for _ in range(30):
+              try:
+                  with urlopen('https://pypi.org/pypi/serpentype/0.11.1/json', timeout=10) as response:
+                      publication = load(response)
+                  files = publication['urls']
+                  if len(files) == 8:
+                      assert publication['info']['version'] == '0.11.1'
+                      assert sum(file['packagetype'] == 'bdist_wheel' for file in files) == 7
+                      assert all(not file['yanked'] for file in files)
+                      for file in sorted(files, key=lambda f: f['filename']):
+                          print(file['filename'], file['size'], file['digests']['sha256'], flush=True)
+                      break
+              except HTTPError as error:
+                  if error.code != 404:
+                      raise
+              sleep(10)
+          else:
+              raise SystemExit('The complete release did not appear on PyPI.')
+          PY
+          python -m pip --isolated install --no-deps --only-binary=:all: \
+            --index-url https://pypi.org/simple serpentype==0.11.1
+          python - <<'PY'
+          import base64
+          from importlib.metadata import version
+          from serpentype import HTML
+
+          assert version('serpentype') == '0.11.1'
+          svg = base64.b64encode(b'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200"/></svg>').decode()
+          image = f'<img src="data:image/svg+xml;base64,{svg}">'
+          header = HTML(string=f'<figure>{image}</figure>').render()
+          assert len(header.pages) == 1
+          assert b'/Subtype /Form' in header.write_pdf()
+          html = f'''
+            <style>
+              @page {{ size: 500pt 200pt; margin: 10pt }}
+              p {{ margin: 0; height: 110pt }}
+              .row {{ display: grid; grid-template-columns: repeat(5, 1fr) }}
+              .qr img {{ width: 3cm; height: auto }}
+            </style>
+            <p>X</p><div class="row">
+              <div>A</div><div>B</div><div>C</div><div>D</div>
+              <div class="qr">{image}</div>
+            </div>
+          '''
+          paginated = HTML(string=html).render()
+          assert len(paginated.pages) == 2
+          assert b'/Subtype /Form' in paginated.write_pdf()
+          print('Installed Serpentype 0.11.1 from PyPI; figure and grid regressions passed.')
+          PY
