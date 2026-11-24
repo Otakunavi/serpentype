@@ -5,9 +5,17 @@ build-backend = "maturin"
 [project]
 name = "serpentype"
 version = "0.11.0"
-description = "Controlled HTML/CSS to PDF with paginated Rust layout"
+description = "Rust-powered HTML/CSS-to-PDF renderer for Python"
 requires-python = ">=3.10"
 license = "MIT"
+
+[project.readme]
+content-type = "text/markdown"
+text = """
+Serpentype turns HTML and CSS into paginated PDFs using a Rust layout engine.
+It supports page backgrounds, headers, and footers, and provides WeasyPrint-style
+`HTML` and `CSS` classes for a documented subset of HTML and CSS.
+"""
 
 [project.urls]
 Homepage = "https://github.com/Otakunavi/serpentype"
