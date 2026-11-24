@@ -5289,7 +5289,7 @@ impl Flow {
                     && longest_lane.page.width == base_page.width
                     && longest_lane.page.height == base_page.height
                     && longest_lane.y <= row_y + EPS
-                    && line.iter().all(|index| !flow_breaks(&children[*index]));
+                    && line.iter().all(|index| !flow_breaks(children[*index]));
                 if can_move {
                     // A row which fits a fresh page can move as a unit. This
                     // avoids splitting its parallel columns near the page foot.
